@@ -76,6 +76,8 @@ export const ProjectCandidate = z.object({
   evidence: z.string(),
 });
 
+export type ProjectCandidate = z.infer<typeof ProjectCandidate>;
+
 export const TeamProject = z.object({
   team: z.string(),
   jira_project: ProjectKey.nullable(),

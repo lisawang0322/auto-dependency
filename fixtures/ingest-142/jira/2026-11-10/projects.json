@@ -1,0 +1,68 @@
+[
+  {
+    "key": "INGEST",
+    "name": "Ingestion service",
+    "projectCategory": {
+      "name": "Product"
+    },
+    "description": "The streaming ingestion service and its batch importer predecessor.",
+    "lead": {
+      "displayName": "Marcus Lee"
+    }
+  },
+  {
+    "key": "DATA",
+    "name": "Data Platform",
+    "projectCategory": {
+      "name": "Platform"
+    },
+    "description": "Shared data platform: clusters, storage and permissions.",
+    "lead": {
+      "displayName": "Wei Zhang"
+    }
+  },
+  {
+    "key": "SEC",
+    "name": "Security Engineering",
+    "projectCategory": {
+      "name": "Security"
+    },
+    "description": "Application security reviews and launch approvals.",
+    "lead": {
+      "displayName": "Jordan Blake"
+    }
+  },
+  {
+    "key": "SRE",
+    "name": "Site Reliability Engineering",
+    "projectCategory": {
+      "name": "Platform"
+    },
+    "description": "Capacity, on-call and production readiness.",
+    "lead": {
+      "displayName": "Sam Whitfield"
+    }
+  },
+  {
+    "key": "SRETOOLS",
+    "name": "SRE Tooling",
+    "projectCategory": {
+      "name": "Platform"
+    },
+    "description": "Internal tools built for the SRE org.",
+    "lead": {
+      "displayName": "Noah Park"
+    }
+  },
+  {
+    "key": "SECOPS",
+    "name": "Security Operations",
+    "projectCategory": {
+      "name": "Security"
+    },
+    "description": "Incident response and security monitoring.",
+    "lead": {
+      "displayName": "Ava Chen"
+    }
+  }
+]

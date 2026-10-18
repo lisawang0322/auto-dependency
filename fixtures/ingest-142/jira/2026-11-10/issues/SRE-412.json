@@ -1,0 +1,34 @@
+{
+  "key": "SRE-412",
+  "fields": {
+    "summary": "Capacity for ingestion service",
+    "description": "Reserve node capacity and on-call rotation for the ingestion service launch.",
+    "issuetype": {
+      "name": "Task"
+    },
+    "status": {
+      "name": "To Do"
+    },
+    "resolution": null,
+    "project": {
+      "key": "SRE"
+    },
+    "assignee": {
+      "displayName": "Omar Haddad"
+    },
+    "duedate": "2026-11-13",
+    "created": "2026-10-27T09:00:00.000+0000",
+    "updated": "2026-10-28T09:00:00.000+0000",
+    "components": [
+      {
+        "name": "capacity"
+      }
+    ],
+    "fixVersions": [],
+    "issuelinks": [],
+    "comment": {
+      "comments": [],
+      "total": 0
+    }
+  }
+}

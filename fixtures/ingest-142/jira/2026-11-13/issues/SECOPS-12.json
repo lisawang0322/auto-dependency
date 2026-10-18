@@ -1,0 +1,30 @@
+{
+  "key": "SECOPS-12",
+  "fields": {
+    "summary": "Security review of on-call paging tooling",
+    "description": null,
+    "issuetype": {
+      "name": "Task"
+    },
+    "status": {
+      "name": "To Do"
+    },
+    "resolution": null,
+    "project": {
+      "key": "SECOPS"
+    },
+    "assignee": {
+      "displayName": "Ava Chen"
+    },
+    "duedate": null,
+    "created": "2026-10-03T09:00:00.000+0000",
+    "updated": "2026-10-30T09:00:00.000+0000",
+    "components": [],
+    "fixVersions": [],
+    "issuelinks": [],
+    "comment": {
+      "comments": [],
+      "total": 0
+    }
+  }
+}

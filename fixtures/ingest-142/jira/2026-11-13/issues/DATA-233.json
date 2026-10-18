@@ -1,0 +1,34 @@
+{
+  "key": "DATA-233",
+  "fields": {
+    "summary": "Raise ingestion cluster quota",
+    "description": "Raise the ingestion namespace quota to 40 vCPU for launch load.",
+    "issuetype": {
+      "name": "Task"
+    },
+    "status": {
+      "name": "Done"
+    },
+    "resolution": null,
+    "project": {
+      "key": "DATA"
+    },
+    "assignee": {
+      "displayName": "Anika Rao"
+    },
+    "duedate": "2026-11-12",
+    "created": "2026-10-22T09:00:00.000+0000",
+    "updated": "2026-11-12T10:30:00.000+0000",
+    "components": [
+      {
+        "name": "cluster"
+      }
+    ],
+    "fixVersions": [],
+    "issuelinks": [],
+    "comment": {
+      "comments": [],
+      "total": 0
+    }
+  }
+}

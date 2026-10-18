@@ -1,0 +1,45 @@
+{
+  "key": "SRE-398",
+  "fields": {
+    "summary": "Alerting and runbook for ingestion service",
+    "description": null,
+    "issuetype": {
+      "name": "Task"
+    },
+    "status": {
+      "name": "Done"
+    },
+    "resolution": null,
+    "project": {
+      "key": "SRE"
+    },
+    "assignee": {
+      "displayName": "Lena Fischer"
+    },
+    "duedate": "2026-11-06",
+    "created": "2026-10-12T09:00:00.000+0000",
+    "updated": "2026-11-05T17:00:00.000+0000",
+    "components": [
+      {
+        "name": "on-call"
+      }
+    ],
+    "fixVersions": [],
+    "issuelinks": [
+      {
+        "type": {
+          "name": "Blocks",
+          "inward": "is blocked by",
+          "outward": "blocks"
+        },
+        "outwardIssue": {
+          "key": "INGEST-142"
+        }
+      }
+    ],
+    "comment": {
+      "comments": [],
+      "total": 0
+    }
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "epic": {
+    "key": "INGEST-142",
+    "summary": "Ingestion service launch",
+    "fix_version": "1.0",
+    "release_date": "2026-11-20",
+    "created": "2026-09-15"
+  },
+  "release_window": {
+    "start": "2026-09-15",
+    "end": "2026-11-20"
+  },
+  "projects": [
+    {
+      "team": "Ingestion team",
+      "jira_project": "INGEST",
+      "match": "explicit",
+      "evidence": "The plan names project INGEST ('Ingestion service') next to this team",
+      "candidates": [],
+      "search": true
+    },
+    {
+      "team": "Data Platform",
+      "jira_project": "DATA",
+      "match": "linked",
+      "evidence": "Linked from the epic via DATA-240 (relates to, from INGEST-142), DATA-221 (is blocked by, from INGEST-150), DATA-240 (relates to, from INGEST-157); project name 'Data Platform' equals the team name",
+      "candidates": [],
+      "search": true
+    },
+    {
+      "team": "Security",
+      "jira_project": null,
+      "match": "unresolved",
+      "evidence": "2 visible projects fit the name 'Security': SEC, SECOPS. Pick one.",
+      "candidates": [
+        {
+          "key": "SEC",
+          "name": "Security Engineering",
+          "evidence": "team name matches name 'Security Engineering', category 'Security', description 'Application security reviews and launch approvals.'; linked from the epic via SEC-881 (is blocked by, from INGEST-142), SEC-890 (is blocked by, from INGEST-157)"
+        },
+        {
+          "key": "SECOPS",
+          "name": "Security Operations",
+          "evidence": "team name matches name 'Security Operations', category 'Security', description 'Incident response and security monitoring.'"
+        }
+      ],
+      "search": true
+    },
+    {
+      "team": "SRE",
+      "jira_project": "SRE",
+      "match": "linked",
+      "evidence": "Linked from the epic via SRE-398 (is blocked by, from INGEST-142); key SRE equals the team name",
+      "candidates": [],
+      "search": true
+    }
+  ],
+  "visible_projects": [
+    {
+      "key": "DATA",
+      "name": "Data Platform",
+      "category": "Platform",
+      "description": "Shared data platform: clusters, storage and permissions.",
+      "lead": "Wei Zhang"
+    },
+    {
+      "key": "INGEST",
+      "name": "Ingestion service",
+      "category": "Product",
+      "description": "The streaming ingestion service and its batch importer predecessor.",
+      "lead": "Marcus Lee"
+    },
+    {
+      "key": "SEC",
+      "name": "Security Engineering",
+      "category": "Security",
+      "description": "Application security reviews and launch approvals.",
+      "lead": "Jordan Blake"
+    },
+    {
+      "key": "SECOPS",
+      "name": "Security Operations",
+      "category": "Security",
+      "description": "Incident response and security monitoring.",
+      "lead": "Ava Chen"
+    },
+    {
+      "key": "SRE",
+      "name": "Site Reliability Engineering",
+      "category": "Platform",
+      "description": "Capacity, on-call and production readiness.",
+      "lead": "Sam Whitfield"
+    },
+    {
+      "key": "SRETOOLS",
+      "name": "SRE Tooling",
+      "category": "Platform",
+      "description": "Internal tools built for the SRE org.",
+      "lead": "Noah Park"
+    }
+  ],
+  "warnings": [
+    "Security: unresolved. 2 visible projects fit the name 'Security': SEC, SECOPS. Pick one."
+  ]
+}

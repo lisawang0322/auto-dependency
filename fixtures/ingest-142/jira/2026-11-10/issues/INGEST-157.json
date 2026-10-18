@@ -1,0 +1,78 @@
+{
+  "key": "INGEST-157",
+  "fields": {
+    "summary": "Production database access for ingestion writer",
+    "description": null,
+    "issuetype": {
+      "name": "Story"
+    },
+    "status": {
+      "name": "In Progress"
+    },
+    "resolution": null,
+    "project": {
+      "key": "INGEST"
+    },
+    "assignee": {
+      "displayName": "Marcus Lee"
+    },
+    "duedate": "2026-11-13",
+    "created": "2026-09-25T09:00:00.000+0000",
+    "updated": "2026-11-09T12:00:00.000+0000",
+    "components": [
+      {
+        "name": "ingestion-workers"
+      }
+    ],
+    "fixVersions": [
+      {
+        "name": "1.0",
+        "releaseDate": "2026-11-20"
+      }
+    ],
+    "parent": {
+      "key": "INGEST-142"
+    },
+    "issuelinks": [
+      {
+        "type": {
+          "name": "Relates",
+          "inward": "relates to",
+          "outward": "relates to"
+        },
+        "outwardIssue": {
+          "key": "DATA-240"
+        }
+      },
+      {
+        "type": {
+          "name": "Blocks",
+          "inward": "is blocked by",
+          "outward": "blocks"
+        },
+        "inwardIssue": {
+          "key": "SEC-890"
+        }
+      }
+    ],
+    "comment": {
+      "comments": [
+        {
+          "author": {
+            "displayName": "Marcus Lee"
+          },
+          "created": "2026-10-15T10:00:00.000+0000",
+          "body": "Picked this up."
+        },
+        {
+          "author": {
+            "displayName": "Marcus Lee"
+          },
+          "created": "2026-11-04T09:30:00.000+0000",
+          "body": "Writer needs INSERT on the platform store in prod. Opened DATA-240 for the permissions review."
+        }
+      ],
+      "total": 2
+    }
+  }
+}
