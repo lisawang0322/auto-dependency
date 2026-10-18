@@ -116,7 +116,7 @@ for (const [n, summary, status10, assignee] of storyDefs) {
   };
   if (n === 150) {
     def.links = [{ type: "Blocks", dir: "inward", key: "DATA-221" }];
-    def.comments.push(
+    comments.push(
       { created: "2026-11-03T15:10:00.000+0000", author: PEOPLE.marcus, body: "Namespace is created but we can't scale workers until the quota is raised. Quota bump is tracked in DATA-233, waiting on Data Platform." },
       { created: "2026-11-12T10:40:00.000+0000", author: PEOPLE.anika, body: "DATA-233 is done, quota raised to 40 vCPU. Closing this." },
     );
@@ -124,17 +124,17 @@ for (const [n, summary, status10, assignee] of storyDefs) {
   if (n === 157) {
     def.due = "2026-11-13";
     def.links = [{ type: "Relates", dir: "outward", key: "DATA-240" }, { type: "Blocks", dir: "inward", key: "SEC-890" }];
-    def.comments.push(
+    comments.push(
       { created: "2026-11-04T09:30:00.000+0000", author: PEOPLE.marcus, body: "Writer needs INSERT on the platform store in prod. Opened DATA-240 for the permissions review." },
       { created: "2026-11-12T16:15:00.000+0000", author: PEOPLE.tomas, body: "Closing DATA-240 as a duplicate of the general access process. DBA will review prod permissions before launch." },
     );
   }
   if (n === 163) {
     def.due = "2026-11-15";
-    def.comments.push({ created: "2026-11-11T18:00:00.000+0000", author: PEOPLE.dana, body: "Ran the 2× peak run on staging yesterday, load test looks fine. Will attach the report." });
+    comments.push({ created: "2026-11-11T18:00:00.000+0000", author: PEOPLE.dana, body: "Ran the 2× peak run on staging yesterday, load test looks fine. Will attach the report." });
   }
   if (n === 167) {
-    def.comments.push({ created: "2026-11-09T13:00:00.000+0000", author: PEOPLE.marcus, body: "Need SRE's capacity confirmation before we can write the cut-over timing." });
+    comments.push({ created: "2026-11-09T13:00:00.000+0000", author: PEOPLE.marcus, body: "Need SRE's capacity confirmation before we can write the cut-over timing." });
   }
   issues.push(def);
 }

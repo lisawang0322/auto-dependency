@@ -3,19 +3,31 @@
   "private": true,
   "version": "0.1.0",
   "description": "Release Readiness Review: release-reader skill, fixtures and GUI (CMU independent study prototype)",
-  "workspaces": ["packages/*", "skills/*", "gui"],
+  "workspaces": [
+    "packages/*",
+    "skills/*",
+    "gui"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:reader": "vitest run --project reader",
     "reader:a": "tsx skills/release-reader/scripts/extract-plan.ts",
     "reader:b": "tsx skills/release-reader/scripts/resolve-release.ts",
     "reader:c": "tsx skills/release-reader/scripts/read-jira.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:runs": "tsx scripts/build-runs.ts",
+    "build:jira-fixtures": "tsx fixtures/ingest-142/jira/generate.ts",
+    "gui:dev": "npm run dev -w gui",
+    "gui:test": "npm run test -w gui",
+    "gui:e2e": "npm run e2e -w gui",
+    "gui:build": "npm run build -w gui",
+    "test:all": "vitest run && npm run test -w gui && npm run e2e -w gui"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^3.2.0"
-  }
+  },
+  "type": "module"
 }

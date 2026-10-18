@@ -10,5 +10,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["packages/schemas/src", "skills/release-reader/scripts", "skills/release-reader/tests"]
+  "include": ["packages/schemas/src", "skills/release-reader/scripts", "skills/release-reader/tests", "scripts", "fixtures/ingest-142/jira/generate.ts"]
 }
