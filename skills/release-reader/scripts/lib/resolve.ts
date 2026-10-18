@@ -80,13 +80,11 @@ export function resolveRelease(opts: ResolveOptions): ReleaseTarget | undefined 
 
   // 3. Visible projects
   const raw = source.listProjects();
-  if (raw === undefined) return undefined;
+  // 4. Match teams (needs the epic's links and stories' links). Request both before pausing for MCP.
+  const kids = source.search(childrenJql(epicKey), 500);
+  if (raw === undefined || kids === undefined) return undefined;
   const projects = (raw ?? []).map(toVisibleProject).sort((a, b) => a.key.localeCompare(b.key));
   if (raw === null) warnings.push("Could not list visible projects; teams cannot be matched.");
-
-  // 4. Match teams (needs the epic's links and stories' links)
-  const kids = source.search(childrenJql(epicKey), 500);
-  if (kids === undefined) return undefined;
   if (kids === null) warnings.push(`Could not list the stories of ${epicKey}.`);
   const linked = linkedProjects(epic, kids ?? [], source);
   if (linked === undefined) return undefined;

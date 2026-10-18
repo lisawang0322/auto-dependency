@@ -1,0 +1,741 @@
+{
+  "schema_version": 1,
+  "snapshot_label": "2026-11-13",
+  "read_at": "2026-11-13T09:00:00.000Z",
+  "epic": {
+    "key": "INGEST-142",
+    "summary": "Ingestion service launch",
+    "status": "In Progress",
+    "fix_version": "1.0",
+    "release_date": "2026-11-20",
+    "components": [
+      "ingestion-api",
+      "ingestion-workers"
+    ],
+    "due": "2026-11-18"
+  },
+  "stories": [
+    {
+      "key": "INGEST-143",
+      "summary": "Define ingestion event schema",
+      "status": "Done",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-01T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-144",
+      "summary": "Kafka consumer for raw events",
+      "status": "Done",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-02T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-145",
+      "summary": "Writer service skeleton",
+      "status": "Done",
+      "assignee": "Dana Okafor",
+      "due": null,
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Dana Okafor",
+          "created": "2026-10-03T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        },
+        {
+          "author": "Priya Natarajan",
+          "created": "2026-11-06T11:00:00.000+0000",
+          "body": "Thanks, looks good for the Nov 20 launch.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-146",
+      "summary": "Backpressure and retry policy",
+      "status": "Done",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-04T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-147",
+      "summary": "Schema validation on ingest",
+      "status": "Done",
+      "assignee": "Dana Okafor",
+      "due": null,
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Dana Okafor",
+          "created": "2026-10-05T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-148",
+      "summary": "Dead-letter topic handling",
+      "status": "Done",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-06T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        },
+        {
+          "author": "Priya Natarajan",
+          "created": "2026-11-02T11:00:00.000+0000",
+          "body": "Thanks, looks good for the Nov 20 launch.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-149",
+      "summary": "Metrics for ingestion throughput",
+      "status": "Done",
+      "assignee": "Dana Okafor",
+      "due": null,
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Dana Okafor",
+          "created": "2026-10-07T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-150",
+      "summary": "Provision ingestion cluster namespace",
+      "status": "Done",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-08T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        },
+        {
+          "author": "Marcus Lee",
+          "created": "2026-11-03T15:10:00.000+0000",
+          "body": "Namespace is created but we can't scale workers until the quota is raised. Quota bump is tracked in DATA-233, waiting on Data Platform.",
+          "mentioned_keys": [
+            "DATA-233"
+          ]
+        },
+        {
+          "author": "Anika Rao",
+          "created": "2026-11-12T10:40:00.000+0000",
+          "body": "DATA-233 is done, quota raised to 40 vCPU. Closing this.",
+          "mentioned_keys": [
+            "DATA-233"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "INGEST-151",
+      "summary": "Staging deployment pipeline",
+      "status": "Done",
+      "assignee": "Dana Okafor",
+      "due": null,
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Dana Okafor",
+          "created": "2026-10-09T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-152",
+      "summary": "Batch importer compatibility shim",
+      "status": "Done",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-10T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        },
+        {
+          "author": "Priya Natarajan",
+          "created": "2026-11-06T11:00:00.000+0000",
+          "body": "Thanks, looks good for the Nov 20 launch.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-153",
+      "summary": "Idempotent writes to the platform store",
+      "status": "Done",
+      "assignee": "Dana Okafor",
+      "due": null,
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Dana Okafor",
+          "created": "2026-10-11T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-154",
+      "summary": "Config and secrets wiring",
+      "status": "Done",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-12T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-155",
+      "summary": "Integration tests against staging",
+      "status": "Done",
+      "assignee": "Dana Okafor",
+      "due": null,
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Dana Okafor",
+          "created": "2026-10-13T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        },
+        {
+          "author": "Priya Natarajan",
+          "created": "2026-11-02T11:00:00.000+0000",
+          "body": "Thanks, looks good for the Nov 20 launch.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-156",
+      "summary": "Partitioning strategy for hot tenants",
+      "status": "Done",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-14T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-157",
+      "summary": "Production database access for ingestion writer",
+      "status": "In Progress",
+      "assignee": "Marcus Lee",
+      "due": "2026-11-13",
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-15T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        },
+        {
+          "author": "Marcus Lee",
+          "created": "2026-11-04T09:30:00.000+0000",
+          "body": "Writer needs INSERT on the platform store in prod. Opened DATA-240 for the permissions review.",
+          "mentioned_keys": [
+            "DATA-240"
+          ]
+        },
+        {
+          "author": "Tomás Herrera",
+          "created": "2026-11-12T16:15:00.000+0000",
+          "body": "Closing DATA-240 as a duplicate of the general access process. DBA will review prod permissions before launch.",
+          "mentioned_keys": [
+            "DATA-240"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "INGEST-158",
+      "summary": "Alert rules for consumer lag",
+      "status": "Done",
+      "assignee": "Dana Okafor",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Dana Okafor",
+          "created": "2026-10-16T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-159",
+      "summary": "Canary rollout config",
+      "status": "Done",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-17T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        },
+        {
+          "author": "Priya Natarajan",
+          "created": "2026-11-06T11:00:00.000+0000",
+          "body": "Thanks, looks good for the Nov 20 launch.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-160",
+      "summary": "Staging soak, week 1",
+      "status": "Done",
+      "assignee": "Dana Okafor",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Dana Okafor",
+          "created": "2026-10-18T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-161",
+      "summary": "Tenant onboarding doc",
+      "status": "Done",
+      "assignee": "Dana Okafor",
+      "due": null,
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Dana Okafor",
+          "created": "2026-10-19T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        },
+        {
+          "author": "Priya Natarajan",
+          "created": "2026-11-01T11:00:00.000+0000",
+          "body": "Thanks, looks good for the Nov 20 launch.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-162",
+      "summary": "Feature flag for streaming path",
+      "status": "Done",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-20T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-163",
+      "summary": "Load test at 2× peak",
+      "status": "In Progress",
+      "assignee": "Dana Okafor",
+      "due": "2026-11-15",
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Dana Okafor",
+          "created": "2026-10-21T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        },
+        {
+          "author": "Dana Okafor",
+          "created": "2026-11-11T18:00:00.000+0000",
+          "body": "Ran the 2× peak run on staging yesterday, load test looks fine. Will attach the report.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-164",
+      "summary": "Fix duplicate events under rebalance",
+      "status": "Done",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-22T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        },
+        {
+          "author": "Priya Natarajan",
+          "created": "2026-11-04T11:00:00.000+0000",
+          "body": "Thanks, looks good for the Nov 20 launch.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-165",
+      "summary": "Dashboard for ingestion lag",
+      "status": "Done",
+      "assignee": "Dana Okafor",
+      "due": null,
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Dana Okafor",
+          "created": "2026-10-23T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-166",
+      "summary": "Production runbook",
+      "status": "In Progress",
+      "assignee": "Marcus Lee",
+      "due": null,
+      "components": [
+        "ingestion-api"
+      ],
+      "comments": [
+        {
+          "author": "Marcus Lee",
+          "created": "2026-10-24T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        }
+      ]
+    },
+    {
+      "key": "INGEST-167",
+      "summary": "Cut-over plan from batch importer",
+      "status": "To Do",
+      "assignee": "Priya Natarajan",
+      "due": null,
+      "components": [
+        "ingestion-workers"
+      ],
+      "comments": [
+        {
+          "author": "Priya Natarajan",
+          "created": "2026-10-25T10:00:00.000+0000",
+          "body": "Picked this up.",
+          "mentioned_keys": []
+        },
+        {
+          "author": "Marcus Lee",
+          "created": "2026-11-09T13:00:00.000+0000",
+          "body": "Need SRE's capacity confirmation before we can write the cut-over timing.",
+          "mentioned_keys": []
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "from": "INGEST-142",
+      "to": "SEC-881",
+      "type": "is blocked by",
+      "direction": "inward"
+    },
+    {
+      "from": "INGEST-142",
+      "to": "DATA-240",
+      "type": "relates to",
+      "direction": "outward"
+    },
+    {
+      "from": "INGEST-142",
+      "to": "SRE-398",
+      "type": "is blocked by",
+      "direction": "inward"
+    },
+    {
+      "from": "INGEST-150",
+      "to": "DATA-221",
+      "type": "is blocked by",
+      "direction": "inward"
+    },
+    {
+      "from": "INGEST-157",
+      "to": "DATA-240",
+      "type": "relates to",
+      "direction": "outward"
+    },
+    {
+      "from": "INGEST-157",
+      "to": "SEC-890",
+      "type": "is blocked by",
+      "direction": "inward"
+    }
+  ],
+  "related": [
+    {
+      "key": "SEC-881",
+      "project": "SEC",
+      "summary": "Security review: ingestion service",
+      "status": "In Review",
+      "assignee": "Fatima Noor",
+      "due": "2026-11-14",
+      "updated": "2026-11-11T09:15:00.000+0000",
+      "reached_by": "link",
+      "via": {
+        "issue": "INGEST-142",
+        "link_type": "is blocked by",
+        "comment_excerpt": null
+      }
+    },
+    {
+      "key": "DATA-240",
+      "project": "DATA",
+      "summary": "Production DB permissions for ingestion writer",
+      "status": "Closed",
+      "assignee": "Tomás Herrera",
+      "due": "2026-11-13",
+      "updated": "2026-11-12T16:10:00.000+0000",
+      "reached_by": "link",
+      "via": {
+        "issue": "INGEST-142",
+        "link_type": "relates to",
+        "comment_excerpt": null
+      }
+    },
+    {
+      "key": "SRE-398",
+      "project": "SRE",
+      "summary": "Alerting and runbook for ingestion service",
+      "status": "Done",
+      "assignee": "Lena Fischer",
+      "due": "2026-11-06",
+      "updated": "2026-11-05T17:00:00.000+0000",
+      "reached_by": "link",
+      "via": {
+        "issue": "INGEST-142",
+        "link_type": "is blocked by",
+        "comment_excerpt": null
+      }
+    },
+    {
+      "key": "DATA-221",
+      "project": "DATA",
+      "summary": "Kafka topic ACLs for ingestion",
+      "status": "Done",
+      "assignee": "Wei Zhang",
+      "due": "2026-10-20",
+      "updated": "2026-10-19T15:00:00.000+0000",
+      "reached_by": "link",
+      "via": {
+        "issue": "INGEST-150",
+        "link_type": "is blocked by",
+        "comment_excerpt": null
+      }
+    },
+    {
+      "key": "SEC-890",
+      "project": "SEC",
+      "summary": "Secrets rotation policy sign-off for ingestion",
+      "status": "Done",
+      "assignee": "Jordan Blake",
+      "due": "2026-10-30",
+      "updated": "2026-10-29T11:00:00.000+0000",
+      "reached_by": "link",
+      "via": {
+        "issue": "INGEST-157",
+        "link_type": "is blocked by",
+        "comment_excerpt": null
+      }
+    },
+    {
+      "key": "DATA-233",
+      "project": "DATA",
+      "summary": "Raise ingestion cluster quota",
+      "status": "Done",
+      "assignee": "Anika Rao",
+      "due": "2026-11-12",
+      "updated": "2026-11-12T10:30:00.000+0000",
+      "reached_by": "comment_mention",
+      "via": {
+        "issue": "INGEST-150",
+        "link_type": null,
+        "comment_excerpt": "…n't scale workers until the quota is raised. Quota bump is tracked in DATA-233, waiting on Data Platform."
+      }
+    }
+  ],
+  "search_candidates": [
+    {
+      "key": "DATA-251",
+      "project": "DATA",
+      "summary": "Permissions review for analytics warehouse writers",
+      "status": "In Progress",
+      "assignee": "Tomás Herrera",
+      "due": null,
+      "updated": "2026-11-08T12:00:00.000+0000",
+      "matched_plan_item_id": "p6",
+      "match_terms": [
+        "production",
+        "db",
+        "permissions"
+      ],
+      "jql": "project = DATA AND updated >= 2026-09-15 AND text ~ \"production db permissions\""
+    },
+    {
+      "key": "SRE-412",
+      "project": "SRE",
+      "summary": "Capacity for ingestion service",
+      "status": "To Do",
+      "assignee": "Omar Haddad",
+      "due": "2026-11-22",
+      "updated": "2026-11-12T11:20:00.000+0000",
+      "matched_plan_item_id": "p4",
+      "match_terms": [
+        "capacity",
+        "on-call"
+      ],
+      "jql": "project = SRE AND updated >= 2026-09-15 AND text ~ \"capacity on-call\""
+    }
+  ],
+  "projects_searched": [
+    {
+      "team": "Ingestion team",
+      "jira_project": "INGEST",
+      "match": "team_list"
+    },
+    {
+      "team": "Data Platform",
+      "jira_project": "DATA",
+      "match": "team_list"
+    },
+    {
+      "team": "Security",
+      "jira_project": "SEC",
+      "match": "team_list"
+    },
+    {
+      "team": "SRE",
+      "jira_project": "SRE",
+      "match": "team_list"
+    }
+  ],
+  "warnings": []
+}

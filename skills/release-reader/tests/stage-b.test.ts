@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { resolve } from "node:path";
-import { mkdtempSync, writeFileSync, existsSync, readFileSync, copyFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync } from "node:fs";
+import { runMcpLoop } from "./mcp-loop.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PlanDraft, ReleaseTarget } from "@rrr/schemas";
@@ -89,37 +90,13 @@ describe("Stage B: resolve-release", () => {
   it("MCP mode records the read calls it needs, then runs from the saved responses", () => {
     const dir = mkdtempSync(join(tmpdir(), "mcp-cache-"));
     const plan = load("plan-draft.json");
-    let src = new McpCacheSource(dir, "cloud-1");
-    expect(resolveRelease({ plan, source: src })).toBeUndefined();
-    let pending = src.pending();
-    expect(pending.map((r) => r.tool)).toEqual(["getJiraIssue"]);
-    expect(pending[0].args).toMatchObject({ cloudId: "cloud-1", issueIdOrKey: "INGEST-142" });
-    const serve = () => {
-      for (const r of src.pending()) {
-        if (r.tool === "getVisibleJiraProjects") copyFileSync(join(SNAP, "projects.json"), join(dir, r.save_as));
-        else if (r.tool === "getJiraIssue") {
-          const f = join(SNAP, "issues", `${r.args.issueIdOrKey}.json`);
-          if (existsSync(f)) copyFileSync(f, join(dir, r.save_as));
-          else writeFileSync(join(dir, r.save_as), JSON.stringify({ error: "Issue does not exist or you do not have permission to see it." }));
-        } else {
-          const fx = new FixtureSource(SNAP);
-          mkdirSync(join(dir, "searches"), { recursive: true });
-          writeFileSync(join(dir, r.save_as), JSON.stringify({ issues: fx.search(String(r.args.jql), Number(r.args.maxResults)) }));
-        }
-      }
-    };
-    let rounds = 0;
-    let out = undefined;
-    while (out === undefined && rounds < 10) {
-      serve();
-      src = new McpCacheSource(dir, "cloud-1");
-      out = resolveRelease({ plan, source: src });
-      rounds++;
-    }
-    expect(out).toBeDefined();
+    const first = new McpCacheSource(dir, "cloud-1");
+    expect(resolveRelease({ plan, source: first })).toBeUndefined();
+    expect(first.pending().map((r) => r.tool)).toEqual(["getJiraIssue"]);
+    expect(first.pending()[0].args).toMatchObject({ cloudId: "cloud-1", issueIdOrKey: "INGEST-142" });
+    const [out, rounds] = runMcpLoop(dir, SNAP, (src) => resolveRelease({ plan, source: src }));
     expect(rounds).toBeLessThanOrEqual(4);
-    const fromFixture = resolveRelease({ plan, source: new FixtureSource(SNAP) })!;
-    expect(out).toEqual(fromFixture);
+    expect(out).toEqual(resolveRelease({ plan, source: new FixtureSource(SNAP) }));
     expect(existsSync(join(dir, searchFileName("parent = INGEST-142")))).toBe(true);
   });
 
