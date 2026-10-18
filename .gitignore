@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+gui/test-results/
+gui/playwright-report/
+skills/release-reader/.mcp-cache/
+out/

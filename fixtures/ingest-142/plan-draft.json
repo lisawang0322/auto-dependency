@@ -1,0 +1,215 @@
+{
+  "launch_date": "2026-11-20",
+  "epic_keys_mentioned": [
+    "INGEST-142"
+  ],
+  "items": [
+    {
+      "id": "p1",
+      "text": "Ingestion service live in production",
+      "kind": "deliverable",
+      "owner_team": "Ingestion team",
+      "due": "2026-11-18",
+      "due_text": "by Nov 18",
+      "due_is_inferred": false,
+      "source": {
+        "file": "Ingestion-service-POR-v3.md",
+        "locator": "§2",
+        "quote": "The Ingestion team (Jira project INGEST) will have the ingestion service live in production by Nov 18."
+      }
+    },
+    {
+      "id": "p2",
+      "text": "Cluster quota raised for ingestion load",
+      "kind": "dependency",
+      "owner_team": "Data Platform",
+      "due": "2026-11-12",
+      "due_text": "by Nov 12",
+      "due_is_inferred": false,
+      "source": {
+        "file": "Ingestion-service-POR-v3.md",
+        "locator": "§3",
+        "quote": "Data Platform will have the cluster quota raised for ingestion load by Nov 12."
+      }
+    },
+    {
+      "id": "p3",
+      "text": "Security review approved",
+      "kind": "approval",
+      "owner_team": "Security",
+      "due": "2026-11-14",
+      "due_text": "by Nov 14",
+      "due_is_inferred": false,
+      "source": {
+        "file": "Ingestion-service-POR-v3.md",
+        "locator": "§4",
+        "quote": "Security will have the security review approved by Nov 14."
+      }
+    },
+    {
+      "id": "p4",
+      "text": "SRE capacity and on-call in place",
+      "kind": "dependency",
+      "owner_team": "SRE",
+      "due": "2026-11-13",
+      "due_text": "the week before launch",
+      "due_is_inferred": true,
+      "source": {
+        "file": "Ingestion-service-POR-v3.md",
+        "locator": "§4",
+        "quote": "SRE capacity and on-call will be in place the week before launch."
+      }
+    },
+    {
+      "id": "p5",
+      "text": "Load test passed at 2× peak",
+      "kind": "checklist",
+      "owner_team": "Ingestion team",
+      "due": "2026-11-15",
+      "due_text": "5 days before launch",
+      "due_is_inferred": true,
+      "source": {
+        "file": "launch-checklist.csv",
+        "locator": "#4",
+        "quote": "4,Load test passed at 2× peak,Service team,New services,5 days before launch"
+      }
+    },
+    {
+      "id": "p6",
+      "text": "Production DB permissions reviewed",
+      "kind": "checklist",
+      "owner_team": "Data Platform",
+      "due": "2026-11-13",
+      "due_text": "The week before launch",
+      "due_is_inferred": true,
+      "source": {
+        "file": "launch-checklist.csv",
+        "locator": "#6",
+        "quote": "6,Production DB permissions reviewed,Data Platform,Production database access,The week before launch"
+      }
+    },
+    {
+      "id": "p7",
+      "text": "Rollback plan documented",
+      "kind": "checklist",
+      "owner_team": "Ingestion team",
+      "due": "2026-11-16",
+      "due_text": "4 days before launch",
+      "due_is_inferred": true,
+      "source": {
+        "file": "launch-checklist.csv",
+        "locator": "#9",
+        "quote": "9,Rollback plan documented,Service team,All launches,4 days before launch"
+      }
+    }
+  ],
+  "teams": [
+    {
+      "name": "Ingestion team",
+      "mentioned_in": [
+        "team-list.yaml",
+        "Ingestion-service-POR-v3.md §1",
+        "Ingestion-service-POR-v3.md §2",
+        "launch-checklist.csv #4",
+        "launch-checklist.csv #9"
+      ],
+      "jira_project_hint": "INGEST",
+      "owners": [
+        "Priya Natarajan (TPM)",
+        "Marcus Lee (eng lead)",
+        "Dana Okafor (product)"
+      ],
+      "components": [
+        "ingestion-api",
+        "ingestion-workers"
+      ],
+      "role": "service team",
+      "project_keys_mentioned": [
+        "INGEST"
+      ]
+    },
+    {
+      "name": "Data Platform",
+      "mentioned_in": [
+        "team-list.yaml",
+        "Ingestion-service-POR-v3.md §1",
+        "Ingestion-service-POR-v3.md §3",
+        "launch-checklist.csv #6"
+      ],
+      "jira_project_hint": "DATA",
+      "owners": [
+        "Wei Zhang (eng lead)",
+        "Tomás Herrera (DBA)",
+        "Anika Rao (capacity)"
+      ],
+      "components": [
+        "cluster",
+        "permissions"
+      ],
+      "role": "shared platform",
+      "project_keys_mentioned": []
+    },
+    {
+      "name": "Security",
+      "mentioned_in": [
+        "team-list.yaml",
+        "Ingestion-service-POR-v3.md §1",
+        "Ingestion-service-POR-v3.md §4"
+      ],
+      "jira_project_hint": "SEC",
+      "owners": [
+        "Jordan Blake (security lead)",
+        "Fatima Noor (reviewer)"
+      ],
+      "components": [
+        "app-security"
+      ],
+      "role": "approver",
+      "project_keys_mentioned": []
+    },
+    {
+      "name": "SRE",
+      "mentioned_in": [
+        "team-list.yaml",
+        "Ingestion-service-POR-v3.md §1",
+        "Ingestion-service-POR-v3.md §4"
+      ],
+      "jira_project_hint": "SRE",
+      "owners": [
+        "Sam Whitfield (SRE lead)",
+        "Lena Fischer (on-call manager)",
+        "Omar Haddad (capacity)"
+      ],
+      "components": [
+        "capacity",
+        "on-call"
+      ],
+      "role": "capacity and on-call",
+      "project_keys_mentioned": []
+    }
+  ],
+  "files": [
+    {
+      "name": "Ingestion-service-POR-v3.md",
+      "read_as": [
+        "plan_items"
+      ],
+      "notes": "4 plan items · 1 approval · 2 dependencies · names 4 teams and epic INGEST-142"
+    },
+    {
+      "name": "launch-checklist.csv",
+      "read_as": [
+        "launch_checks"
+      ],
+      "notes": "9 checks · 3 apply to this release"
+    },
+    {
+      "name": "team-list.yaml",
+      "read_as": [
+        "teams_and_owners"
+      ],
+      "notes": "4 teams · 4 Jira projects · 11 owners"
+    }
+  ],
+  "warnings": []
+}

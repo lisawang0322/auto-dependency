@@ -1,0 +1,21 @@
+{
+  "name": "release-readiness-review",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Release Readiness Review: release-reader skill, fixtures and GUI (CMU independent study prototype)",
+  "workspaces": ["packages/*", "skills/*", "gui"],
+  "scripts": {
+    "test": "vitest run",
+    "test:reader": "vitest run --project reader",
+    "reader:a": "tsx skills/release-reader/scripts/extract-plan.ts",
+    "reader:b": "tsx skills/release-reader/scripts/resolve-release.ts",
+    "reader:c": "tsx skills/release-reader/scripts/read-jira.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0"
+  }
+}

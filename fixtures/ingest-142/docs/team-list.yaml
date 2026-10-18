@@ -1,0 +1,41 @@
+# PLACEHOLDER SAMPLE DATA (PRD R12: the real org map is written by someone else).
+# Teams, their Jira projects, owners and components. All names are fictional.
+teams:
+  - name: Ingestion team
+    role: Service team
+    jira_project: INGEST
+    owners:
+      - Priya Natarajan (TPM)
+      - Marcus Lee (eng lead)
+      - Dana Okafor (product)
+    components:
+      - ingestion-api
+      - ingestion-workers
+  - name: Data Platform
+    role: Shared platform
+    jira_project: DATA
+    owners:
+      - Wei Zhang (eng lead)
+      - Tomás Herrera (DBA)
+      - Anika Rao (capacity)
+    components:
+      - cluster
+      - permissions
+  - name: Security
+    role: Approver
+    jira_project: SEC
+    owners:
+      - Jordan Blake (security lead)
+      - Fatima Noor (reviewer)
+    components:
+      - app-security
+  - name: SRE
+    role: Capacity and on-call
+    jira_project: SRE
+    owners:
+      - Sam Whitfield (SRE lead)
+      - Lena Fischer (on-call manager)
+      - Omar Haddad (capacity)
+    components:
+      - capacity
+      - on-call

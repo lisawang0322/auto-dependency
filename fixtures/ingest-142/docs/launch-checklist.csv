@@ -1,0 +1,10 @@
+#,Check,Owner,Applies to,Due
+1,Privacy review completed,Privacy office,Personal data collection,Two weeks before launch
+2,Accessibility audit passed,Design systems,Customer-facing UI,One week before launch
+3,App store submission approved,Mobile platform,Mobile apps,Ten days before launch
+4,Load test passed at 2× peak,Service team,New services,5 days before launch
+5,PCI review signed off,Payments security,Payment flows,Two weeks before launch
+6,Production DB permissions reviewed,Data Platform,Production database access,The week before launch
+7,Localization strings frozen,Localization,Customer-facing UI,One week before launch
+8,Deprecation notice published,API platform,Public API changes,30 days before launch
+9,Rollback plan documented,Service team,All launches,4 days before launch

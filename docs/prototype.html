@@ -1,0 +1,1051 @@
+<!doctype html>
+<!--
+  Release Readiness Review: clickable prototype source (exported Oct 17, 2026).
+
+  This is the prototype's full source, read as a SPEC. It will not render if opened
+  directly in a browser: it was built for a design canvas runtime (./support.js).
+
+  How to read it:
+  - Markup inside <x-dc> is the UI. {{name}} holes are values returned by renderVals().
+    <sc-if value="{{flag}}"> is a conditional; <sc-for list="{{items}}" as="x"> is a loop.
+  - The <script type="text/x-dc"> block at the bottom holds all state, sample data
+    (plan items, findings f1–f5, team snapshots for Nov 10 and Nov 13) and behavior,
+    as a React-like class: constructor state, setState, handlers returned from renderVals().
+  - Screens: state.screen = 'docs' (plan documents) → 'jira' (connect Jira + epic)
+    → 'running' (reader → analyzer → status progress) → 'review' (merged findings + dashboard).
+  - Inline styles carry the visual design: IBM Plex Sans/Mono, ink #17191C,
+    accent #1F4FBF, amber #FFF4DF/#6B4300, late #8E2A1B, ground #F6F6F3.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Release Readiness Review</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1F4FBF}a:hover{color:#163A8F}
+button{font:inherit}
+input{font:inherit}
+button:disabled{cursor:not-allowed}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #F6F6F3; color: #17191C; font-family: 'IBM Plex Sans', 'Helvetica Neue', sans-serif; font-size: 15px; line-height: 1.5">
+
+<header style="background: #FFFFFF; border-bottom: 1px solid #E2E2DC">
+<div style="max-width: 1240px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px">
+<span style="font-weight: 600; font-size: 16px">Release Readiness Review</span>
+<span style="color: #5B616B">Ingestion service launch · <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px">INGEST-142</span> · launch Nov 20</span>
+</div>
+<span style="font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: #5B616B; border: 1px solid #C9C9C1; border-radius: 4px; padding: 2px 8px">Sample data</span>
+</div>
+<nav aria-label="Review steps" style="max-width: 1240px; margin: 0 auto; padding: 0 24px; display: flex; flex-wrap: wrap; gap: 4px">
+<sc-for list="{{tabs}}" as="tab" hint-placeholder-count="3">
+<button type="button" aria-current="{{tab.current}}" disabled="{{tab.disabled}}" onClick="{{tab.go}}" style="{{tab.style}}">{{tab.label}}</button>
+</sc-for>
+</nav>
+</header>
+
+<main style="max-width: 1240px; margin: 0 auto; padding: 28px 24px 64px; display: flex; flex-direction: column; gap: 24px">
+
+<sc-if value="{{isDocs}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 13px; color: #5B616B">Step 1 · plan documents</span>
+<h1 style="margin: 0; font-size: 28px; font-weight: 600; line-height: 1.2">Upload the plan</h1>
+<p style="margin: 0; color: #5B616B; max-width: 680px">Add whatever describes how this release is supposed to go — one file or several. You'll confirm the plan read from them before Jira is checked.</p>
+</div>
+<button type="button" onClick="{{loadSample}}" style="min-height: 44px; padding: 0 16px; border: 1px solid #C9C9C1; border-radius: 6px; background: #FFFFFF; color: #17191C; cursor: pointer">Use sample files</button>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+<section style="flex: 1.4 1 440px; min-width: 0; background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 16px">
+<div onDragOver="{{dragOver}}" onDrop="{{drop}}" style="display: flex; flex-direction: column; align-items: center; gap: 10px; border: 1px dashed #A9ADB4; border-radius: 8px; padding: 28px 16px; background: #FAFAF8; text-align: center">
+<span style="font-weight: 500">Drop files here</span>
+<span style="font-size: 13px; color: #5B616B">PDF, Word, Markdown, spreadsheets, CSV, YAML or JSON</span>
+<label for="plan-files" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 6px; background: #17191C; color: #FFFFFF; font-weight: 500; cursor: pointer">Choose files</label>
+<input id="plan-files" type="file" multiple="{{true}}" accept=".pdf,.docx,.doc,.md,.txt,.xlsx,.csv,.yaml,.yml,.json" onChange="{{pickFiles}}" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">
+</div>
+
+<sc-if value="{{hasFiles}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{fileRows}}" as="f" hint-placeholder-count="2">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #E2E2DC; border-radius: 6px; padding: 10px 12px">
+<div style="display: flex; flex-direction: column; gap: 2px; flex: 1 1 220px; min-width: 0">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; overflow-wrap: anywhere">{{f.name}}</span>
+<span style="font-size: 13px; color: #5B616B">{{f.size}}</span>
+<span style="{{f.summaryStyle}}">{{f.summary}}</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<label for="kind-{{f.id}}" style="font-size: 12px; color: #5B616B">Read as</label>
+<select id="kind-{{f.id}}" value="{{f.kind}}" onChange="{{f.setKind}}" style="height: 44px; padding: 0 10px; border: 1px solid #C9C9C1; border-radius: 6px; background: #FFFFFF; color: #17191C; font: inherit; font-size: 14px">
+<option value="plan">Plan items</option>
+<option value="checks">Launch checks</option>
+<option value="teams">Teams and owners</option>
+<option value="other">Not used</option>
+</select>
+</div>
+<button type="button" aria-label="Remove {{f.name}}" onClick="{{f.remove}}" style="min-height: 44px; padding: 0 12px; border: 1px solid #C9C9C1; border-radius: 6px; background: #FFFFFF; color: #17191C; cursor: pointer">Remove</button>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+<section style="flex: 1 1 320px; min-width: 0; background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 4px">
+<h2 style="margin: 0 0 6px; font-size: 16px; font-weight: 600">What the review needs</h2>
+<sc-for list="{{needs}}" as="n" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #EFEFEA">
+<div style="display: flex; justify-content: space-between; gap: 8px; align-items: baseline">
+<span style="font-weight: 600">{{n.label}}</span>
+<span style="{{n.reqStyle}}">{{n.req}}</span>
+</div>
+<span style="font-size: 14px; color: #2E3440">{{n.desc}}</span>
+<span style="font-size: 13px; color: #5B616B">Often found in: {{n.where}}</span>
+<span style="{{n.stateStyle}}">{{n.state}}</span>
+</div>
+</sc-for>
+</section>
+</div>
+
+<sc-if value="{{hasPor}}" hint-placeholder-val="{{false}}">
+<section style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">Extracted plan</h2>
+<p style="margin: 0; color: #5B616B; font-size: 14px; max-width: 680px">From {{planSources}}. Fix anything that's wrong — every finding is checked against this list.</p>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; overflow-x: auto">
+<table style="width: 100%; min-width: 820px; border-collapse: collapse">
+<thead>
+<tr style="text-align: left; font-size: 13px; color: #5B616B">
+<th style="padding: 12px 16px; font-weight: 500; border-bottom: 1px solid #E2E2DC">Plan item</th>
+<th style="padding: 12px 16px; font-weight: 500; border-bottom: 1px solid #E2E2DC">Type</th>
+<th style="padding: 12px 16px; font-weight: 500; border-bottom: 1px solid #E2E2DC">Owner</th>
+<th style="padding: 12px 16px; font-weight: 500; border-bottom: 1px solid #E2E2DC; width: 150px">Due</th>
+<th style="padding: 12px 16px; font-weight: 500; border-bottom: 1px solid #E2E2DC">Source</th>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{planRows}}" as="row" hint-placeholder-count="7">
+<tr>
+<td style="padding: 12px 16px; border-bottom: 1px solid #EFEFEA; vertical-align: top">
+<div>{{row.item}}</div>
+<sc-if value="{{row.check}}" hint-placeholder-val="{{false}}">
+<div style="margin-top: 4px; font-size: 13px; color: #8A4B00">POR says "the week before launch" — Nov 13 is a guess. Confirm the date.</div>
+</sc-if>
+</td>
+<td style="padding: 12px 16px; border-bottom: 1px solid #EFEFEA; vertical-align: top; font-size: 14px; color: #2E3440">{{row.kind}}</td>
+<td style="padding: 12px 16px; border-bottom: 1px solid #EFEFEA; vertical-align: top">{{row.owner}}</td>
+<td style="padding: 8px 16px; border-bottom: 1px solid #EFEFEA; vertical-align: top">
+<label for="due-{{row.id}}" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Due date for {{row.item}}</label>
+<input id="due-{{row.id}}" type="text" value="{{row.date}}" onChange="{{row.setDate}}" style="{{row.inputStyle}}">
+<sc-if value="{{row.edited}}" hint-placeholder-val="{{false}}">
+<div style="margin-top: 4px; font-size: 12px; color: #1F4FBF">Edited · was {{row.orig}}</div>
+</sc-if>
+</td>
+<td style="padding: 12px 16px; border-bottom: 1px solid #EFEFEA; vertical-align: top; color: #5B616B; font-size: 13px">{{row.src}}</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<span style="color: #5B616B; font-size: 14px">{{planFooter}}</span>
+</section>
+</sc-if>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<span style="color: #5B616B; font-size: 14px; max-width: 640px">{{docsText}}</span>
+<button type="button" disabled="{{docsNotReady}}" onClick="{{confirmPlan}}" style="{{docsBtnStyle}}">{{docsBtnLabel}}</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isJira}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 13px; color: #5B616B">Step 2 · Jira</span>
+<h1 style="margin: 0; font-size: 28px; font-weight: 600; line-height: 1.2">Connect Jira</h1>
+<p style="margin: 0; color: #5B616B; max-width: 680px">The review reads Jira through the Atlassian MCP server, signed in with your own Atlassian account. Access is read-only — nothing in Jira is created or changed.</p>
+</div>
+
+<section style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+<sc-if value="{{jiraOff}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-weight: 600">Atlassian (Jira)</span>
+<span style="font-size: 14px; color: #5B616B">Not connected · OAuth via the Atlassian MCP server</span>
+</div>
+<button type="button" onClick="{{startOAuth}}" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 6px; background: #1F4FBF; color: #FFFFFF; font-weight: 500; cursor: pointer">Connect with Atlassian</button>
+</div>
+</sc-if>
+<sc-if value="{{jiraConsent}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 14px; border: 1px solid #C9C9C1; border-radius: 8px; padding: 18px; max-width: 560px">
+<span style="font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: #5B616B">Atlassian · authorization (simulated)</span>
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">Release Readiness Review wants access to your Atlassian account</h2>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 13px; color: #5B616B">Site</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px">sample-company.atlassian.net</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-size: 14px">
+<span style="font-weight: 500">It will be able to</span>
+<ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px">
+<li>Read Jira issues, comments, links and due dates</li>
+<li>Read projects, components and fix versions</li>
+<li>Read user names, to find owners</li>
+</ul>
+<span style="font-weight: 500; margin-top: 4px">It won't be able to</span>
+<ul style="margin: 0; padding-left: 18px">
+<li>Create, edit, comment on or move issues</li>
+</ul>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<button type="button" onClick="{{acceptOAuth}}" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 6px; background: #1F4FBF; color: #FFFFFF; font-weight: 500; cursor: pointer">Accept</button>
+<button type="button" onClick="{{cancelOAuth}}" style="min-height: 44px; padding: 0 18px; border: 1px solid #C9C9C1; border-radius: 6px; background: #FFFFFF; color: #17191C; cursor: pointer">Cancel</button>
+</div>
+<span style="font-size: 13px; color: #5B616B">In the product this is Atlassian's own consent page, opened in a new window.</span>
+</div>
+</sc-if>
+<sc-if value="{{jiraConnecting}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; align-items: center; gap: 12px; min-height: 44px">
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #1F4FBF"></span>
+<span>Connecting to sample-company.atlassian.net…</span>
+</div>
+</sc-if>
+<sc-if value="{{jiraOn}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #2F6B3A"></span>Connected to Jira</span>
+<span style="font-size: 14px; color: #5B616B">sample-company.atlassian.net · via Atlassian MCP · read-only</span>
+</div>
+<button type="button" onClick="{{disconnect}}" style="min-height: 44px; padding: 0 14px; border: 1px solid #C9C9C1; border-radius: 6px; background: #FFFFFF; color: #17191C; cursor: pointer">Disconnect</button>
+</div>
+</sc-if>
+</section>
+
+<sc-if value="{{jiraOn}}" hint-placeholder-val="{{false}}">
+<section style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">Release epic</h2>
+<sc-if value="{{showSuggest}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; background: #EEF3FF; border: 1px solid #C9D6F5; border-radius: 6px; padding: 10px 14px">
+<span style="font-size: 14px; color: #17306E">Your plan file names epic <span style="font-family: 'IBM Plex Mono', monospace">INGEST-142</span>.</span>
+<button type="button" onClick="{{useSuggested}}" style="min-height: 44px; padding: 0 14px; border: 1px solid #1F4FBF; border-radius: 6px; background: #FFFFFF; color: #1F4FBF; font-weight: 500; cursor: pointer">Use INGEST-142</button>
+</div>
+</sc-if>
+<div style="display: flex; flex-direction: column; gap: 4px; max-width: 360px">
+<label for="epic-key" style="font-size: 13px; color: #5B616B">Epic key</label>
+<input id="epic-key" type="text" value="{{epic}}" onChange="{{setEpic}}" placeholder="e.g. INGEST-142" style="{{epicStyle}}">
+<span style="{{epicNoteStyle}}">{{epicNote}}</span>
+</div>
+<sc-if value="{{epicOk}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-wrap: wrap; gap: 16px; background: #F6F6F3; border-radius: 6px; padding: 14px 16px">
+<div style="display: flex; flex-direction: column; gap: 2px; flex: 1.4 1 240px">
+<span style="font-weight: 600">Ingestion service launch</span>
+<span style="font-size: 14px; color: #2E3440">25 stories · 41 comments · links into DATA, SEC, SRE</span>
+<span style="font-size: 13px; color: #5B616B">Fix version 1.0 · snapshot Nov 13, compared with the Nov 10 run</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px">
+<label for="launch-date" style="font-size: 13px; color: #5B616B">Launch date (from fix version)</label>
+<input id="launch-date" type="text" value="{{launch}}" onChange="{{setLaunch}}" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #C9C9C1; border-radius: 6px; background: #FFFFFF; color: #17191C">
+</div>
+</div>
+</sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{showCoverage}}" hint-placeholder-val="{{false}}">
+<section style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">What this review will check</h2>
+<span style="font-size: 13px; color: #5B616B">{{coverageCount}}</span>
+</div>
+<sc-for list="{{coverage}}" as="cv" hint-placeholder-count="7">
+<div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.6fr); gap: 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid #EFEFEA; font-size: 14px">
+<span style="font-weight: 500">{{cv.label}}</span>
+<span style="font-size: 13px; color: #5B616B">{{cv.source}}</span>
+<span style="{{cv.stateStyle}}">{{cv.state}}</span>
+</div>
+</sc-for>
+</section>
+</sc-if>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<span style="color: #5B616B; font-size: 14px; max-width: 640px">{{runText}}</span>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<button type="button" onClick="{{backToDocs}}" style="min-height: 44px; padding: 0 16px; border: 1px solid #C9C9C1; border-radius: 6px; background: #FFFFFF; color: #17191C; cursor: pointer">Back to plan</button>
+<button type="button" disabled="{{runNotReady}}" onClick="{{runIt}}" style="{{runBtnStyle}}">{{runLabel2}}</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isRunning}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 20px; max-width: 640px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 13px; color: #5B616B">Running review on the Nov 13 snapshot</span>
+<h1 style="margin: 0; font-size: 28px; font-weight: 600; line-height: 1.2">Reading Jira…</h1>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 8px 20px">
+<sc-for list="{{steps}}" as="st" hint-placeholder-count="3">
+<div style="display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid #EFEFEA">
+<span style="{{st.dotStyle}}" aria-hidden="true"></span>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-weight: 500">{{st.name}} <span style="font-weight: 400; color: #5B616B">· {{st.state}}</span></span>
+<span style="font-size: 14px; color: #5B616B">{{st.detail}}</span>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isReview}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 22px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 13px; color: #5B616B">Step 3 · review</span>
+<h1 style="margin: 0; font-size: 28px; font-weight: 600; line-height: 1.2">Launch Nov 20 · {{daysOut}} days out</h1>
+<span style="color: #5B616B">Viewing the {{runLabel}} run · read INGEST-142, its links one hop into DATA, SEC and SRE, and a search of each team's project</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span id="run-label" style="font-size: 13px; color: #5B616B">Status by run</span>
+<div role="group" aria-labelledby="run-label" style="display: flex; flex-wrap: wrap; gap: 8px">
+<sc-for list="{{runChips}}" as="rc" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{rc.pressed}}" onClick="{{rc.pick}}" style="{{rc.style}}">{{rc.label}}</button>
+</sc-for>
+</div>
+</div>
+</div>
+
+<sc-if value="{{viewingOld}}" hint-placeholder-val="{{false}}">
+<div style="background: #EEF0F4; border-radius: 6px; padding: 10px 14px; font-size: 14px; color: #2E3440">Earlier run, shown read-only. Switch to Nov 13 to keep or dismiss findings.</div>
+</sc-if>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px">
+<div style="{{statusStyle}}">
+<div style="font-size: 13px">Release status</div>
+<div style="font-size: 24px; font-weight: 600">{{status}}</div>
+<div style="font-size: 13px">{{statusNote}}</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 16px">
+<div style="font-size: 13px; color: #5B616B">Teams at risk or late</div>
+<div style="font-size: 24px; font-weight: 600">{{riskCount}} of 4</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 16px">
+<div style="font-size: 13px; color: #5B616B">Open findings</div>
+<div style="font-size: 24px; font-weight: 600">{{openCount}}</div>
+<div style="font-size: 13px; color: #5B616B">Weak not counted</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 16px">
+<div style="font-size: 13px; color: #5B616B">Kept · dismissed</div>
+<div style="font-size: 24px; font-weight: 600">{{keptCount}} · {{dismissedCount}}</div>
+</div>
+</div>
+
+<sc-if value="{{isLatest}}" hint-placeholder-val="{{true}}">
+<section style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">For Friday's go/no-go</h2>
+<span style="font-size: 13px; color: #5B616B">Owners from the findings you keep</span>
+</div>
+<sc-if value="{{noOwners}}" hint-placeholder-val="{{false}}">
+<p style="margin: 0; color: #5B616B; font-size: 14px">Nothing kept yet. Open a finding below and keep it to add its owner here.</p>
+</sc-if>
+<sc-for list="{{owners}}" as="o" hint-placeholder-count="2">
+<div style="display: grid; grid-template-columns: minmax(120px, 0.5fr) minmax(0, 2fr); gap: 12px; padding: 8px 0; border-top: 1px solid #EFEFEA; font-size: 14px">
+<span style="font-weight: 500">{{o.owner}}</span>
+<span>{{o.ask}}</span>
+</div>
+</sc-for>
+</section>
+</sc-if>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+
+<section aria-label="Teams and findings" style="flex: 1.3 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">Teams and findings</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<div style="display: flex; flex-wrap: wrap; gap: 6px" role="group" aria-label="Filter teams">
+<sc-for list="{{filters}}" as="fl" hint-placeholder-count="4">
+<button type="button" aria-pressed="{{fl.pressed}}" onClick="{{fl.pick}}" style="{{fl.style}}">{{fl.label}}</button>
+</sc-for>
+</div>
+<button type="button" aria-pressed="{{weakPressed}}" onClick="{{toggleWeak}}" style="min-height: 44px; padding: 0 12px; border: 1px dashed #8A8F98; border-radius: 6px; background: #FFFFFF; color: #17191C; cursor: pointer; font-size: 14px">{{weakLabel}}</button>
+</div>
+</div>
+
+<sc-if value="{{noRows}}" hint-placeholder-val="{{false}}">
+<div style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 18px; color: #5B616B; font-size: 14px">No teams match this filter.</div>
+</sc-if>
+
+<sc-for list="{{rows}}" as="t" hint-placeholder-count="4">
+<div style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px">
+<button type="button" aria-expanded="{{t.expandedStr}}" onClick="{{t.toggle}}" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 56px; padding: 14px 16px; text-align: left; border: 0; border-radius: 8px; background: transparent; color: #17191C; cursor: pointer">
+<span style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+<span style="font-weight: 600">{{t.team}}</span>
+<sc-if value="{{t.isOnTrack}}" hint-placeholder-val="{{false}}"><span style="border: 1px solid #2F6B3A; color: #2F6B3A; border-radius: 4px; padding: 0 8px; font-size: 13px; font-weight: 500">On track</span></sc-if>
+<sc-if value="{{t.isAtRisk}}" hint-placeholder-val="{{true}}"><span style="background: #FFF4DF; border: 1px solid #E3B866; color: #6B4300; border-radius: 4px; padding: 0 8px; font-size: 13px; font-weight: 500">At risk</span></sc-if>
+<sc-if value="{{t.isLate}}" hint-placeholder-val="{{false}}"><span style="background: #8E2A1B; color: #FFFFFF; border-radius: 4px; padding: 1px 8px; font-size: 13px; font-weight: 500">Late</span></sc-if>
+</span>
+<span style="font-size: 13px; color: #5B616B"><span style="font-family: 'IBM Plex Mono', monospace">{{t.key}}</span> · {{t.role}} · {{t.summary}}</span>
+<span style="{{t.changeStyle}}">{{t.change}}</span>
+</span>
+<span style="font-size: 13px; color: #5B616B">{{t.toggleLabel}}</span>
+</button>
+<sc-if value="{{t.expanded}}" hint-placeholder-val="{{true}}">
+<div style="padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{t.items}}" as="it" hint-placeholder-count="2">
+<div>
+<sc-if value="{{it.isFinding}}" hint-placeholder-val="{{true}}">
+<button type="button" aria-pressed="{{it.selectedStr}}" onClick="{{it.open}}" style="{{it.rowStyle}}">
+<span style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline">
+<span style="font-weight: 500">{{it.title}}</span>
+<span style="{{it.decisionStyle}}">{{it.decision}}</span>
+</span>
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px">
+<sc-if value="{{it.isStrong}}" hint-placeholder-val="{{false}}"><span style="background: #17191C; color: #FFFFFF; border-radius: 4px; padding: 1px 7px; font-weight: 500">Strong</span></sc-if>
+<sc-if value="{{it.isModerate}}" hint-placeholder-val="{{true}}"><span style="background: #FFFFFF; color: #17191C; border: 1px solid #17191C; border-radius: 4px; padding: 0 7px; font-weight: 500">Moderate</span></sc-if>
+<sc-if value="{{it.isWeak}}" hint-placeholder-val="{{false}}"><span style="background: #FFFFFF; color: #5B616B; border: 1px dashed #8A8F98; border-radius: 4px; padding: 0 7px">Weak</span></sc-if>
+<span style="background: #EEF0F4; color: #2E3440; border-radius: 4px; padding: 1px 7px">{{it.type}}</span>
+<span style="color: #5B616B"><span style="font-family: 'IBM Plex Mono', monospace">{{it.ticket}}</span> · plan {{it.plan}} · Jira {{it.due}}</span>
+<sc-if value="{{it.hasLinkage}}" hint-placeholder-val="{{false}}"><span style="color: #1F4FBF">· Linkage gap</span></sc-if>
+</span>
+</button>
+</sc-if>
+<sc-if value="{{it.isPlain}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 14px; border: 1px solid #EFEFEA; border-radius: 6px; background: #FAFAF8; font-size: 14px">
+<span style="display: flex; flex-direction: column">
+<span>{{it.item}}</span>
+<span style="font-size: 12px; color: #5B616B"><span style="font-family: 'IBM Plex Mono', monospace">{{it.ticket}}</span> · {{it.tstatus}} · plan {{it.plan}} · Jira {{it.due}}</span>
+</span>
+<span style="{{it.flagStyle}}">{{it.text}}</span>
+</div>
+</sc-if>
+</div>
+</sc-for>
+<sc-if value="{{t.hasHiddenWeak}}" hint-placeholder-val="{{false}}">
+<span style="font-size: 13px; color: #5B616B; padding: 0 4px">{{t.hiddenWeakLabel}}</span>
+</sc-if>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</section>
+
+<section aria-label="Finding detail" style="flex: 1 1 400px; min-width: 0; background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 22px; display: flex; flex-direction: column; gap: 16px">
+<sc-if value="{{noDetail}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">Finding detail</h2>
+<p style="margin: 0; color: #5B616B; font-size: 14px">{{noDetailText}}</p>
+</div>
+</sc-if>
+<sc-if value="{{hasDetail}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px">
+<sc-if value="{{d.isStrong}}" hint-placeholder-val="{{true}}"><span style="background: #17191C; color: #FFFFFF; border-radius: 4px; padding: 2px 8px; font-weight: 500">Strong evidence</span></sc-if>
+<sc-if value="{{d.isModerate}}" hint-placeholder-val="{{false}}"><span style="background: #FFFFFF; color: #17191C; border: 1px solid #17191C; border-radius: 4px; padding: 1px 8px; font-weight: 500">Moderate evidence</span></sc-if>
+<sc-if value="{{d.isWeak}}" hint-placeholder-val="{{false}}"><span style="background: #FFFFFF; color: #5B616B; border: 1px dashed #8A8F98; border-radius: 4px; padding: 1px 8px">Weak evidence</span></sc-if>
+<span style="background: #EEF0F4; color: #2E3440; border-radius: 4px; padding: 2px 8px">{{d.type}}</span>
+</div>
+<h2 style="margin: 0; font-size: 22px; font-weight: 600; line-height: 1.25">{{d.title}}</h2>
+<span style="color: #5B616B">Owner: {{d.owner}} <span style="font-size: 13px">{{ownerSrc}}</span></span>
+</div>
+
+<div style="border: 1px solid #E2E2DC; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12px; font-weight: 500; color: #5B616B; text-transform: uppercase; letter-spacing: 0.04em">Expected (plan)</span>
+<span>{{d.plan}}</span>
+<span style="font-size: 13px; color: #5B616B">Source: {{d.planSrc}}</span>
+</div>
+<div style="border: 1px solid #E2E2DC; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 12px; font-weight: 500; color: #5B616B; text-transform: uppercase; letter-spacing: 0.04em">Found in Jira</span>
+<sc-if value="{{d.noEvidence}}" hint-placeholder-val="{{false}}">
+<span>None found</span>
+<span style="font-size: 13px; color: #5B616B">Searched INGEST, DATA, SEC and SRE for a matching ticket or linked doc.</span>
+</sc-if>
+<sc-for list="{{d.evidence}}" as="ev" hint-placeholder-count="1">
+<span style="display: flex; flex-direction: column; gap: 2px">
+<span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: #EEF0F4; border-radius: 4px; padding: 1px 6px">{{ev.key}}</span> {{ev.text}}</span>
+<span style="font-size: 13px; color: #5B616B">{{ev.meta}}</span>
+</span>
+</sc-for>
+</div>
+
+<div style="font-size: 14px; color: #2E3440">{{d.why}}</div>
+
+<sc-if value="{{d.hasLinkage}}" hint-placeholder-val="{{false}}">
+<div style="background: #EEF3FF; border: 1px solid #C9D6F5; border-radius: 6px; padding: 12px 14px; font-size: 14px; color: #17306E">Linkage gap: <span style="font-family: 'IBM Plex Mono', monospace">{{d.linkFrom}}</span> isn't linked to <span style="font-family: 'IBM Plex Mono', monospace">{{d.linkTo}}</span>. Suggested link: <strong style="font-weight: 500">{{d.linkType}}</strong></div>
+</sc-if>
+
+<div style="border-top: 1px solid #E2E2DC; padding-top: 16px; display: flex; flex-direction: column; gap: 12px">
+<h3 style="margin: 0; font-size: 16px; font-weight: 600">Your call</h3>
+<sc-if value="{{d.isDecided}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; background: #F6F6F3; border-radius: 6px; padding: 10px 14px">
+<span style="font-size: 14px">{{d.decisionLabel}}</span>
+<button type="button" onClick="{{reopen}}" style="min-height: 44px; padding: 0 14px; border: 1px solid #C9C9C1; border-radius: 6px; background: #FFFFFF; color: #17191C; cursor: pointer">Reopen</button>
+</div>
+</sc-if>
+<sc-if value="{{d.isOpen}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<button type="button" onClick="{{keep}}" style="align-self: flex-start; min-height: 44px; padding: 0 18px; border: 0; border-radius: 6px; background: #1F4FBF; color: #FFFFFF; font-weight: 500; cursor: pointer">Keep — chase {{d.owner}}</button>
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px">
+<div style="display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px">
+<label for="dismiss-reason" style="font-size: 13px; color: #5B616B">Reason for dismissing (required, logged)</label>
+<input id="dismiss-reason" type="text" value="{{reason}}" onChange="{{setReason}}" placeholder="e.g. Doesn't apply to this release" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #C9C9C1; border-radius: 6px; background: #FFFFFF; color: #17191C">
+</div>
+<button type="button" disabled="{{noReason}}" onClick="{{dismiss}}" style="{{dismissStyle}}">Dismiss</button>
+</div>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+</section>
+</div>
+
+<sc-if value="{{isLatest}}" hint-placeholder-val="{{true}}">
+<section style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">Other linkage gaps</h2>
+<p style="margin: 0; color: #5B616B; font-size: 14px">Related tickets not linked to the epic, with no finding behind them. Not counted toward the 10-finding cap.</p>
+<div style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: #EEF0F4; border-radius: 4px; padding: 2px 8px">INGEST-150</span>
+<span style="color: #5B616B; font-size: 14px">mentions</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: #EEF0F4; border-radius: 4px; padding: 2px 8px">DATA-233</span>
+<span>Raise ingestion cluster quota</span>
+<span style="color: #5B616B; font-size: 14px">in a comment, with no link · suggested: <strong style="font-weight: 500; color: #17191C">is blocked by</strong></span>
+</div>
+</section>
+</sc-if>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+<section style="flex: 1.4 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">Upcoming plan dates</h2>
+<div style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 6px 18px">
+<sc-for list="{{upcoming}}" as="u" hint-placeholder-count="6">
+<div style="display: grid; grid-template-columns: 64px 74px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid #EFEFEA; font-size: 14px">
+<span style="font-weight: 500">{{u.date}}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5B616B">{{u.key}}</span>
+<span>{{u.item}}</span>
+<span style="{{u.flagStyle}}">{{u.flagText}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+<section style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">What this review can't see</h2>
+<div style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 16px 18px; font-size: 14px; color: #2E3440">
+<ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px">
+<li>Anything agreed only in meetings, Slack or email</li>
+<li>Approvals tracked outside Jira</li>
+<li>Whether the technical work itself is adequate</li>
+</ul>
+</div>
+</section>
+</div>
+
+<sc-if value="{{hasLog}}" hint-placeholder-val="{{false}}">
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">Decision log</h2>
+<div style="background: #FFFFFF; border: 1px solid #E2E2DC; border-radius: 8px; padding: 6px 16px">
+<sc-for list="{{log}}" as="entry" hint-placeholder-count="2">
+<div style="font-size: 14px; color: #2E3440; padding: 8px 0; border-bottom: 1px solid #EFEFEA"><span style="font-family: 'IBM Plex Mono', monospace; color: #5B616B">{{entry.time}}</span> {{entry.text}}</div>
+</sc-for>
+</div>
+</section>
+</sc-if>
+
+</div>
+</sc-if>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      screen: 'docs', planConfirmed: false, jira: 'off', files: [], epic: '', launch: 'Nov 20',
+      confirmed: false, stage: 0,
+      sel: 'f1', showWeak: false, decisions: {}, log: [], reason: '',
+      dates: {}, run: 'nov13', filter: 'all', collapsed: {}
+    };
+    this.timer = null;
+  }
+  componentWillUnmount() {
+    if (this.timer) clearTimeout(this.timer);
+    if (this.oauthTimer) clearTimeout(this.oauthTimer);
+  }
+  needDefs() {
+    return [
+      { kind: 'plan', label: 'Plan items', required: true, desc: 'Deliverables with owners and due dates, plus dependencies and approvals. This is what Jira is checked against.', where: 'a plan of record, PRD, launch plan or project brief', without: '', summary: '4 plan items · 1 approval · 2 dependencies · names 4 teams and epic INGEST-142' },
+      { kind: 'checks', label: 'Launch checks', required: false, desc: 'Standard items every launch must clear, like rollback, permissions reviews or load tests.', where: 'a launch or readiness checklist', without: 'standard launch items won’t be checked.', summary: '9 checks · 3 apply to this release' },
+      { kind: 'teams', label: 'Teams and owners', required: false, desc: 'Who owns what, and each team’s Jira project. Makes owners exact.', where: 'an org chart, team roster or RACI', without: 'owners are inferred from Jira assignees.', summary: '4 teams · 4 Jira projects · 11 owners' }
+    ];
+  }
+  guessKind(name, files) {
+    const n = name.toLowerCase();
+    if (/check|readiness|gate/.test(n)) return 'checks';
+    if (/org|team|owner|raci|roster/.test(n)) return 'teams';
+    if (!files.some((f) => f.kind === 'plan')) return 'plan';
+    return 'other';
+  }
+  addFiles(list) {
+    const files = [...this.state.files];
+    Array.from(list || []).forEach((file) => {
+      const kb = Math.max(1, Math.round(file.size / 1024));
+      files.push({ id: 'u' + Date.now() + '-' + files.length, name: file.name, size: kb + ' KB', kind: this.guessKind(file.name, files), sample: false });
+    });
+    this.setState({ files: files, confirmed: false, planConfirmed: false });
+  }
+  updateFiles(files) {
+    this.setState({ files: files, confirmed: false, planConfirmed: false });
+  }
+  startOAuth() {
+    this.setState({ jira: 'consent' });
+  }
+  acceptOAuth() {
+    if (this.oauthTimer) clearTimeout(this.oauthTimer);
+    this.setState({ jira: 'connecting' });
+    this.oauthTimer = setTimeout(() => { this.oauthTimer = null; this.setState({ jira: 'on' }); }, 1200);
+  }
+  plan() {
+    return [
+      { id: 'p1', item: 'Ingestion service live in production', kind: 'Deliverable', owner: 'Ingestion team', date: 'Nov 18', src: 'POR §2' },
+      { id: 'p2', item: 'Cluster quota raised for ingestion load', kind: 'Dependency', owner: 'Data Platform', date: 'Nov 12', src: 'POR §3' },
+      { id: 'p3', item: 'Security review approved', kind: 'Approval', owner: 'Security', date: 'Nov 14', src: 'POR §4' },
+      { id: 'p4', item: 'SRE capacity and on-call in place', kind: 'Dependency', owner: 'SRE', date: 'Nov 13', src: 'POR §4', check: true },
+      { id: 'p5', item: 'Production DB permissions reviewed', kind: 'Checklist', owner: 'Data Platform', date: 'Nov 13', src: 'Launch checklist #6' },
+      { id: 'p6', item: 'Rollback plan documented', kind: 'Checklist', owner: 'Ingestion team', date: 'Nov 16', src: 'Launch checklist #9' },
+      { id: 'p7', item: 'Load test passed at 2× peak', kind: 'Checklist', owner: 'Ingestion team', date: 'Nov 15', src: 'Launch checklist #4' }
+    ];
+  }
+  allFindings(pd) {
+    return [
+      { id: 'f1', title: 'Security approval is still open', type: 'Process', strength: 'strong', owner: 'Security',
+        plan: 'Security review approved by ' + pd.p3, planSrc: 'POR §4',
+        evidence: [{ key: 'SEC-881', text: 'Security review: ingestion service', meta: 'In Review · linked to INGEST-142 (blocks)' }],
+        why: 'Strong: the plan item matches a ticket linked to the epic.',
+        ask: 'Confirm SEC-881 is approved by ' + pd.p3 + '.' },
+      { id: 'f2', title: 'DB permissions review promised in a comment, no ticket', type: 'Commitment', strength: 'moderate', owner: 'Data Platform',
+        plan: 'Production DB permissions reviewed by ' + pd.p5, planSrc: 'Launch checklist #6',
+        evidence: [{ key: 'INGEST-157', text: 'Comment: "DBA will review prod permissions before launch"', meta: 'DATA-240 closed as duplicate Nov 12 · no other ticket in DATA' }],
+        why: 'Moderate: owner inferred from the org map; the promise exists only as a comment.',
+        ask: 'Open a ticket for the prod permissions review and give it a date.' },
+      { id: 'f3', title: 'SRE capacity due two days after launch', type: 'Cross-team date', strength: 'moderate', owner: 'SRE',
+        plan: 'SRE capacity and on-call in place by ' + pd.p4, planSrc: 'POR §4',
+        evidence: [{ key: 'SRE-412', text: 'Capacity for ingestion service', meta: 'To do · due Nov 22 (was Nov 13 on Nov 10) · found by search, not linked' }],
+        why: 'Moderate: matched by searching SRE, not by a link.',
+        linkage: { from: 'INGEST-142', to: 'SRE-412', type: 'is blocked by' },
+        ask: 'Pull SRE-412 in to ' + pd.p4 + ' and link it to INGEST-142.' },
+      { id: 'f4', title: 'No rollback plan', type: 'Process', strength: 'moderate', owner: 'Ingestion team',
+        plan: 'Rollback plan documented by ' + pd.p6, planSrc: 'Launch checklist #9', evidence: [],
+        why: 'Moderate: owner from the org map; no ticket or doc matched.',
+        ask: 'Write and link a rollback plan before go/no-go.' },
+      { id: 'f5', title: 'Load test sign-off mentioned, not tracked', type: 'Commitment', strength: 'weak', owner: 'Ingestion team',
+        plan: 'Load test passed at 2× peak by ' + pd.p7, planSrc: 'Launch checklist #4',
+        evidence: [{ key: 'INGEST-163', text: 'Comment: "load test looks fine"', meta: 'No result attached' }],
+        why: 'Weak: comment text only. Hidden by default.',
+        ask: 'Attach the load test result to INGEST-163.' }
+    ];
+  }
+  teams(run, pd) {
+    if (run === 'nov10') {
+      return [
+        { id: 'ingest', key: 'INGEST', team: 'Ingestion team', role: 'Service team', note: '', items: [
+          { item: 'Ingestion service live in production', ticket: 'INGEST-142', tstatus: 'In progress · 18 of 25 stories', plan: pd.p1, due: 'Nov 18', res: 'ok', text: 'On track' },
+          { item: 'Rollback plan documented', ticket: '—', tstatus: 'No ticket or doc found', plan: pd.p6, due: '—', res: 'gap', text: 'No rollback plan' }
+        ] },
+        { id: 'sec', key: 'SEC', team: 'Security', role: 'Approver', note: '', items: [
+          { item: 'Security review approved', ticket: 'SEC-881', tstatus: 'Open · linked', plan: pd.p3, due: 'Nov 14', res: 'gap', text: 'Approval not started' }
+        ] },
+        { id: 'sre', key: 'SRE', team: 'SRE', role: 'Capacity and on-call', note: '', items: [
+          { item: 'SRE capacity and on-call in place', ticket: 'SRE-412', tstatus: 'To do · not linked to epic', plan: pd.p4, due: 'Nov 13', res: 'ok', text: 'On track · linkage gap' }
+        ] },
+        { id: 'data', key: 'DATA', team: 'Data Platform', role: 'Shared platform', note: '', items: [
+          { item: 'Cluster quota raised for ingestion load', ticket: 'DATA-233', tstatus: 'In progress · not linked', plan: pd.p2, due: 'Nov 12', res: 'ok', text: 'On track · linkage gap' },
+          { item: 'Production DB permissions reviewed', ticket: 'DATA-240', tstatus: 'To do', plan: pd.p5, due: 'Nov 13', res: 'ok', text: 'On track' }
+        ] }
+      ];
+    }
+    return [
+      { id: 'ingest', key: 'INGEST', team: 'Ingestion team', role: 'Service team', note: '', items: [
+        { item: 'Ingestion service live in production', ticket: 'INGEST-142', tstatus: 'In progress · 21 of 25 stories', plan: pd.p1, due: 'Nov 18', res: 'ok', text: 'On track' },
+        { item: 'Rollback plan documented', ticket: '—', tstatus: 'No ticket or doc found', plan: pd.p6, due: '—', res: 'gap', text: 'No rollback plan', fid: 'f4' },
+        { item: 'Load test passed at 2× peak', ticket: 'INGEST-163', tstatus: 'Comment only', plan: pd.p7, due: '—', res: 'weak', text: 'Weak evidence', fid: 'f5' }
+      ] },
+      { id: 'sec', key: 'SEC', team: 'Security', role: 'Approver', note: 'SEC-881 moved to In Review', items: [
+        { item: 'Security review approved', ticket: 'SEC-881', tstatus: 'In Review · linked', plan: pd.p3, due: 'Nov 14', res: 'gap', text: 'Approval still open', fid: 'f1' }
+      ] },
+      { id: 'sre', key: 'SRE', team: 'SRE', role: 'Capacity and on-call', note: 'SRE-412 due date moved Nov 13 → Nov 22', items: [
+        { item: 'SRE capacity and on-call in place', ticket: 'SRE-412', tstatus: 'To do · not linked to epic', plan: pd.p4, due: 'Nov 22', res: 'late', text: 'Due 2 days after launch', fid: 'f3' }
+      ] },
+      { id: 'data', key: 'DATA', team: 'Data Platform', role: 'Shared platform', note: 'DATA-240 closed; review now only in a comment', items: [
+        { item: 'Cluster quota raised for ingestion load', ticket: 'DATA-233', tstatus: 'Done · not linked to epic', plan: pd.p2, due: 'Nov 12', res: 'ok', text: 'Done · linkage gap' },
+        { item: 'Production DB permissions reviewed', ticket: '—', tstatus: 'Promised in a comment on INGEST-157', plan: pd.p5, due: '—', res: 'gap', text: 'No ticket', fid: 'f2' }
+      ] }
+    ];
+  }
+  dayNum(s) {
+    const m = String(s || '').match(/(\d+)/);
+    return m ? Number(m[1]) : 99;
+  }
+  teamStatus(items) {
+    if (items.some((i) => i.res === 'late')) return 'late';
+    if (items.some((i) => i.res === 'gap')) return 'atrisk';
+    return 'ontrack';
+  }
+  flagStyle(res) {
+    if (res === 'ok') return 'color: #2F6B3A; font-weight: 500; font-size: 14px';
+    if (res === 'weak' || res === 'dismissed') return 'color: #5B616B; font-size: 14px';
+    if (res === 'late') return 'color: #8E2A1B; font-weight: 500; font-size: 14px';
+    return 'color: #8A4B00; font-weight: 500; font-size: 14px';
+  }
+  statusName(s) {
+    return s === 'late' ? 'Late' : s === 'atrisk' ? 'At risk' : 'On track';
+  }
+  rollup(run, pd, decisions) {
+    const hide = this.hide || [];
+    return this.teams(run, pd).map((t) => {
+      const items = t.items.filter((i) => hide.indexOf(i.item) < 0).map((i) => {
+        const dec = i.fid ? decisions[i.fid] : null;
+        if (dec && dec.kind === 'dismissed') return { ...i, res: 'dismissed', text: 'Dismissed — ' + dec.reason };
+        return i;
+      });
+      return { ...t, items, status: this.teamStatus(items) };
+    });
+  }
+  releaseOf(teams) {
+    return teams.some((t) => t.status !== 'ontrack') ? 'Amber' : 'Green';
+  }
+  stamp() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  runReview() {
+    if (this.timer) clearTimeout(this.timer);
+    this.setState({ screen: 'running', stage: 0, confirmed: true });
+    const step = () => {
+      this.timer = setTimeout(() => {
+        const n = this.state.stage + 1;
+        if (n >= 3) {
+          this.timer = null;
+          this.setState({ screen: 'review', stage: 3, run: 'nov13' });
+        } else {
+          this.setState({ stage: n });
+          step();
+        }
+      }, 900);
+    };
+    step();
+  }
+  decide(f, kind, order) {
+    const s = this.state;
+    const reason = (s.reason || '').trim();
+    if (kind === 'dismissed' && !reason) return;
+    const text = kind === 'kept' ? 'Kept "' + f.title + '" — chase ' + f.owner : 'Dismissed "' + f.title + '" — ' + reason;
+    const decisions = { ...s.decisions, [f.id]: { kind: kind, reason: reason } };
+    const next = order.find((id) => id !== f.id && !decisions[id]);
+    this.setState({
+      decisions: decisions,
+      log: [{ time: this.stamp(), text: text }, ...s.log],
+      reason: '',
+      sel: next || f.id
+    });
+  }
+  label(dec) {
+    if (!dec) return 'Open';
+    if (dec.kind === 'kept') return 'Kept — owner added to the go/no-go list';
+    return 'Dismissed — ' + dec.reason;
+  }
+  renderVals() {
+    const s = this.state;
+    const tabBase = 'min-height: 44px; padding: 0 14px; border: 0; background: transparent; ';
+    const tabs = [['docs', 'Plan documents'], ['jira', 'Connect Jira'], ['review', 'Review']].map(([id, label], i) => {
+      const active = s.screen === id || (id === 'review' && s.screen === 'running');
+      const disabled = (id === 'jira' && !s.planConfirmed) || (id === 'review' && !s.confirmed);
+      return {
+        label: (i + 1) + '. ' + label,
+        current: active ? 'page' : 'false',
+        disabled: disabled,
+        style: tabBase + (active ? 'color: #17191C; font-weight: 600; border-bottom: 3px solid #1F4FBF; cursor: pointer' : disabled ? 'color: #8A8F98; border-bottom: 3px solid transparent' : 'color: #2E3440; border-bottom: 3px solid transparent; cursor: pointer'),
+        go: () => { if (!disabled) this.setState({ screen: id }); }
+      };
+    });
+
+    const needDefs = this.needDefs();
+    const files = s.files || [];
+    const filesOf = (k) => files.filter((f) => f.kind === k);
+    const hasPor = filesOf('plan').length > 0, hasChecklist = filesOf('checks').length > 0, hasOrg = filesOf('teams').length > 0;
+    const fileRows = files.map((f) => {
+      const def = needDefs.find((d) => d.kind === f.kind);
+      return {
+        ...f,
+        summary: def ? def.summary + (f.sample ? '' : ' (prototype: read as the sample data)') : 'Nothing used from this file',
+        summaryStyle: 'font-size: 14px; ' + (def ? 'color: #2F6B3A; font-weight: 500' : 'color: #5B616B'),
+        setKind: (e) => this.updateFiles(this.state.files.map((x) => x.id === f.id ? { ...x, kind: e.target.value } : x)),
+        remove: () => this.updateFiles(this.state.files.filter((x) => x.id !== f.id))
+      };
+    });
+    const needs = needDefs.map((d) => {
+      const found = filesOf(d.kind);
+      return {
+        ...d,
+        req: d.required ? 'Required' : 'Optional',
+        reqStyle: 'font-size: 12px; white-space: nowrap; ' + (d.required ? 'color: #17191C; font-weight: 600' : 'color: #5B616B'),
+        state: found.length ? 'Found in ' + found.map((f) => f.name).join(', ') : d.required ? 'Not found yet' : 'Not found — ' + d.without,
+        stateStyle: 'font-size: 13px; overflow-wrap: anywhere; ' + (found.length ? 'color: #2F6B3A; font-weight: 500' : 'color: #8A4B00')
+      };
+    });
+    const epicVal = (s.epic || '').trim();
+    const epicOk = /^[A-Z][A-Z0-9]+-\d+$/.test(epicVal);
+    const jiraOn = s.jira === 'on';
+    const docsNotReady = !hasPor;
+    const runNotReady = !jiraOn || !epicOk;
+    const skipped = needDefs.filter((d) => !d.required && !filesOf(d.kind).length).map((d) => d.label.toLowerCase());
+    const on = 'color: #2F6B3A; font-weight: 500', off = 'color: #8A4B00';
+    const coverage = [
+      { label: 'Linkage gaps', source: 'Jira', state: 'Checked', stateStyle: on },
+      { label: 'Cross-team dates after launch', source: 'Jira', state: 'Checked', stateStyle: on },
+      { label: 'Promises in comments with no ticket', source: 'Jira', state: 'Checked', stateStyle: on },
+      { label: 'Process gaps and approvals', source: 'Plan items', state: hasPor ? 'Checked' : 'Needs plan items', stateStyle: hasPor ? on : off },
+      { label: 'Teams searched for unlinked work', source: 'Plan items, teams', state: hasPor || hasOrg ? 'All 4 teams: INGEST, DATA, SEC, SRE' : 'Only projects already linked to the epic', stateStyle: hasPor || hasOrg ? on : off },
+      { label: 'Standard launch items', source: 'Launch checks', state: hasChecklist ? 'Checked (3 items)' : 'Not checked — no launch checks found', stateStyle: hasChecklist ? on : off },
+      { label: 'Owners', source: 'Teams and owners', state: hasOrg ? 'From your files' : 'Inferred from Jira assignees', stateStyle: hasOrg ? on : off }
+    ];
+    const coverageOn = coverage.filter((c) => c.stateStyle === on).length;
+    this.hide = hasChecklist ? [] : this.plan().filter((r) => r.kind === 'Checklist').map((r) => r.item);
+
+    const planRows = this.plan().filter((r) => hasChecklist || r.kind !== 'Checklist').map((r) => {
+      const val = s.dates[r.id] ?? r.date;
+      const edited = s.dates[r.id] !== undefined && s.dates[r.id] !== r.date;
+      const flag = !!r.check && !edited;
+      return {
+        ...r, date: val, orig: r.date, edited: edited, check: flag,
+        inputStyle: 'width: 110px; height: 36px; box-sizing: border-box; padding: 0 10px; border-radius: 6px; background: #FFFFFF; color: #17191C; border: 1px solid ' + (flag ? '#C77C1A' : '#C9C9C1'),
+        setDate: (e) => this.setState({ dates: { ...this.state.dates, [r.id]: e.target.value } })
+      };
+    });
+    const pd = {};
+    this.plan().forEach((r) => { pd[r.id] = s.dates[r.id] ?? r.date; });
+
+    const stepDefs = [
+      ['Reader', 'Read INGEST-142: 25 stories, 6 links, 41 comments. Followed links into DATA, SEC, SRE.'],
+      ['Analyzer', 'Compared ' + planRows.length + ' plan items with Jira; searched each team project for unlinked matches.'],
+      ['Status', 'Rolled findings up per team and compared with the Nov 10 run.']
+    ];
+    const steps = stepDefs.map(([name, detail], i) => {
+      const state = i < s.stage ? 'done' : i === s.stage ? 'running' : 'waiting';
+      return {
+        name, detail, state,
+        dotStyle: 'flex: none; width: 12px; height: 12px; margin-top: 6px; border-radius: 50%; ' + (state === 'done' ? 'background: #2F6B3A' : state === 'running' ? 'background: #1F4FBF' : 'border: 2px solid #C9C9C1; box-sizing: border-box')
+      };
+    });
+
+    const isLatest = s.run === 'nov13';
+    const findingsById = {};
+    this.allFindings(pd).forEach((f) => { findingsById[f.id] = f; });
+    const latest = this.rollup('nov13', pd, s.decisions);
+    const prev = this.rollup('nov10', pd, {});
+    const viewTeams = isLatest ? latest : prev;
+
+    const order = [];
+    latest.forEach((t) => t.items.forEach((i) => {
+      if (i.fid && (s.showWeak || findingsById[i.fid].strength !== 'weak')) order.push(i.fid);
+    }));
+    const strengthRank = { strong: 0, moderate: 1, weak: 2 };
+    order.sort((a, b) => strengthRank[findingsById[a].strength] - strengthRank[findingsById[b].strength]);
+    const shown = order.slice(0, 10);
+
+    const selId = shown.indexOf(s.sel) >= 0 ? s.sel : shown[0];
+    const sel = isLatest && selId ? findingsById[selId] : null;
+
+    const chip = 'min-height: 44px; padding: 0 12px; border-radius: 6px; cursor: pointer; font-size: 14px; ';
+    const runChips = [['nov10', 'Nov 10', prev], ['nov13', 'Nov 13 · latest', latest]].map(([id, label, ts]) => ({
+      label: label + ' · ' + this.releaseOf(ts),
+      pressed: s.run === id ? 'true' : 'false',
+      style: chip + (s.run === id ? 'background: #17191C; color: #FFFFFF; border: 1px solid #17191C' : 'background: #FFFFFF; color: #17191C; border: 1px solid #C9C9C1'),
+      pick: () => this.setState({ run: id })
+    }));
+    const filters = [['all', 'All'], ['ontrack', 'On track'], ['atrisk', 'At risk'], ['late', 'Late']].map(([id, label]) => ({
+      label: label + ' ' + (id === 'all' ? viewTeams.length : viewTeams.filter((t) => t.status === id).length),
+      pressed: s.filter === id ? 'true' : 'false',
+      style: chip + (s.filter === id ? 'background: #17191C; color: #FFFFFF; border: 1px solid #17191C' : 'background: #FFFFFF; color: #17191C; border: 1px solid #C9C9C1'),
+      pick: () => this.setState({ filter: id })
+    }));
+
+    const rows = viewTeams.filter((t) => s.filter === 'all' || t.status === s.filter).map((t) => {
+      const openItems = t.items.filter((i) => i.res === 'gap' || i.res === 'late');
+      const pending = t.items.filter((i) => i.res === 'gap' || i.res === 'late').map((i) => i.plan).sort((a, b) => this.dayNum(a) - this.dayNum(b));
+      const expanded = !s.collapsed[t.id];
+      let change = 'First run';
+      let changed = false;
+      if (isLatest) {
+        const p = prev.find((x) => x.id === t.id);
+        if (p && p.status !== t.status) {
+          change = 'Since Nov 10: ' + this.statusName(p.status) + ' → ' + this.statusName(t.status) + (t.note ? ' · ' + t.note : '');
+          changed = true;
+        } else {
+          change = 'Since Nov 10: no status change' + (t.note ? ' · ' + t.note : '');
+        }
+      }
+      let hiddenWeak = 0;
+      const items = [];
+      t.items.forEach((i) => {
+        const f = i.fid && isLatest ? findingsById[i.fid] : null;
+        if (f && f.strength === 'weak' && !s.showWeak) { hiddenWeak += 1; return; }
+        if (f) {
+          const dec = s.decisions[f.id];
+          const selected = sel && sel.id === f.id;
+          items.push({
+            ...i, isFinding: true, isPlain: false,
+            title: f.title, type: f.type,
+            isStrong: f.strength === 'strong', isModerate: f.strength === 'moderate', isWeak: f.strength === 'weak',
+            hasLinkage: !!f.linkage,
+            decision: !dec ? 'Open' : dec.kind === 'kept' ? 'Kept' : 'Dismissed',
+            decisionStyle: 'font-size: 12px; white-space: nowrap; ' + (!dec ? 'color: #8A4B00; font-weight: 500' : 'color: #5B616B'),
+            selectedStr: selected ? 'true' : 'false',
+            rowStyle: 'display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; padding: 12px 14px; color: #17191C; border-radius: 6px; cursor: pointer; min-height: 44px; background: #FFFFFF; ' + (selected ? 'border: 2px solid #1F4FBF;' : 'border: 1px solid #D5D5CE; margin: 1px 0;') + (dec && dec.kind === 'dismissed' ? ' opacity: 0.6;' : ''),
+            open: () => this.setState({ sel: f.id, reason: '' })
+          });
+        } else {
+          items.push({ ...i, isFinding: false, isPlain: true, flagStyle: this.flagStyle(i.res) });
+        }
+      });
+      return {
+        ...t,
+        isOnTrack: t.status === 'ontrack', isAtRisk: t.status === 'atrisk', isLate: t.status === 'late',
+        summary: openItems.length === 0 ? 'no open gaps' : openItems.length + ' open · next ' + pending[0],
+        change, changeStyle: 'font-size: 13px; ' + (changed ? 'color: #8E2A1B; font-weight: 500' : 'color: #5B616B'),
+        expanded, expandedStr: expanded ? 'true' : 'false',
+        toggleLabel: expanded ? 'Hide' : 'Show ' + t.items.length + ' items',
+        toggle: () => this.setState({ collapsed: { ...this.state.collapsed, [t.id]: expanded } }),
+        items,
+        hasHiddenWeak: hiddenWeak > 0,
+        hiddenWeakLabel: hiddenWeak + ' weak finding hidden'
+      };
+    });
+
+    const upcoming = [];
+    viewTeams.forEach((t) => t.items.forEach((i) => upcoming.push({ date: i.plan, key: t.key, item: i.item, flagText: i.text, flagStyle: this.flagStyle(i.res), n: this.dayNum(i.plan) })));
+    upcoming.push({ date: 'Nov 20', key: 'LAUNCH', item: 'Go-live', flagText: 'Go/no-go Friday', flagStyle: 'color: #17191C; font-weight: 500; font-size: 14px', n: 20 });
+    upcoming.sort((a, b) => a.n - b.n);
+
+    const release = this.releaseOf(viewTeams);
+    const lateTeams = viewTeams.filter((t) => t.status === 'late').length;
+    const tile = (st) => 'border-radius: 8px; padding: 16px; ' + (st === 'Green' ? 'background: #EDF6EE; border: 1px solid #B9DABF; color: #1F4D28' : 'background: #FFF4DF; border: 1px solid #F0D7A8; color: #6B4300');
+
+    const liveIds = [];
+    latest.forEach((t) => t.items.forEach((i) => { if (i.fid) liveIds.push(i.fid); }));
+    const nonWeakIds = liveIds.filter((id) => findingsById[id].strength !== 'weak');
+    const decs = Object.values(s.decisions);
+    const openCount = isLatest ? nonWeakIds.filter((id) => !s.decisions[id]).length : viewTeams.reduce((n, t) => n + t.items.filter((i) => i.res === 'gap' || i.res === 'late').length, 0);
+    const owners = Object.keys(findingsById).filter((id) => s.decisions[id] && s.decisions[id].kind === 'kept').map((id) => ({ owner: findingsById[id].owner, ask: findingsById[id].ask }));
+
+    const selDec = sel ? s.decisions[sel.id] : null;
+    const d = sel ? {
+      ...sel,
+      isStrong: sel.strength === 'strong', isModerate: sel.strength === 'moderate', isWeak: sel.strength === 'weak',
+      noEvidence: sel.evidence.length === 0,
+      hasLinkage: !!sel.linkage,
+      linkFrom: sel.linkage ? sel.linkage.from : '', linkTo: sel.linkage ? sel.linkage.to : '', linkType: sel.linkage ? sel.linkage.type : '',
+      isDecided: !!selDec, isOpen: !selDec,
+      decisionLabel: this.label(selDec)
+    } : { evidence: [] };
+    const noReason = !(s.reason || '').trim();
+
+    return {
+      tabs,
+      isDocs: s.screen === 'docs', isJira: s.screen === 'jira', isRunning: s.screen === 'running', isReview: s.screen === 'review',
+      hasPor: hasPor,
+      docsNotReady: docsNotReady,
+      docsText: !hasPor ? 'Add a file with plan items — deliverables, owners and dates — to continue.' : skipped.length ? 'No ' + skipped.join(' or ') + ' found, so some checks run at reduced strength. You can add more files later and re-run.' : 'Everything the review uses was found.',
+      hasFiles: files.length > 0,
+      fileRows, needs,
+      pickFiles: (e) => { this.addFiles(e.target.files); e.target.value = ''; },
+      dragOver: (e) => { e.preventDefault(); },
+      drop: (e) => { e.preventDefault(); this.addFiles(e.dataTransfer && e.dataTransfer.files); },
+      docsBtnLabel: 'Confirm plan and connect Jira',
+      docsBtnStyle: 'min-height: 44px; padding: 0 20px; border: 0; border-radius: 6px; font-weight: 500; ' + (docsNotReady ? 'background: #E2E2DC; color: #6B7079' : 'background: #1F4FBF; color: #FFFFFF; cursor: pointer'),
+      confirmPlan: () => { if (!docsNotReady) this.setState({ planConfirmed: true, screen: 'jira' }); },
+      jiraOff: s.jira === 'off', jiraConsent: s.jira === 'consent', jiraConnecting: s.jira === 'connecting', jiraOn: jiraOn,
+      startOAuth: () => this.startOAuth(),
+      acceptOAuth: () => this.acceptOAuth(),
+      cancelOAuth: () => this.setState({ jira: 'off' }),
+      disconnect: () => this.setState({ jira: 'off', confirmed: false }),
+      showSuggest: jiraOn && epicVal !== 'INGEST-142',
+      useSuggested: () => this.setState({ epic: 'INGEST-142', confirmed: false }),
+      showCoverage: jiraOn && epicOk,
+      backToDocs: () => this.setState({ screen: 'docs' }),
+      runNotReady: runNotReady,
+      runText: !jiraOn ? 'Connect Jira to continue.' : !epicOk ? 'Pick the release epic to continue.' : 'Ready to read ' + epicVal + ' and compare it with your confirmed plan.',
+      runLabel2: s.confirmed ? 'Re-run review' : 'Run review',
+      runBtnStyle: 'min-height: 44px; padding: 0 20px; border: 0; border-radius: 6px; font-weight: 500; ' + (runNotReady ? 'background: #E2E2DC; color: #6B7079' : 'background: #1F4FBF; color: #FFFFFF; cursor: pointer'),
+      runIt: () => { if (!runNotReady) this.runReview(); },
+      loadSample: () => this.updateFiles([
+        { id: 's1', name: 'Ingestion-service-POR-v3.pdf', size: '412 KB · sample', kind: 'plan', sample: true },
+        { id: 's2', name: 'launch-checklist.xlsx', size: '38 KB · sample', kind: 'checks', sample: true },
+        { id: 's3', name: 'org-map.yaml', size: '4 KB · sample', kind: 'teams', sample: true }
+      ]),
+      epic: s.epic,
+      setEpic: (e) => this.setState({ epic: e.target.value.toUpperCase(), confirmed: false }),
+      epicStyle: 'height: 44px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; background: #FFFFFF; color: #17191C; font-family: \'IBM Plex Mono\', monospace; border: 1px solid ' + (epicVal && !epicOk ? '#8E2A1B' : '#C9C9C1'),
+      epicNote: !epicVal ? 'Start here — the epic the release is tracked under' : epicOk ? 'Found in Jira (sample data)' : 'Use a Jira key like INGEST-142',
+      epicOk: epicOk,
+      coverage: coverage,
+      coverageCount: coverageOn + ' of ' + coverage.length + ' checks at full strength',
+      planSources: filesOf('plan').concat(filesOf('checks')).map((f) => f.name).join(' and '),
+      planFooter: ['Plan items: ' + planRows.filter((r) => r.kind !== 'Checklist').length, hasChecklist ? 'Launch checks: 3 of 9 apply' : 'No launch checks', hasOrg ? 'Owners: from your files' : 'Owners: inferred from Jira'].join(' · '),
+      ownerSrc: hasOrg ? '(from your team list)' : '(inferred from Jira assignee)',
+      epicNoteStyle: 'font-size: 13px; ' + (epicVal && !epicOk ? 'color: #8E2A1B' : epicOk ? 'color: #2F6B3A' : 'color: #5B616B'),
+      launch: s.launch,
+      setLaunch: (e) => this.setState({ launch: e.target.value }),
+      planRows,
+      steps,
+      daysOut: isLatest ? 7 : 10,
+      runLabel: isLatest ? 'Nov 13 (latest)' : 'Nov 10',
+      viewingOld: !isLatest, isLatest: isLatest,
+      runChips, filters, rows, noRows: rows.length === 0,
+      status: release, statusStyle: tile(release),
+      statusNote: lateTeams > 0 ? lateTeams + ' team with a date after launch' : release === 'Green' ? 'No open gaps' : 'Open gaps, no late dates',
+      riskCount: viewTeams.filter((t) => t.status !== 'ontrack').length,
+      openCount,
+      keptCount: decs.filter((x) => x.kind === 'kept').length,
+      dismissedCount: decs.filter((x) => x.kind === 'dismissed').length,
+      owners, noOwners: owners.length === 0,
+      weakLabel: s.showWeak ? 'Hide weak' : 'Show weak',
+      weakPressed: s.showWeak ? 'true' : 'false',
+      toggleWeak: () => this.setState({ showWeak: !this.state.showWeak }),
+      hasDetail: !!sel, noDetail: !sel,
+      noDetailText: isLatest ? 'Pick a finding in a team to see its evidence.' : 'Findings are reviewed on the latest run. Switch to Nov 13 to open one.',
+      d,
+      reason: s.reason,
+      setReason: (e) => this.setState({ reason: e.target.value }),
+      noReason: noReason,
+      dismissStyle: 'min-height: 44px; padding: 0 18px; border-radius: 6px; font-weight: 500; ' + (noReason ? 'background: #F0F0EC; color: #8A8F98; border: 1px solid #E2E2DC' : 'background: #FFFFFF; color: #17191C; border: 1px solid #17191C; cursor: pointer'),
+      keep: () => { if (sel) this.decide(sel, 'kept', shown); },
+      dismiss: () => { if (sel) this.decide(sel, 'dismissed', shown); },
+      reopen: () => {
+        if (!sel) return;
+        const next = { ...this.state.decisions };
+        delete next[sel.id];
+        this.setState({ decisions: next, log: [{ time: this.stamp(), text: 'Reopened "' + sel.title + '"' }, ...this.state.log] });
+      },
+      upcoming,
+      log: s.log, hasLog: s.log.length > 0
+    };
+  }
+}
+</script>
+</body>
+</html>
