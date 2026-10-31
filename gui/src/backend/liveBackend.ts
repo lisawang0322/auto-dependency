@@ -4,20 +4,30 @@
  * again after the connect form.
  */
 import { PlanDraft, ReleaseTarget, Run, Signal, Starter, type Stage } from "@rrr/schemas";
-import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, JiraConnection, JiraCredentials, JiraState, PlanExtract, StarterRunInput } from "./types";
+import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, JiraConnection, JiraCredentials, JiraState, PlanExtract, StarterRunInput, AgentInfo, AgentRead, AgentReadStage, ExtractOptions, Settings, UserInfo } from "./types";
 import { fmtDate } from "../model/dates";
 
 export interface JiraInfo { connected: boolean; site: string | null; user: string | null; fixture: boolean }
 
-async function api<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+async function apiRaw<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<{ status: number; data: T }> {
   const res = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error ?? `${res.status} on ${path}`);
-  return data as T;
+  return { status: res.status, data: data as T };
+}
+async function api<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T> { return (await apiRaw<T>(method, path, body)).data; }
+
+export interface AuthInfo { mode: "none" | "oidc"; user: UserInfo | null; login_url: string | null }
+export interface Health { jira: JiraInfo; agent?: AgentInfo; auth?: AuthInfo; settings?: Settings | null }
+
+/** Ends the session and returns to the sign-in screen. */
+export async function signOut(): Promise<void> {
+  await fetch("/auth/logout", { method: "POST" }).catch(() => {});
+  location.href = "/";
 }
 
 /** Is the local server there? Decides sample vs live mode at startup. */
-export async function probeServer(timeoutMs = 1500): Promise<{ jira: JiraInfo } | null> {
+export async function probeServer(timeoutMs = 1500): Promise<Health | null> {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
@@ -39,8 +49,12 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export class LiveBackend implements ReviewBackend {
   readonly mode = "live" as const;
+  readonly agent: AgentInfo;
   /** Launch date and go/no-go the person set on the Connect step, applied on run. */
   launchDate: string | null = null;
+  constructor(health?: Health | null) { this.agent = health?.agent ?? { available: false, name: "Devin" }; }
+
+  async saveSettings(patch: Partial<Settings>): Promise<void> { await api("PUT", "/api/settings", patch); }
 
   private async payload(files: UploadedFile[]) {
     const out = [];
@@ -51,9 +65,22 @@ export class LiveBackend implements ReviewBackend {
     return out;
   }
 
-  async extractPlan(files: UploadedFile[], stage: Stage): Promise<PlanExtract> {
-    const res = await api<{ plan: unknown; signals?: unknown[]; project?: string }>("POST", "/api/plan", { files: await this.payload(files), stage });
-    return { plan: PlanDraft.parse(res.plan), signals: (res.signals ?? []).map((s) => Signal.parse(s)), project: res.project ?? null };
+  async extractPlan(files: UploadedFile[], stage: Stage, opts: ExtractOptions = {}): Promise<PlanExtract> {
+    type PlanRes = { plan: unknown; signals?: unknown[]; project?: string; agent?: AgentRead | null };
+    const useAgent = !!opts.agent && this.agent.available;
+    const first = await apiRaw<PlanRes & { job?: string }>("POST", "/api/plan", { files: await this.payload(files), stage, ...(useAgent ? { agent: "devin" } : {}) });
+    let res: PlanRes = first.data;
+    if (first.status === 202 && first.data.job) {
+      opts.onProgress?.(0);
+      for (;;) {
+        await wait(500);
+        const j = await api<{ stage: AgentReadStage; done: boolean; result?: PlanRes; error?: string }>("GET", `/api/jobs/${first.data.job}`);
+        opts.onProgress?.(j.stage);
+        if (j.error) throw new Error(j.error);
+        if (j.done && j.result) { res = j.result; break; }
+      }
+    }
+    return { plan: PlanDraft.parse(res.plan), signals: (res.signals ?? []).map((s) => Signal.parse(s)), project: res.project ?? null, agent: res.agent ?? null };
   }
 
   async runStarter(input: StarterRunInput, onProgress: (s: ProgressStage) => void): Promise<Starter> {

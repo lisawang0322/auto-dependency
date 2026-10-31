@@ -1,12 +1,16 @@
 import { useState } from "react";
 import type { PlanDraft, Signal } from "@rrr/schemas";
-import { PLAN_KINDS, type UploadedFile, type FileKind, type Stage } from "../backend/types";
+import { PLAN_KINDS, type UploadedFile, type FileKind, type Stage, type AgentInfo, type AgentConsent, type AgentRead, type AgentReadStage } from "../backend/types";
 import { fmtDate } from "../model/dates";
 
 /** Step 2 (PRD R1–R3, R14): add plan files in any format, see what was read from them, fix dates, confirm. */
 
+/** The agent (Devin) that can read the uploads: whether the company set it up, the person's answer, and what it did. */
+export interface AgentPanel { info: AgentInfo; consent: AgentConsent; setConsent: (c: AgentConsent) => void; stage: AgentReadStage | null; read: AgentRead | null; retry: () => void }
+
 interface Props {
   stage: Stage;
+  agent: AgentPanel;
   files: UploadedFile[];
   plan: PlanDraft | null;
   planError: string | null;
@@ -56,6 +60,16 @@ export function PlanDocuments(p: Props) {
   const planCount = rows.filter((r) => r.kind !== "checklist").length;
   const checkTotal = p.plan?.files.find((f) => f.read_as.includes("launch_checks"))?.notes.match(/(\d+) checks/)?.[1];
   const checkApplied = rows.filter((r) => r.kind === "checklist").length;
+  const agent = p.agent;
+  const reading = agent.stage !== null;
+  const read = agent.read;
+  const agentOn = agent.info.available && agent.consent === "yes";
+  const unchecked = rows.filter((r) => r.source.quote_verified === false).length;
+  const READ_STEPS: [string, string][] = [
+    ["Uploading", `Sending your documents to ${agent.info.name}.`],
+    ["Reading", `${agent.info.name} opens each file, in whatever format it is, and writes down what it commits to.`],
+    ["Checking", "Every item's quote is checked against the file before you see it."],
+  ];
 
   const needs: { label: string; required: boolean; desc: string; found: UploadedFile[]; without: string }[] = [
     { label: "What you're building", required: true, desc: p.stage === "launching" ? "Dates, owners, dependencies and approvals — usually a POR deck or doc." : "Goals, users, data and scope — a PRD, one-pager or brief is enough.", found: planFiles, without: "" },
@@ -73,6 +87,17 @@ export function PlanDocuments(p: Props) {
         </div>
         <button type="button" className="btn" onClick={p.onLoadSample}>Use sample files</button>
       </div>
+
+      {agent.info.available && agent.consent === "unknown" && (
+        <section className="notice stack-sm" role="region" aria-label={`${agent.info.name} can read your files`} data-testid="agent-consent" style={{ gap: 10, padding: "14px 16px" }}>
+          <span style={{ fontWeight: 600 }}>{agent.info.name} can read your files</span>
+          <span>Your company set up {agent.info.name} for this tool. If you allow it, {agent.info.name} opens each plan file you add, in any format, and writes down what it commits to. Every item is checked against the file before you see it, and you confirm the plan either way. The reading runs in your company's {agent.info.name} account.</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <button type="button" className="btn primary" onClick={() => agent.setConsent("yes")}>Let {agent.info.name} read my files</button>
+            <button type="button" className="btn" onClick={() => agent.setConsent("no")}>Not now</button>
+          </div>
+        </section>
+      )}
 
       <div className="row">
         <section className="card" style={{ flex: "1.4 1 440px", gap: 16 }}>
@@ -98,7 +123,7 @@ export function PlanDocuments(p: Props) {
                     <div className="meta">
                       <span className="name">{f.name}</span>
                       <span className="small muted">{f.size}{f.via === "directory" ? " · via Employee directory" : ""}</span>
-                      <span className={"sm " + (used ? "ok" : "muted")}>{f.kind === "other" ? "Nothing used from this file" : entry ? entry.notes : hasPlan ? "Reading…" : "Waiting for a plan file"}</span>
+                      <span className={"sm " + (used ? "ok" : "muted")}>{f.kind === "other" ? "Nothing used from this file" : entry ? entry.notes : hasPlan ? (reading ? `${agent.info.name} is reading…` : "Reading…") : "Waiting for a plan file"}</span>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 8 }}>
                       <div className="stack-sm" style={{ gap: 2 }}>
@@ -137,6 +162,43 @@ export function PlanDocuments(p: Props) {
           ))}
         </section>
       </div>
+
+      {reading && (
+        <section className="card" style={{ padding: "8px 20px", gap: 0, maxWidth: 640 }} role="status" aria-live="polite" data-testid="agent-reading">
+          <div style={{ padding: "12px 0 4px" }}><span style={{ fontWeight: 600 }}>{agent.info.name} is reading your files</span><span className="small muted"> · this takes a few minutes</span></div>
+          {READ_STEPS.map(([name, detail], i) => {
+            const st = i < (agent.stage ?? 0) ? "done" : i === agent.stage ? "running" : "waiting";
+            return (
+              <div key={name} className="step">
+                <span className={"pip " + st} aria-hidden="true" />
+                <div className="stack-sm" style={{ gap: 2 }}>
+                  <span style={{ fontWeight: 500 }}>{name} <span className="muted" style={{ fontWeight: 400 }}>· {st}</span></span>
+                  <span className="sm muted">{detail}</span>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      )}
+      {!reading && read && read.status === "failed" && (
+        <div className="notice-grey between" role="alert" data-testid="agent-result" style={{ gap: 12 }}>
+          <span>{agent.info.name} could not read your files: {read.error} Showing what the rules found on their own.</span>
+          <button type="button" className="btn" style={{ minHeight: 36 }} onClick={agent.retry}>Try again</button>
+        </div>
+      )}
+      {!reading && read && read.status === "done" && (
+        <div className="notice stack-sm" data-testid="agent-result" style={{ gap: 4 }}>
+          <span>
+            <strong style={{ fontWeight: 600 }}>{agent.info.name} read {launching ? `${read.items_read} plan item${read.items_read === 1 ? "" : "s"}` : `${read.signals_read} signal${read.signals_read === 1 ? "" : "s"}`}</strong>
+            {read.files_read.length > 0 && <> from {read.files_read.map((f) => `${f.name}${f.how ? ` (${f.how})` : ""}`).join(", ")}</>}
+            {read.cached ? " · from an earlier reading of the same file" : ""}
+            {read.session_url && <> · <a href={read.session_url} target="_blank" rel="noreferrer">open the {agent.info.name} session</a></>}
+          </span>
+          {read.unreadable.length > 0 && <span className="small">Could not open: {read.unreadable.map((u) => `${u.name}${u.reason ? ` (${u.reason})` : ""}`).join(", ")}</span>}
+          {read.warnings.length > 0 && <span className="small">{read.warnings.join(" ")}</span>}
+          {unchecked > 0 && <span className="small">{unchecked} item{unchecked === 1 ? "" : "s"} could not be checked against the file (the server cannot open that format); confirm them below.</span>}
+        </div>
+      )}
 
       {hasPlan && p.plan && !launching && p.signals.length > 0 && (
         <section className="stack" style={{ gap: 12 }} data-testid="signals">
@@ -183,6 +245,7 @@ export function PlanDocuments(p: Props) {
                       <td>
                         <div>{r.text}</div>
                         {flag && <div className="inferred">{sourceShort(p.plan!, r.source.file)} says "{r.due_text}" — {fmtDate(r.due)} is a guess. Confirm the date.</div>}
+                        {r.source.quote_verified === false && <div className="inferred" data-testid={`unchecked-${r.id}`}>Quote not checked: the server could not open {r.source.file}. Open the source and confirm it.</div>}
                         {isOpen && <div className="quote" data-testid={`quote-${r.id}`}>“{r.source.quote}”<div className="small muted" style={{ marginTop: 4 }}>{r.source.file} · {r.source.locator}</div></div>}
                       </td>
                       <td className="sm text2">{KIND_LABEL[r.kind]}</td>
@@ -203,7 +266,7 @@ export function PlanDocuments(p: Props) {
             </table>
           </div>
           <span className="sm muted">
-            {[`Plan items: ${planCount}`, hasChecklist ? `Launch checks: ${checkApplied} of ${checkTotal ?? "?"} apply` : "No launch checks", hasOrg ? (viaDirectory ? "Owners: from your directory" : "Owners: from your files") : "Owners: inferred from Jira"].join(" · ")}
+            {[`Plan items: ${planCount}`, hasChecklist ? `Launch checks: ${checkApplied} of ${checkTotal ?? "?"} apply` : "No launch checks", hasOrg ? (viaDirectory ? "Owners: from your directory" : "Owners: from your files") : "Owners: inferred from Jira", ...(read?.status === "done" ? [`Read by ${agent.info.name}: ${read.items_read}`] : agentOn ? [] : agent.info.available ? [`${agent.info.name} not used`] : [])].join(" · ")}
           </span>
           {p.plan.warnings.length > 0 && <div className="notice-grey">{p.plan.warnings.join(" ")}</div>}
         </section>
@@ -211,7 +274,7 @@ export function PlanDocuments(p: Props) {
 
       <div className="between" style={{ gap: 16 }}>
         <span className="sm muted" style={{ maxWidth: 640 }}>
-          {!hasPlan ? "Add something that describes what you're building to continue." : !p.plan ? (p.planError ? "Fix the file above, or read it as something else, to continue." : "Reading your files…") : !launching && p.signals.length === 0 ? "No signals found yet; you can still continue." : "Looks good. Next, connect the apps your teams use."}
+          {!hasPlan ? "Add something that describes what you're building to continue." : !p.plan ? (p.planError ? "Fix the file above, or read it as something else, to continue." : reading ? `${agent.info.name} is reading your files…` : "Reading your files…") : !launching && p.signals.length === 0 ? "No signals found yet; you can still continue." : "Looks good. Next, connect the apps your teams use."}
         </span>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <button type="button" className="btn" onClick={p.onBack}>Back</button>

@@ -70,7 +70,7 @@ The same flow adapts to earlier stages:
 
 **Designed only (prototype):** connectors other than Jira and the employee directory (shown in the gallery, not connectable).
 
-**Out this semester:** usability testing; meeting notes, Slack and email; follow-up chat; a live GUI connected to Devin; other gap types (coverage, ownership, assumption drift); briefs for other roles; launch reviews without a POR; writing to Jira; multi-release rollup; plugin packaging; Glean and Asana; real company data.
+**Out this semester:** usability testing; meeting notes, Slack and email; follow-up chat; other gap types (coverage, ownership, assumption drift); briefs for other roles; launch reviews without a POR; writing to Jira; multi-release rollup; plugin packaging; Glean and Asana; real company data.
 
 ## Requirements
 
@@ -97,9 +97,20 @@ The same flow adapts to earlier stages:
 
 Constraints: sample data only. The review screen states what the tool can't see: meetings, chat and email, approvals tracked in apps that aren't connected, and whether technical work is adequate.
 
+## Identity and connections (direction, Oct 31)
+
+The product is built so that every action stays in the GUI and the company's accounts do the work behind it:
+
+1. **Sign in** with the company identity provider (OpenID Connect; Microsoft Entra ID first). The server keeps a session cookie and a small store of users, connections, runs and decisions, so decisions leave the browser's local storage. A no-sign-in mode keeps the demo and the tests working.
+2. **Jira through Sign in with Atlassian** (OAuth 2.0, read-only scopes) instead of an API token. The token is stored per user, encrypted at rest, and revoked on disconnect.
+3. **Devin behind the upload step** (built Oct 31). A Devin service-user key held by the server, never by the person. On the Your plan step the person is asked once whether Devin may read their files; if so, each plan document is uploaded to Devin and one short session reads it with the reader skill's instructions and returns the items as structured output, which go through Stage A's quote check. Reading is cached per document, capped in ACUs per session, and falls back to the rules with the error shown. Sessions are attributed to the signed-in person once sign-in exists.
+4. **Hardening** a multi-user server needs: HTTPS, an encryption key for stored tokens, OAuth state and CSRF checks, a connection audit log.
+
+This reverses three earlier "out this semester" lines (a live GUI connected to Devin, a multi-user server, credentials beyond an API token). The Devin piece is what "agentic reading contained in the GUI" means in practice; the reading happens on Devin's credits and the product holds no model API key.
+
 ## How it works
 
-Devin runs the orchestrator on each dated snapshot of a sample release (reader → analyzer → status) and saves each run as JSON; the GUI loads the runs in order, so the review screen shows the latest status and how it changed. The GUI asks the stage first and adapts what it asks for and what it shows; every stage ends in next actions. The agent reads the plan files itself, in any format (a POR deck, a PDF, a PRD in Word), and writes the plan items and signals, each with a quote; the command checks the quotes against every file it can read, marks the rest unchecked for the TPM to confirm, and adds the structured parts it can parse. Which items are gaps, and what a signal implies, stays rule-based. The reading runs on the agent's own model and credits (Devin's), so the product needs no model API key. Skills are plain `SKILL.md` files, so they can move to another agent. Details: Dependency Review Skills — Design (Devin + Jira) (`docs/skills-design.md`; where they disagree, this PRD wins).
+Devin runs the orchestrator on each dated snapshot of a sample release (reader → analyzer → status) and saves each run as JSON; the GUI loads the runs in order, so the review screen shows the latest status and how it changed. The GUI asks the stage first and adapts what it asks for and what it shows; every stage ends in next actions. The agent reads the plan files itself, in any format (a POR deck, a PDF, a PRD in Word), and writes the plan items and signals, each with a quote; the command checks the quotes against every file it can read, marks the rest unchecked for the TPM to confirm, and adds the structured parts it can parse. Which items are gaps, and what a signal implies, stays rule-based. The reading runs on the agent's own model and credits (Devin's), so the product needs no model API key; from the GUI, the server starts the Devin session through the company's service-user key. Skills are plain `SKILL.md` files, so they can move to another agent. Details: Dependency Review Skills — Design (Devin + Jira) (`docs/skills-design.md`; where they disagree, this PRD wins).
 
 ## Success metrics
 

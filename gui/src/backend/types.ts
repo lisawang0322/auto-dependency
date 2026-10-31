@@ -31,15 +31,39 @@ export interface RunSummary {
 
 export type ProgressStage = 0 | 1 | 2 | 3; // 0 reader running … 3 done
 
+/** The agent that can read uploads on the person's behalf (Devin, set up by the company on the server). */
+export interface AgentInfo { available: boolean; name: string }
+/** Whether the person let the agent read their files; asked once, kept in localStorage. */
+export type AgentConsent = "unknown" | "yes" | "no";
+/** 0 uploading · 1 the agent is reading · 2 checking quotes · 3 done */
+export type AgentReadStage = 0 | 1 | 2 | 3;
+/** What the agent did with the uploads (server/index.ts AgentRead). */
+export interface AgentRead {
+  name: string;
+  status: "done" | "failed";
+  cached: boolean;
+  session_url: string | null;
+  items_read: number;
+  signals_read: number;
+  files_read: { name: string; how: string }[];
+  unreadable: { name: string; reason: string }[];
+  warnings: string[];
+  error: string | null;
+}
+export interface ExtractOptions { agent?: boolean; onProgress?: (s: AgentReadStage) => void }
+
 /** Stage A's result. The early stages add the PRD's signals and the project name (release-starter). */
-export interface PlanExtract { plan: PlanDraft; signals: Signal[]; project: string | null }
+export interface PlanExtract { plan: PlanDraft; signals: Signal[]; project: string | null; agent?: AgentRead | null }
 
 export interface StarterRunInput { stage: "starting" | "building"; files: UploadedFile[]; excludeSignals: string[]; epic: string | null }
 
 export interface ReviewBackend {
   readonly mode: "sample" | "live";
-  /** Stage A. Sample: the fixture plan-draft, filtered by what was read as what. Live: the real extractor. */
-  extractPlan(files: UploadedFile[], stage: Stage): Promise<PlanExtract>;
+  readonly agent: AgentInfo;
+  saveSettings(patch: Partial<Settings>): Promise<void>;
+  /** Stage A. Sample: the fixture plan-draft, filtered by what was read as what. Live: the real extractor.
+   *  With opts.agent the agent reads the documents first (a job; onProgress follows it) and its items go through the quote check. */
+  extractPlan(files: UploadedFile[], stage: Stage, opts?: ExtractOptions): Promise<PlanExtract>;
   /** Stage B. Sample: fixture release-target, with or without the team list. Live: the epic is looked up in Jira. */
   resolveRelease(plan: PlanDraft, epicKey: string, hasTeamList: boolean): Promise<ReleaseTarget>;
   listRuns(epicKey: string): Promise<RunSummary[]>;
@@ -83,6 +107,12 @@ export interface LogEntry { time: string; text: string }
 export interface RunDecisions { decisions: Decisions; log: LogEntry[]; actionsDone?: Record<string, boolean>; contacted?: Record<string, boolean> }
 
 export interface DecisionStore {
-  load(runKey: string): RunDecisions;
+  load(runKey: string): Promise<RunDecisions>;
+  /** Fire and forget; the screen keeps its own copy. */
   save(runKey: string, data: RunDecisions): void;
 }
+
+/** Per-user settings kept by the server in live mode (and by the browser in sample mode). */
+export interface Settings { agent_consent: AgentConsent }
+/** The signed-in person (live mode with sign-in), or null. */
+export interface UserInfo { id: string; name: string; email: string | null; org: string }

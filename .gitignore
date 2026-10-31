@@ -9,3 +9,5 @@ out/
 .venv/
 .mcp-cache/
 in/
+.env
+.env.*

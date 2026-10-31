@@ -1,5 +1,9 @@
 import { PlanDraft, ReleaseTarget, Run, Starter, Signal, type Stage } from "@rrr/schemas";
-import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, PlanExtract, StarterRunInput } from "./types";
+import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, PlanExtract, StarterRunInput, AgentInfo, AgentRead, ExtractOptions, Settings, AgentConsent } from "./types";
+
+const CONSENT_KEY = "rrr.agent.consent";
+/** Sample mode keeps the person's answer about the agent in this browser. */
+export function loadLocalConsent(): AgentConsent { try { const v = localStorage.getItem(CONSENT_KEY); return v === "yes" || v === "no" ? v : "unknown"; } catch { return "unknown"; } }
 import { PLAN_KINDS } from "./types";
 import planDraftJson from "../../../fixtures/ingest-142/plan-draft.json";
 import planDraftNoTeamsJson from "../../../fixtures/ingest-142/plan-draft.no-team-list.json";
@@ -52,10 +56,30 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export class FixtureBackend implements ReviewBackend {
   readonly mode = "sample" as const;
+  /** The demo shows the agent path too: a simulated Devin reading, with no session behind it. */
+  readonly agent: AgentInfo = { available: true, name: "Devin" };
   constructor(private delayMs = 300) {}
 
-  async extractPlan(files: UploadedFile[], stage: Stage): Promise<PlanExtract> {
+  async saveSettings(patch: Partial<Settings>): Promise<void> {
+    if (patch.agent_consent) { try { localStorage.setItem(CONSENT_KEY, patch.agent_consent); } catch { /* private mode */ } }
+  }
+
+  async extractPlan(files: UploadedFile[], stage: Stage, opts: ExtractOptions = {}): Promise<PlanExtract> {
     await wait(this.delayMs);
+    const r = await this.extract(files, stage);
+    if (!opts.agent) return { ...r, agent: null };
+    for (const s of [0, 1, 2] as const) { opts.onProgress?.(s); await wait(this.delayMs * 3); }
+    opts.onProgress?.(3);
+    const docs = files.filter((f) => PLAN_KINDS.includes(f.kind));
+    const agent: AgentRead = {
+      name: "Devin", status: "done", cached: false, session_url: null,
+      items_read: stage === "launching" ? r.plan.items.filter((i) => i.kind !== "checklist").length : 0, signals_read: stage === "launching" ? 0 : r.signals.length,
+      files_read: docs.map((f) => ({ name: f.name, how: "simulated" })), unreadable: [], warnings: [], error: null,
+    };
+    return { ...r, agent };
+  }
+
+  private async extract(files: UploadedFile[], stage: Stage): Promise<PlanExtract> {
     const has = (k: UploadedFile["kind"]) => files.some((f) => f.kind === k);
     if (!has("plan") && !has("prd")) throw new Error("No file was read as a plan.");
     const kindOf = { prd: "plan_items", plan: "plan_items", checks: "launch_checks", teams: "teams_and_owners" } as const;

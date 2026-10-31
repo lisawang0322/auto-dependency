@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
-import type { JiraConnection, JiraState, UploadedFile, RunSummary, JiraCredentials, Stage } from "../backend/types";
+import type { JiraConnection, JiraState, UploadedFile, RunSummary, JiraCredentials, Stage, AgentInfo, AgentConsent } from "../backend/types";
 import { fmtDate } from "../model/dates";
 import { allTeamsResolved, isResolved, type TeamChoice } from "../model/review";
 
@@ -10,7 +10,7 @@ import { allTeamsResolved, isResolved, type TeamChoice } from "../model/review";
  * are shown for the design and say so. Then the release epic and the team → project resolution.
  */
 
-export type AppId = "jira" | "linear" | "asana" | "confluence" | "gdrive" | "sharepoint" | "aha" | "productboard" | "directory" | "hris" | "slack";
+export type AppId = "jira" | "linear" | "asana" | "confluence" | "gdrive" | "sharepoint" | "aha" | "productboard" | "directory" | "hris" | "slack" | "devin";
 
 interface AppDef { group: string; id: AppId; name: string; mono: string; desc: string; allowed: boolean; works: boolean; scopes: string[] }
 
@@ -26,6 +26,9 @@ export const APPS: AppDef[] = [
   { group: "People and org", id: "directory", name: "Employee directory", mono: "ED", desc: "Names, titles, teams and managers — powers who-to-involve", allowed: true, works: true, scopes: ["Read names, titles, teams and reporting lines"] },
   { group: "People and org", id: "hris", name: "HR system org chart", mono: "HR", desc: "Full org chart", allowed: false, works: false, scopes: [] },
   { group: "Chat", id: "slack", name: "Slack", mono: "Sl", desc: "Channels and threads", allowed: false, works: false, scopes: [] },
+  // `allowed` for the agent is decided at runtime: the company sets it up on the server (a service-user key), never the person.
+  { group: "Agents", id: "devin", name: "Devin", mono: "Dv", desc: "Reads your plan files, in any format, and writes down what they commit to", allowed: true, works: true,
+    scopes: ["Open the plan files you add on the Your plan step, in any format", "Write down the plan items and signals it finds, each with a quote from the file", "Run in your company's Devin account, charged to it, one short session per file"] },
 ];
 
 export function appBadge(id: AppId, stage: Stage): "Required" | "Recommended" | "" {
@@ -35,9 +38,11 @@ export function appBadge(id: AppId, stage: Stage): "Required" | "Recommended" | 
 }
 
 export interface DirectoryState { connected: boolean; name: string | null; fromFiles: string | null }
+export interface AgentState { info: AgentInfo; consent: AgentConsent; setConsent: (c: AgentConsent) => void }
 
 interface Props {
   stage: Stage;
+  agent: AgentState;
   jira: JiraConnection; jiraState: JiraState; setJiraState: (s: JiraState) => void;
   directory: DirectoryState; onConnectDirectory: (file: File | null) => void; onDisconnectDirectory: () => void;
   plan: PlanDraft; files: UploadedFile[];
@@ -74,7 +79,8 @@ export function ConnectApps(p: Props) {
   const commentCount = rel ? rel.stories.reduce((n, s) => n + s.comments.length, 0) + (rel.stories.length ? 3 : 0) : 0;
   const prevRun = p.runs.length > 1 ? p.runs[p.runs.length - 2] : null;
   const dirOn = p.directory.connected || !!p.directory.fromFiles;
-  const consentDef = consentFor ? APPS.find((a) => a.id === consentFor)! : null;
+  const apps = APPS.map((a) => (a.id === "devin" ? { ...a, allowed: p.agent.info.available, name: p.agent.info.name } : a));
+  const consentDef = consentFor ? apps.find((a) => a.id === consentFor)! : null;
   // Building: needed teams without a Jira project are expected, and the "Teams your plan needs" box says so.
   const targetWarnings = (p.target?.warnings ?? []).filter((w) => !building || (!/: unresolved\. /.test(w) && !/in the team list but not in the plan/.test(w)));
 
@@ -107,14 +113,19 @@ export function ConnectApps(p: Props) {
   const acceptDirectory = () => { p.onConnectDirectory(live ? dirFile : null); setConsentFor(null); };
 
   const groups: { title: string; apps: AppDef[] }[] = [];
-  for (const a of APPS) {
+  for (const a of apps) {
     let g = groups.find((x) => x.title === a.group);
     if (!g) { g = { title: a.group, apps: [] }; groups.push(g); }
     g.apps.push(a);
   }
 
   const cardState = (a: AppDef): { state: string; cls: string; btn: string; blocked: boolean; onCls: boolean; act: () => void } => {
+    if (a.id === "devin" && !a.allowed) return { state: "Not set up by your company — ask your admin for a Devin service key", cls: "muted", btn: "Unavailable", blocked: true, onCls: false, act: () => {} };
     if (!a.allowed) return { state: "Not enabled by your company", cls: "muted", btn: "Unavailable", blocked: true, onCls: false, act: () => {} };
+    if (a.id === "devin") {
+      if (p.agent.consent === "yes") return { state: "Connected · set up by your company · reads your plan files", cls: "ok", btn: "Disconnect", blocked: false, onCls: true, act: () => p.agent.setConsent("no") };
+      return { state: "Not connected", cls: "muted", btn: "Connect", blocked: false, onCls: false, act: () => openConsent("devin") };
+    }
     if (!a.works) return { state: "Shown for the design · not built yet", cls: "muted", btn: "Unavailable", blocked: true, onCls: false, act: () => {} };
     if (a.id === "jira") {
       if (on) return { state: `Connected · read-only · ${p.jira.site}`, cls: "ok", btn: "Disconnect", blocked: false, onCls: true, act: () => p.setJiraState(p.jira.disconnect()) };
@@ -175,6 +186,18 @@ export function ConnectApps(p: Props) {
             <button type="button" className="btn" onClick={closeConsent}>Cancel</button>
           </div>
           <span className="small muted">In the product this is Atlassian's own consent page, opened in a new window.</span>
+        </div>
+      )}
+      {consentDef?.id === "devin" && (
+        <div className="consent accent" role="dialog" aria-labelledby="agent-title">
+          <span className="eyebrow">{consentDef.name} · set up by your company</span>
+          <h2 id="agent-title">Readiness Review wants {consentDef.name} to read your plan files</h2>
+          <p className="sm muted" style={{ margin: 0 }}>No key or sign-in is needed from you: your company's {consentDef.name} account does the reading, and the server holds the key. You confirm every item before it is used.</p>
+          <Scopes can={consentDef.scopes} cannot={["Change your files", "See your Jira connection or token", "Create, edit or comment on anything in Jira", "Keep working once the reading is done"]} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <button type="button" className="btn primary" onClick={() => { p.agent.setConsent("yes"); setConsentFor(null); }}>Accept</button>
+            <button type="button" className="btn" onClick={closeConsent}>Cancel</button>
+          </div>
         </div>
       )}
       {consentDef?.id === "directory" && (

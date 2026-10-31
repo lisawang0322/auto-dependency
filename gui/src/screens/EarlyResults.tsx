@@ -29,7 +29,7 @@ export function EarlyResults(p: Props) {
   const st = p.starter;
   const key = `starter:${st.stage}:${st.epic ?? st.project}/${st.label}`;
   const [saved, setSaved] = useState<RunDecisions>(EMPTY);
-  useEffect(() => { setSaved(p.store.load(key)); }, [key, p.store]);
+  useEffect(() => { let on = true; p.store.load(key).then((d) => { if (on) setSaved(d); }); return () => { on = false; }; }, [key, p.store]);
   const persist = (next: RunDecisions) => { setSaved(next); p.store.save(key, next); };
   const actionsDone = saved.actionsDone ?? {};
   const contacted = saved.contacted ?? {};

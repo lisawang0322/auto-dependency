@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeJira, type FakeJira } from "../skills/release-reader/tests/fake-jira.js";
 import { startServer } from "./index.js";
+import { startFakeDevin, naiveReader, type FakeDevin } from "./tests/fake-devin.js";
+import { readingPrompt, parseReading, itemRules } from "./devin.js";
 
 const DOCS = "fixtures/ingest-142/docs";
 
@@ -12,7 +14,7 @@ describe("local API server", () => {
   beforeAll(async () => {
     tmp = mkdtempSync(join(tmpdir(), "rrr-server-"));
     jira = await startFakeJira("fixtures/ingest-142/jira/2026-11-13");
-    srv = await startServer({ port: 0, quiet: true, creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache") });
+    srv = await startServer({ port: 0, quiet: true, storePath: ":memory:", creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache") });
   });
   afterAll(async () => { await srv.close(); await jira.close(); rmSync(tmp, { recursive: true, force: true }); });
 
@@ -83,7 +85,7 @@ describe("local API server: the early stages", () => {
   beforeAll(async () => {
     tmp = mkdtempSync(join(tmpdir(), "rrr-server-starter-"));
     jira = await startFakeJira("fixtures/ingest-142/jira/2026-11-13");
-    srv = await startServer({ port: 0, quiet: true, creds: { site: jira.url, email: "me@example.com", token: "secret" }, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache") });
+    srv = await startServer({ port: 0, quiet: true, storePath: ":memory:", creds: { site: jira.url, email: "me@example.com", token: "secret" }, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache") });
   });
   afterAll(async () => { await srv.close(); await jira.close(); rmSync(tmp, { recursive: true, force: true }); });
   const api = async (method: string, path: string, body?: unknown) => {
@@ -116,5 +118,145 @@ describe("local API server: the early stages", () => {
     expect(existsSync(join(tmp, "runs/INGEST-142/2026-11-13.building.json"))).toBe(true);
     const bad = await api("POST", "/api/starter", { files, stage: "building" });
     expect(bad.status).toBe(400);
+  });
+});
+
+describe("Devin reads the uploads (agent: \"devin\")", () => {
+  let jira: FakeJira, devin: FakeDevin, srv: Awaited<ReturnType<typeof startServer>>, tmp: string;
+  beforeAll(async () => {
+    tmp = mkdtempSync(join(tmpdir(), "rrr-server-devin-"));
+    jira = await startFakeJira("fixtures/ingest-142/jira/2026-11-13");
+    devin = await startFakeDevin({ answer: (s) => {
+      const out = naiveReader(s) as any;
+      // Devin also finds the assumption the rules skip, and one item with a quote that is not in the file.
+      out.items.push({ text: "Load test at 2× the batch importer's peak", kind: "dependency", owner_team: "SRE", due_text: null, source: { file: "Ingestion-service-POR-v3.md", locator: "§5", quote: "Peak load at launch is 2× the batch importer's peak." } });
+      out.items.push({ text: "Made up", kind: "approval", owner_team: "Legal", due_text: null, source: { file: "Ingestion-service-POR-v3.md", locator: "§4", quote: "Legal signs off by Nov 1." } });
+      out.items.push({ text: "bad kind", kind: "wish", source: { file: "Ingestion-service-POR-v3.md", locator: "§1", quote: "x" } });
+      return out;
+    } });
+    srv = await startServer({ port: 0, quiet: true, storePath: ":memory:", creds: { site: jira.url, email: "me@example.com", token: "secret" }, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), agentCacheRoot: join(tmp, "agent"),
+      devin: { apiKey: "cog_test", baseUrl: devin.url, pollMs: 10, timeoutMs: 5_000, maxAcu: 1 } });
+  });
+  afterAll(async () => { await srv.close(); await jira.close(); await devin.close(); rmSync(tmp, { recursive: true, force: true }); });
+  const api = async (method: string, path: string, body?: unknown) => {
+    const res = await fetch(srv.url + path, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    return { status: res.status, data: await res.json() };
+  };
+  const poll = async (job: string) => { let j: any; for (let i = 0; i < 200; i++) { j = (await api("GET", `/api/jobs/${job}`)).data; if (j.done) return j; await new Promise((r) => setTimeout(r, 20)); } return j; };
+  const por = readFileSync(join(DOCS, "Ingestion-service-POR-v3.md")).toString("base64");
+  const files = [
+    { name: "Ingestion-service-POR-v3.md", kind: "plan", content_base64: por },
+    { name: "launch-checklist.csv", kind: "checks", sample: true },
+    { name: "team-list.yaml", kind: "teams", sample: true },
+  ];
+
+  it("advertises the agent and runs the reading as a job: Devin's items pass the quote check, bad ones are dropped", async () => {
+    expect((await api("GET", "/api/health")).data.agent).toMatchObject({ available: true, name: "Devin", max_acu: 1 });
+    const r = await api("POST", "/api/plan", { files, agent: "devin" });
+    expect(r.status).toBe(202);
+    const job = await poll(r.data.job);
+    expect(job.error).toBeUndefined();
+    expect(job.stage).toBe(3);
+    const { plan, agent } = job.result;
+    expect(agent).toMatchObject({ name: "Devin", status: "done", cached: false, items_read: 5, signals_read: 0, session_url: "https://app.devin.ai/sessions/devin-1", error: null });
+    expect(agent.files_read).toEqual([{ name: "Ingestion-service-POR-v3.md", how: "text" }]);
+    expect(agent.warnings).toEqual(["Devin item 6 was dropped: Invalid enum value. Expected 'deliverable' | 'dependency' | 'approval' | 'checklist', received 'wish'."]);
+    // The rules' 7 items plus the one Devin added; Devin's duplicates of the rules' items are kept once.
+    expect(plan.items).toHaveLength(8);
+    expect(plan.items.find((i: any) => i.text.startsWith("Load test at 2×"))).toMatchObject({ kind: "dependency", owner_team: "SRE", source: { locator: "§5" } });
+    expect(plan.items.every((i: any) => i.source.quote_verified === undefined)).toBe(true);
+    expect(plan.warnings).toContain('Dropped agent item "Made up": its quote was not found in Ingestion-service-POR-v3.md.');
+    expect(plan.files[0].notes).toMatch(/ · 1 item read by the agent$/);
+    // Only the document went to Devin; the csv and yaml stayed with the parsers. One session, capped.
+    expect(devin.uploads.map((u) => u.name)).toEqual(["Ingestion-service-POR-v3.md"]);
+    expect(devin.sessions).toHaveLength(1);
+    expect(devin.sessions[0].max_acu_limit).toBe(1);
+    expect(devin.sessions[0].prompt).toContain('ATTACHMENT:"');
+    expect(devin.sessions[0].prompt).toContain("A plan item is");
+    expect(devin.sessions[0].title).toBe("Readiness Review: read Ingestion-service-POR-v3.md");
+  });
+
+  it("reuses the cached reading when the same document comes back, even read as something else", async () => {
+    const r = await api("POST", "/api/plan", { files: [{ ...files[0], kind: "prd" }, files[1]], agent: "devin" });
+    const job = await poll(r.data.job);
+    expect(job.error).toBeUndefined();
+    expect(job.result.agent).toMatchObject({ status: "done", cached: true, items_read: 5 });
+    expect(devin.sessions).toHaveLength(1);
+    expect(job.result.plan.items.some((i: any) => i.text.startsWith("Load test at 2×"))).toBe(true);
+  });
+
+  it("without agent: \"devin\" the route is synchronous and rules-only", async () => {
+    const r = await api("POST", "/api/plan", { files });
+    expect(r.status).toBe(200);
+    expect(r.data.agent).toBeUndefined();
+    expect(r.data.plan.items).toHaveLength(7);
+  });
+
+  it("keeps items from a format the server cannot read, marked unchecked", async () => {
+    const r = await api("POST", "/api/plan", { files: [{ name: "Launch-plan.key", kind: "plan", content_base64: Buffer.from("\u0000keynote bundle\u0000\n- Ingestion team will have the service live by Nov 18.\n").toString("base64") }, files[1], files[2]], launch_date: "2026-11-20", agent: "devin" });
+    const job = await poll(r.data.job);
+    expect(job.error).toBeUndefined();
+    expect(job.result.agent).toMatchObject({ status: "done", cached: false, items_read: 1 });
+    const mine = job.result.plan.items.find((i: any) => i.source.file === "Launch-plan.key");
+    expect(mine).toMatchObject({ kind: "deliverable", owner_team: "Ingestion team", due: "2026-11-18", source: { quote_verified: false } });
+    expect(job.result.plan.warnings.some((w: string) => /could not read it, so the quote/.test(w))).toBe(true);
+  });
+});
+
+describe("Devin fails or is absent", () => {
+  it("falls back to the rules with the error in the result when the session ends without output", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "rrr-server-devin-fail-"));
+    const devin = await startFakeDevin({ endWith: "expired" });
+    const srv = await startServer({ port: 0, quiet: true, storePath: ":memory:", creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), agentCacheRoot: join(tmp, "agent"), devin: { apiKey: "cog_test", baseUrl: devin.url, pollMs: 10, timeoutMs: 5_000 } });
+    try {
+      const res = await fetch(srv.url + "/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files: [{ name: "Ingestion-service-POR-v3.md", kind: "plan", sample: true }, { name: "launch-checklist.csv", kind: "checks", sample: true }], agent: "devin" }) });
+      expect(res.status).toBe(202);
+      const { job } = await res.json();
+      let j: any;
+      for (let i = 0; i < 200; i++) { j = await (await fetch(srv.url + `/api/jobs/${job}`)).json(); if (j.done) break; await new Promise((r) => setTimeout(r, 20)); }
+      expect(j.error).toBeUndefined();
+      expect(j.result.agent).toMatchObject({ status: "failed", cached: false, items_read: 0, error: "Devin session expired without a result." });
+      expect(j.result.plan.items).toHaveLength(7);
+      // A failed reading is not cached: the next request tries again.
+      const again = await fetch(srv.url + "/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files: [{ name: "Ingestion-service-POR-v3.md", kind: "plan", sample: true }], agent: "devin" }) });
+      await again.json();
+      await new Promise((r) => setTimeout(r, 150));
+      expect(devin.sessions).toHaveLength(2);
+    } finally { await srv.close(); await devin.close(); rmSync(tmp, { recursive: true, force: true }); }
+  });
+
+  it("refuses agent: \"devin\" when no key is configured, and says so on /api/health", async () => {
+    const srv = await startServer({ port: 0, quiet: true, storePath: ":memory:", creds: null, devin: null });
+    try {
+      expect((await (await fetch(srv.url + "/api/health")).json()).agent).toEqual({ available: false, name: "Devin", max_acu: null });
+      const res = await fetch(srv.url + "/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files: [{ name: "Ingestion-service-POR-v3.md", kind: "plan", sample: true }], agent: "devin" }) });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/DEVIN_API_KEY/);
+    } finally { await srv.close(); }
+  });
+});
+
+describe("the reading prompt and result parser", () => {
+  it("builds the prompt from the skill's item rules, with every attachment and the output shape", () => {
+    const p = readingPrompt({ files: [{ name: "Plan.pptx", url: "https://x/1" }], stage: "launching", rules: itemRules() });
+    expect(p).toContain('- Plan.pptx: ATTACHMENT:"https://x/1"');
+    expect(p).toContain("A plan item is something a team must deliver");
+    expect(p).toContain('"files_read"');
+    expect(p).not.toContain("A signal is");
+    const early = readingPrompt({ files: [{ name: "PRD.docx", url: "https://x/2" }], stage: "starting", rules: itemRules(), signalRules: "- customer_data: implies Privacy, Legal" });
+    expect(early).toContain("A signal is");
+    expect(early).toContain("- customer_data: implies Privacy, Legal");
+  });
+  it("drops malformed entries and items that name a file that was not uploaded, with warnings", () => {
+    const r = parseReading({ done: true, items: [
+      { text: "A", kind: "approval", owner_team: null, source: { file: "Plan.pptx", quote: "q" } },
+      { text: "B", kind: "approval", source: { file: "Other.pdf", locator: "page 1", quote: "q" } },
+      "nonsense",
+    ], signals: [{ quote: "s", file: "Plan.pptx", rule_ids: [] }], files_read: [{ name: "Plan.pptx" }], unreadable: [] }, ["Plan.pptx"]);
+    expect(r.items).toEqual([{ text: "A", kind: "approval", owner_team: null, due_text: null, source: { file: "Plan.pptx", locator: "document", quote: "q" } }]);
+    expect(r.signals).toEqual([]);
+    expect(r.files_read).toEqual([{ name: "Plan.pptx", how: "" }]);
+    expect(r.warnings).toHaveLength(3);
+    expect(parseReading("not an object", []).warnings).toHaveLength(1);
   });
 });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@rrr/schemas";
-import { PLAN_KINDS, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage } from "./backend/types";
+import { PLAN_KINDS, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage, type AgentConsent, type AgentRead, type AgentReadStage, type UserInfo } from "./backend/types";
 import { sampleFilesFor, SAMPLE_DIRECTORY } from "./backend/fixtureBackend";
 import { fmtDate } from "./model/dates";
 import { applyChoices, type TeamChoice } from "./model/review";
@@ -14,7 +14,7 @@ import { EarlyResults } from "./screens/EarlyResults";
 /** The four steps of the prototype: get started → your plan → connect apps → next steps (running sits between 3 and 4). */
 export type Screen = "start" | "plan" | "apps" | "running" | "results";
 
-export interface AppProps { backend: ReviewBackend; jira: JiraConnection; store: DecisionStore }
+export interface AppProps { backend: ReviewBackend; jira: JiraConnection; store: DecisionStore; user?: UserInfo | null; initialConsent?: AgentConsent; onSignOut?: () => void }
 
 export function guessKind(name: string, files: UploadedFile[]): FileKind {
   const n = name.toLowerCase();
@@ -26,7 +26,7 @@ export function guessKind(name: string, files: UploadedFile[]): FileKind {
   return "other";
 }
 
-export function App({ backend, jira, store }: AppProps) {
+export function App({ backend, jira, store, user = null, initialConsent = "unknown", onSignOut }: AppProps) {
   const [screen, setScreen] = useState<Screen>("start");
   const [stage, setStageChoice] = useState<Stage | null>(null);
   const [files, setFiles] = useState<UploadedFile[]>([]);
@@ -49,6 +49,12 @@ export function App({ backend, jira, store }: AppProps) {
   const [progress, setProgress] = useState<ProgressStage>(0);
   const [runId, setRunId] = useState<string | null>(null);
   const [starter, setStarter] = useState<Starter | null>(null);
+  // The agent (Devin) reading uploads: asked once, remembered; progress while it reads; what it read.
+  const [agentConsent, setAgentConsentState] = useState<AgentConsent>(initialConsent);
+  const setAgentConsent = useCallback((c: AgentConsent) => { setAgentConsentState(c); void backend.saveSettings({ agent_consent: c }).catch(() => {}); }, [backend]);
+  const [agentStage, setAgentStage] = useState<AgentReadStage | null>(null);
+  const [agentRead, setAgentRead] = useState<AgentRead | null>(null);
+  const [readNonce, setReadNonce] = useState(0);
   const seq = useRef(0);
 
   const hasPlanFile = files.some((f) => PLAN_KINDS.includes(f.kind));
@@ -77,16 +83,21 @@ export function App({ backend, jira, store }: AppProps) {
     setTarget(null);
     setChoices({});
     setStarter(null);
-    if (!hasPlanFile || !stage) { setPlan(null); setSignals([]); setProject(null); setPlanError(null); return; }
-    backend.extractPlan(files, stage).then((r) => {
+    setAgentRead(null);
+    if (!hasPlanFile || !stage) { setPlan(null); setSignals([]); setProject(null); setPlanError(null); setAgentStage(null); return; }
+    const useAgent = agentConsent === "yes" && backend.agent.available;
+    setAgentStage(useAgent ? 0 : null);
+    backend.extractPlan(files, stage, { agent: useAgent, onProgress: (s) => { if (my === seq.current) setAgentStage(s); } }).then((r) => {
       if (my !== seq.current) return;
       setPlan(r.plan);
       setSignals(r.signals);
       setProject(r.project);
       setPlanError(null);
+      setAgentRead(r.agent ?? null);
+      setAgentStage(null);
       if (r.plan.launch_date) setLaunch(r.plan.launch_date);
-    }).catch((e) => { if (my === seq.current) { setPlan(null); setSignals([]); setPlanError(String(e.message ?? e)); } });
-  }, [files, backend, hasPlanFile, uploadKey, stage]);
+    }).catch((e) => { if (my === seq.current) { setPlan(null); setSignals([]); setAgentStage(null); setPlanError(String(e.message ?? e)); } });
+  }, [files, backend, hasPlanFile, uploadKey, stage, agentConsent, readNonce]);
 
   const epicVal = epic.trim();
   const epicOk = /^[A-Z][A-Z0-9]+-\d+$/.test(epicVal);
@@ -198,6 +209,8 @@ export function App({ backend, jira, store }: AppProps) {
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
             {stage && <span className="stage-chip" data-testid="stage-chip">Stage: {STAGE_SHORT[stage]}</span>}
             <span className="tag">{live ? `Live · ${jira.site || "Jira"}` : "Sample data"}</span>
+            {user && <span className="tag" data-testid="user-chip" title={user.email ?? undefined}>{user.name}</span>}
+            {onSignOut && <button type="button" className="btn" style={{ minHeight: 32, padding: "0 12px", fontSize: 14 }} onClick={onSignOut}>Sign out</button>}
           </div>
         </div>
         <nav className="wrap steps" aria-label="Steps">
@@ -219,6 +232,7 @@ export function App({ backend, jira, store }: AppProps) {
             onLoadSample={() => setFiles((cur) => [...sampleFilesFor(stage), ...cur.filter((f) => f.via === "directory")])}
             onSetDate={(id, v) => setPlanDates((d) => ({ ...d, [id]: v }))}
             onToggleSignal={(id) => { setSignalsOff((s) => ({ ...s, [id]: !s[id] })); setConfirmed(false); }}
+            agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, stage: agentStage, read: agentRead, retry: () => setReadNonce((n) => n + 1) }}
             onBack={() => setScreen("start")}
             onConfirm={() => { setPlanConfirmed(true); setScreen("apps"); }}
           />
@@ -228,6 +242,7 @@ export function App({ backend, jira, store }: AppProps) {
             stage={stage}
             jira={jira} jiraState={jiraState} setJiraState={(s) => { setJiraState(s); if (s === "off") setConfirmed(false); }}
             directory={{ connected: !!directoryFile, name: directoryFile?.name ?? null, fromFiles: uploadedTeamList?.name ?? null }}
+            agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent }}
             onConnectDirectory={connectDirectory} onDisconnectDirectory={disconnectDirectory}
             plan={plan} files={files} epic={epic} setEpic={(v) => { setEpic(v.toUpperCase()); setConfirmed(false); }} epicOk={epicOk}
             target={target} targetError={targetError} latestRun={runs.length ? runsById[runs[runs.length - 1].id] ?? null : null} runs={runs}

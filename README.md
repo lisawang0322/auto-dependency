@@ -187,6 +187,50 @@ exported as `.docx` by `fixtures/build_docx.py`) and directory (`directory.yaml`
 `eval/score_starter.py` scores both stages against `eval/answer-key.starter.ingest-142.json`.
 `npm run build:starter-fixtures` rebuilds the sample outputs the GUI's sample mode shows.
 
+## Sign-in with the company identity provider
+
+Without any `OIDC_*` variable the server runs as one local user (`AUTH=none`): the demo, the tests and a
+laptop setup. With them, nothing is shown until the person has signed in through the company identity
+provider (OpenID Connect, authorization code with PKCE; Microsoft Entra ID, Google and Okta all work):
+
+```
+OIDC_ISSUER=https://login.microsoftonline.com/<tenant id>/v2.0   # the tenant-specific issuer
+OIDC_CLIENT_ID=…  OIDC_CLIENT_SECRET=…                           # the app registration; redirect URI is APP_URL + /auth/callback
+APP_URL=http://localhost:8787                                   # where the browser reaches this server
+SESSION_SECRET=<long random string>                             # signs the short-lived login cookie
+ALLOWED_EMAIL_DOMAINS=example.com                               # optional
+DATA_DIR=out                                                    # rrr.sqlite: users, sessions, settings, decisions
+```
+
+`GET /auth/login` starts it, `GET /auth/callback` finishes it, `POST /auth/logout` ends the session. Once
+signed in, keep/dismiss decisions, ticked next actions and the answer about Devin are kept on the server
+per person (`/api/decisions/:key`, `/api/settings`), not in the browser; a person's Jira token stays in
+memory under their user; each organisation's runs, uploads and caches live under `orgs/<org>/`. Writes
+require same-origin JSON requests. `server/tests/fake-idp.ts` is the provider the tests sign in with.
+Keep secrets in a `.env` you never commit (it is in `.gitignore`).
+
+## Devin behind the upload step
+
+With `DEVIN_API_KEY` set (a Devin service-user key, held by the server and never shown to the browser), the
+GUI offers to let Devin read the files the person adds on the "Your plan" step. On "Let Devin read my
+files", each plan document (not the csv or yaml, which the parsers read) is uploaded to Devin as an
+attachment and one short session reads it with the same instructions as `skills/release-review/SKILL.md`
+step 1, returning the items as the session's structured output. The items then go through Stage A's quote
+check like any agent items: checked where the server can read the file, kept but marked `~` where it
+cannot. The GUI shows the reading as it happens, a link to the session, what Devin could not open, and the
+rules' result with a "Try again" button if the session fails. Every document's reading is cached by content
+under `out/agent-reads/`, so changing "read as" or re-adding the same file spends nothing.
+
+```
+DEVIN_API_KEY=cog_…                 # enables it; Settings → Service users in Devin
+DEVIN_MAX_ACU=2                     # cap per reading session (default 2)
+DEVIN_READ_TIMEOUT_MIN=10           # give up and fall back to the rules after this long
+DEVIN_API_BASE=https://api.devin.ai # the fake in server/tests/fake-devin.ts stands in for tests
+```
+
+The person's choice is remembered in the browser (`rrr.agent.consent`) and shown as the Devin card in
+Connect your apps, where it can be disconnected. Devin's External API is marked alpha by Devin.
+
 ## The API server
 
 `npm run server` (port 8787, or `PORT`). JSON routes under `/api`: `health`, `jira/connect` and
@@ -293,8 +337,11 @@ Still sample or deliberately simple:
 - **One run per epic per day.** Runs are labelled by date; a second run the same day replaces the
   first (and re-reads Jira).
 - **Credentials** are an API token held in the server process. There is no OAuth, no multi-user
-  server, and no TLS: run it on your own machine.
-- **Decisions** (keep / dismiss) live in the browser's localStorage, not on the server.
+  server, and no TLS: run it on your own machine. (Direction from Oct 31: sign-in with the company
+  identity provider, Sign in with Atlassian for Jira, and the company's Devin service user running
+  sessions attributed to the signed-in person; Devin behind the upload step is the first piece.)
+- **Decisions** (keep / dismiss) live on the server per signed-in person in live mode, and in the
+  browser's localStorage in sample mode.
 - **The sample data.** The POR, checklist, team list and Jira snapshots are placeholders written by
   the tool author; PRD R12 says the real ones are written by someone else.
 - **Atlassian MCP tool names.** Taken from Atlassian's documentation; the skill tells the agent to

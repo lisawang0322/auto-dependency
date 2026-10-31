@@ -31,9 +31,14 @@ export function Review(p: Props) {
   const epic = p.target.epic.key;
   const keyOf = (id: string) => `${epic}/${id}`;
   useEffect(() => {
-    const all: Record<string, RunDecisions> = {};
-    for (const r of p.runs) all[r.id] = p.store.load(keyOf(r.id));
-    setSaved(all);
+    let on = true;
+    Promise.all(p.runs.map((r) => p.store.load(keyOf(r.id)))).then((list) => {
+      if (!on) return;
+      const all: Record<string, RunDecisions> = {};
+      p.runs.forEach((r, i) => { all[r.id] = list[i]; });
+      setSaved(all);
+    });
+    return () => { on = false; };
   }, [p.runs, p.store, epic]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isLatest = runId === p.latestId;
