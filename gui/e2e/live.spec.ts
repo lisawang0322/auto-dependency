@@ -20,7 +20,8 @@ let jira: FakeJira, devin: FakeDevin, idp: FakeIdp, srv: Awaited<ReturnType<type
 // One server on the proxied port 8787, so playwright.config.ts runs this file in the desktop project only.
 test.beforeAll(async () => {
   tmp = mkdtempSync(join(tmpdir(), "rrr-live-e2e-"));
-  jira = await startFakeJira(join(ROOT, "fixtures/ingest-142/jira/2026-11-13"));
+  // The fake Jira also plays Atlassian's OAuth endpoints, so "Sign in with Atlassian" runs end to end in the popup.
+  jira = await startFakeJira(join(ROOT, "fixtures/ingest-142/jira/2026-11-13"), { oauth: { clientId: "jira-app", clientSecret: "jira-secret", cloudId: "cloud-e2e" } });
   devin = await startFakeDevin({ workingPolls: 1, answer: (s) => {
     const out = naiveReader(s) as any;
     out.items.push({ text: "Load test at 2× the batch importer's peak", kind: "dependency", owner_team: "SRE", due_text: null, source: { file: "Ingestion-service-POR-v3.md", locator: "§5", quote: "Peak load at launch is 2× the batch importer's peak." } });
@@ -30,7 +31,8 @@ test.beforeAll(async () => {
   // Sign-in is on: the browser reaches the server through Vite's proxy on 5173, so that is the app URL the provider sends people back to.
   srv = await startServer({ port: 8787, quiet: true, creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), agentCacheRoot: join(tmp, "agent"), sampleDocs: DOCS, guiDist: join(tmp, "nodist"), storePath: ":memory:",
     devin: { apiKey: "cog_test", baseUrl: devin.url, pollMs: 100, timeoutMs: 20_000, defaultMode: "normal", modes: ["lite", "normal"] },
-    auth: { mode: "oidc", issuer: idp.url, clientId: "app-client-id", clientSecret: "app-secret", appUrl: "http://localhost:5173", sessionSecret: "e2e-secret" } });
+    auth: { mode: "oidc", issuer: idp.url, clientId: "app-client-id", clientSecret: "app-secret", appUrl: "http://localhost:5173", sessionSecret: "e2e-secret" },
+    atlassian: { clientId: "jira-app", clientSecret: "jira-secret", appUrl: "http://localhost:5173", authBase: jira.url, apiBase: jira.url } });
 });
 test.afterAll(async () => { await srv?.close(); await jira?.close(); await devin?.close(); await idp?.close(); rmSync(tmp, { recursive: true, force: true }); });
 
@@ -54,24 +56,22 @@ test("uploads real files, connects with a token and a directory export, reads Ji
   await page.getByRole("radio", { name: /Preparing to launch/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // Step 2: real uploads, really parsed by Stage A. No team list yet. Devin is offered and declined here.
-  await page.getByRole("button", { name: "Not now" }).click();
+  // Step 2: real uploads, really parsed by Stage A. No team list yet. Devin is offered once a document is in, and declined here.
   await page.locator("#plan-files").setInputFiles([file("Ingestion-service-POR-v3.md", "text/markdown"), file("launch-checklist.csv", "text/csv")]);
   await expect(page.getByRole("heading", { name: "Plan we read" })).toBeVisible();
+  await page.getByRole("button", { name: "Not now" }).click();
   await expect(page.locator(".plan-table tbody tr")).toHaveCount(7);
   await expect(page.getByText("Owners: inferred from Jira")).toBeVisible();
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
 
-  // Step 3: credentials form → the server checks them against Jira.
+  // Step 3: Sign in with Atlassian in a popup: the provider approves, the callback page messages the opener and closes.
   await page.getByRole("button", { name: "Connect Jira" }).click();
-  await page.getByRole("textbox", { name: "Site" }).fill(jira.url);
-  await page.getByLabel("Atlassian account email").fill("me@example.com");
-  await page.getByLabel("API token").fill("wrong");
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("rejected the credentials");
-  await page.getByLabel("API token").fill("secret");
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("app-jira").getByTestId("app-state")).toHaveText(/Connected · read-only/);
+  await expect(page.getByRole("dialog")).toContainText("Sign in with Atlassian");
+  const [popup] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: "Continue to Atlassian" }).click()]);
+  await popup.waitForEvent("close", { timeout: 15_000 });
+  await expect(page.getByTestId("app-jira").getByTestId("app-state")).toHaveText(/Connected · read-only · .* · via Atlassian sign-in/);
+  expect(jira.calls).toContain("POST /oauth/token");
+  expect(await page.evaluate(() => document.querySelector("#jira-token"))).toBeNull(); // no token form when OAuth is set up
 
   // The employee directory: in live mode an export file stands in for the connector.
   await page.getByRole("button", { name: "Connect Employee directory" }).click();
@@ -123,10 +123,8 @@ test("building stage over the API: PRD + directory upload, the real epic, covera
   const state = page.getByTestId("app-jira").getByTestId("app-state");
   if (!/Connected/.test(await state.textContent() ?? "")) {
     await page.getByRole("button", { name: "Connect Jira" }).click();
-    await page.getByRole("textbox", { name: "Site" }).fill(jira.url);
-    await page.getByLabel("Atlassian account email").fill("me@example.com");
-    await page.getByLabel("API token").fill("secret");
-    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    const [popup] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: "Continue to Atlassian" }).click()]);
+    await popup.waitForEvent("close", { timeout: 15_000 });
   }
   await expect(state).toHaveText(/Connected · read-only/);
   await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Covered by directory.yaml from your files");
@@ -146,16 +144,17 @@ test("Devin reads the uploads once the person allows it, and the connect step sh
   await page.getByRole("radio", { name: /Preparing to launch/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // The offer, before any file is added. Allowing it is remembered for the session.
-  await expect(page.getByTestId("agent-consent")).toContainText("Devin can read your files");
-  await page.locator("#agent-mode-consent").selectOption("lite");
-  await page.getByRole("button", { name: "Let Devin read my files" }).click();
+  // No offer before a document exists; the files come first.
   await expect(page.getByTestId("agent-consent")).toHaveCount(0);
-
   const before = devin.sessions.length;
   await page.locator("#plan-files").setInputFiles([file("Ingestion-service-POR-v3.md", "text/markdown"), file("launch-checklist.csv", "text/csv")]);
   // Upload alone reads with the rules only; nothing goes to Devin until the person clicks.
   await expect(page.getByRole("heading", { name: "Plan we read" })).toBeVisible();
+  // The offer, now that there is something to read. Allowing it is remembered for the session.
+  await expect(page.getByTestId("agent-consent")).toContainText("Devin can read these files");
+  await page.locator("#agent-mode-consent").selectOption("lite");
+  await page.getByRole("button", { name: "Let Devin read my files" }).click();
+  await expect(page.getByTestId("agent-consent")).toHaveCount(0);
   await expect(page.locator(".plan-table tbody tr")).toHaveCount(7);
   await expect(page.getByText("Devin has not read these files yet")).toBeVisible();
   expect(devin.sessions.length).toBe(before);
@@ -192,6 +191,7 @@ test("the answer about Devin is kept on the server across reloads, and signing o
   await signIn(page);
   await page.getByRole("radio", { name: /Preparing to launch/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Use sample files" }).click();
   await page.getByRole("button", { name: "Not now" }).click();
   await expect(page.getByTestId("agent-consent")).toHaveCount(0);
   await page.reload();

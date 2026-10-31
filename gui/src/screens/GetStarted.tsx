@@ -61,6 +61,17 @@ export function GetStarted(p: Props) {
                   </span>
                   <span className="text2">{s.desc}</span>
                   <span className="sm" style={{ color: "var(--accent)" }}>{s.gets}</span>
+                  {p.stage === s.id && (
+                    <span className="prep" data-testid="prep">
+                      <span className="small muted" style={{ fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.02em" }}>Have these ready</span>
+                      {PREP[s.id].map(([label, why, req]) => (
+                        <div key={label}>
+                          <span><span style={{ fontWeight: 500 }}>{label}</span> <span className="small muted">· {why}</span></span>
+                          <span className="small" style={{ whiteSpace: "nowrap", fontSize: 12, fontWeight: req === "Required" ? 600 : 400, color: req === "Required" ? "var(--ink)" : "var(--muted)" }}>{req}</span>
+                        </div>
+                      ))}
+                    </span>
+                  )}
                 </span>
               </label>
             ))}
@@ -77,24 +88,10 @@ export function GetStarted(p: Props) {
             <p className="small muted">Any format: documents, slides, spreadsheets, PDFs, exported pages or links from connected apps.</p>
           </div>
 
-          {picked && (
-            <div className="card tight" style={{ padding: "18px 20px" }} data-testid="prep">
-              <h2 style={{ fontSize: 16, marginBottom: 6 }}>Have these ready</h2>
-              {PREP[picked.id].map(([label, why, req]) => (
-                <div key={label} className="need" style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, padding: "8px 0", fontSize: 14 }}>
-                  <span className="stack-sm" style={{ gap: 0 }}>
-                    <span style={{ fontWeight: 500 }}>{label}</span>
-                    <span className="small muted">{why}</span>
-                  </span>
-                  <span className="small" style={{ whiteSpace: "nowrap", fontSize: 12, fontWeight: req === "Required" ? 600 : 400, color: req === "Required" ? "var(--ink)" : "var(--muted)" }}>{req}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </section>
       </div>
 
-      <div className="between" style={{ gap: 16 }}>
+      <div className="between actions" style={{ gap: 16 }}>
         <span className="sm muted">{picked ? "You can change this later — results adapt to your stage." : "Pick where you are so we ask for the right things."}</span>
         <button type="button" className="btn primary" style={{ padding: "0 22px" }} disabled={!picked} onClick={p.onContinue}>Continue</button>
       </div>

@@ -330,7 +330,7 @@ function TeamCard(p: {
             <span className={"badge " + t.status} data-testid="team-status">{STATUS_LABEL[t.status]}</span>
           </span>
           <span className="small muted"><span className="mono">{t.project_key}</span> · {t.role} · {openItems.length === 0 ? "no open gaps" : `${openItems.length} open · next ${fmtDate(next)}`}</span>
-          <span className={"change" + (changed ? " changed" : "")}>{change}</span>
+          <span className="change">{changed && <span className="changed-tag">Changed</span>}<span>{change}</span></span>
         </span>
         <span className="small muted">{p.expanded ? "Hide" : `Show ${t.items.length} items`}</span>
       </button>

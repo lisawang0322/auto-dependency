@@ -11,12 +11,10 @@ import { dirname, join } from "node:path";
 import type { JiraRequest, RawIssue, RawProject } from "./jira-types.js";
 import { McpCacheSource } from "./jira-source.js";
 
-export interface RestCreds {
-  /** https://<you>.atlassian.net */
-  site: string;
-  email: string;
-  token: string;
-}
+/** Basic auth with an API token on the site itself, or an OAuth 2.0 (3LO) bearer token through Atlassian's gateway. */
+export type RestCreds =
+  | { kind?: "basic"; /** https://<you>.atlassian.net */ site: string; email: string; token: string }
+  | { kind: "oauth"; /** The site, for display. */ site: string; cloudId: string; /** https://api.atlassian.com unless a test says otherwise. */ apiBase?: string; /** A current access token; refreshes behind the scenes. */ accessToken: () => Promise<string> };
 
 export function credsFromEnv(env = process.env): RestCreds {
   const site = env.JIRA_SITE, email = env.JIRA_EMAIL, token = env.JIRA_API_TOKEN;
@@ -28,23 +26,34 @@ export class JiraAuthError extends Error {}
 
 export class JiraRest {
   readonly site: string;
-  private auth: string;
+  readonly method: "basic" | "oauth";
+  private base: string;
+  private authHeader: () => Promise<string>;
   calls = 0;
   constructor(creds: RestCreds, private fetchImpl: typeof fetch = fetch) {
     this.site = creds.site.replace(/\/+$/, "");
-    this.auth = "Basic " + Buffer.from(`${creds.email}:${creds.token}`).toString("base64");
+    if (creds.kind === "oauth") {
+      this.method = "oauth";
+      this.base = `${(creds.apiBase ?? "https://api.atlassian.com").replace(/\/+$/, "")}/ex/jira/${encodeURIComponent(creds.cloudId)}`;
+      this.authHeader = async () => `Bearer ${await creds.accessToken()}`;
+    } else {
+      this.method = "basic";
+      this.base = this.site;
+      const basic = "Basic " + Buffer.from(`${creds.email}:${creds.token}`).toString("base64");
+      this.authHeader = async () => basic;
+    }
   }
 
   /** One call. 404 resolves to null; 401/403 throw JiraAuthError; other failures throw. */
   async call(method: "GET" | "POST", path: string, body?: unknown): Promise<any | null> {
     this.calls++;
-    const res = await this.fetchImpl(this.site + path, {
+    const res = await this.fetchImpl(this.base + path, {
       method,
-      headers: { Accept: "application/json", Authorization: this.auth, ...(body ? { "Content-Type": "application/json" } : {}) },
+      headers: { Accept: "application/json", Authorization: await this.authHeader(), ...(body ? { "Content-Type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
     if (res.status === 404) return null;
-    if (res.status === 401 || res.status === 403) throw new JiraAuthError(`Jira ${res.status} on ${method} ${path}: check JIRA_SITE, JIRA_EMAIL and JIRA_API_TOKEN, and that the account can see the project.`);
+    if (res.status === 401 || res.status === 403) throw new JiraAuthError(this.method === "oauth" ? `Jira ${res.status} on ${method} ${path}: the Atlassian sign-in no longer grants access; connect Jira again.` : `Jira ${res.status} on ${method} ${path}: check JIRA_SITE, JIRA_EMAIL and JIRA_API_TOKEN, and that the account can see the project.`);
     if (!res.ok) throw new Error(`Jira ${res.status} on ${method} ${path}: ${(await res.text()).slice(0, 300)}`);
     return res.json();
   }

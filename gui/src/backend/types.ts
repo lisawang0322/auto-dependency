@@ -83,8 +83,17 @@ export interface JiraConnection {
   /** Shown once connected ("sample-company.atlassian.net"). */
   readonly site: string;
   readonly scopes: { can: string[]; cannot: string[] };
-  /** Live mode asks for a site, email and API token instead of the simulated consent page. */
+  /** Live mode without Sign in with Atlassian asks for a site, email and API token instead of the simulated consent page. */
   readonly credentialsNeeded: boolean;
+  /** Live mode with Sign in with Atlassian set up on the server: connect through Atlassian's own consent page in a popup. */
+  readonly oauthAvailable: boolean;
+  /** How the current connection was made, for the card. */
+  readonly method: "oauth" | "token" | "company" | "fixture" | null;
+  /** Open Atlassian's sign-in in a popup and resolve when the server reports the connection (or the popup is closed). */
+  startOAuth(): Promise<JiraState>;
+  /** The person's Jira sites when they have more than one (OAuth), and which is in use. */
+  sites(): Promise<{ sites: { id: string; url: string; name: string }[]; current: string | null }>;
+  chooseSite(cloudId: string): Promise<JiraState>;
   /** The state to start in (live mode is already "on" when the server has credentials from its environment). */
   initialState(): Promise<JiraState>;
   /** Open the authorization step. */

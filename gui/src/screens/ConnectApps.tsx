@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
 import type { JiraConnection, JiraState, UploadedFile, RunSummary, JiraCredentials, Stage, AgentInfo, AgentConsent } from "../backend/types";
 import { fmtDate } from "../model/dates";
@@ -66,8 +66,13 @@ export function ConnectApps(p: Props) {
   const [creds, setCreds] = useState<JiraCredentials>({ site: "", email: "", token: "" });
   const [connectError, setConnectError] = useState<string | null>(null);
   const [dirFile, setDirFile] = useState<File | null>(null);
-  const live = p.jira.credentialsNeeded;
+  const [sites, setSites] = useState<{ sites: { id: string; url: string; name: string }[]; current: string | null } | null>(null);
+  // Live mode: either the token form or Sign in with Atlassian; the sample backend offers neither.
+  const oauth = p.jira.oauthAvailable;
+  const live = p.jira.credentialsNeeded || oauth;
   const on = p.jiraState === "on";
+  // With several Jira sites on the Atlassian account, offer the switch.
+  useEffect(() => { let alive = true; if (on && oauth && p.jira.method === "oauth") p.jira.sites().then((s) => { if (alive) setSites(s); }).catch(() => {}); else setSites(null); return () => { alive = false; }; }, [on, oauth, p.jira]);
   const suggested = p.plan.epic_keys_mentioned[0] ?? null;
   const epicVal = p.epic.trim();
   const resolved = p.target ? allTeamsResolved(p.target.projects, p.choices) : false;
@@ -96,6 +101,21 @@ export function ConnectApps(p: Props) {
     setBusy(false);
     setConsentFor(null);
   };
+  const signInAtlassian = async () => {
+    setBusy(true);
+    setConnectError(null);
+    p.setJiraState("connecting");
+    try {
+      const s = await p.jira.startOAuth();
+      p.setJiraState(s);
+      if (s === "on") setConsentFor(null);
+      else setConnectError("The Atlassian window was closed before access was granted.");
+    } catch (err) {
+      setConnectError(String((err as Error).message ?? err));
+      p.setJiraState("consent");
+    }
+    setBusy(false);
+  };
   const connectJira = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -113,12 +133,8 @@ export function ConnectApps(p: Props) {
   };
   const acceptDirectory = () => { p.onConnectDirectory(live ? dirFile : null); setConsentFor(null); };
 
-  const groups: { title: string; apps: AppDef[] }[] = [];
-  for (const a of apps) {
-    let g = groups.find((x) => x.title === a.group);
-    if (!g) { g = { title: a.group, apps: [] }; groups.push(g); }
-    g.apps.push(a);
-  }
+  const helpers = apps.filter((a) => a.id === "directory" || a.id === "devin");
+  const others = apps.filter((a) => a.id !== "jira" && a.id !== "directory" && a.id !== "devin");
 
   const cardState = (a: AppDef): { state: string; cls: string; btn: string; blocked: boolean; onCls: boolean; act: () => void } => {
     if (a.id === "devin" && !a.allowed) return { state: "Not set up by your company — ask your admin for a Devin service key", cls: "muted", btn: "Unavailable", blocked: true, onCls: false, act: () => {} };
@@ -129,7 +145,7 @@ export function ConnectApps(p: Props) {
     }
     if (!a.works) return { state: "Shown for the design · not built yet", cls: "muted", btn: "Unavailable", blocked: true, onCls: false, act: () => {} };
     if (a.id === "jira") {
-      if (on) return { state: `Connected · read-only · ${p.jira.site}`, cls: "ok", btn: "Disconnect", blocked: false, onCls: true, act: () => p.setJiraState(p.jira.disconnect()) };
+      if (on) return { state: `Connected · read-only · ${p.jira.site}${p.jira.method === "oauth" ? " · via Atlassian sign-in" : p.jira.method === "company" ? " · set up by your company" : ""}`, cls: "ok", btn: "Disconnect", blocked: false, onCls: true, act: () => p.setJiraState(p.jira.disconnect()) };
       if (p.jiraState === "connecting") return { state: "Connecting…", cls: "muted", btn: "Connect", blocked: true, onCls: false, act: () => {} };
       return { state: "Not connected", cls: "muted", btn: "Connect", blocked: false, onCls: false, act: () => openConsent("jira") };
     }
@@ -137,6 +153,32 @@ export function ConnectApps(p: Props) {
     if (p.directory.fromFiles) return { state: `Covered by ${p.directory.fromFiles} from your files`, cls: "ok", btn: "From your files", blocked: true, onCls: true, act: () => {} };
     if (p.directory.connected) return { state: `Connected · read-only · ${p.directory.name}`, cls: "ok", btn: "Disconnect", blocked: false, onCls: true, act: p.onDisconnectDirectory };
     return { state: "Not connected", cls: "muted", btn: "Connect", blocked: false, onCls: false, act: () => openConsent("directory") };
+  };
+
+  /** One card. Connectable apps get their button; the rest only say why they are not, since a dead button invites a click. */
+  const renderCard = (a: AppDef, wide = false) => {
+    const st = cardState(a);
+    const badge = a.allowed ? appBadge(a.id, p.stage) : "";
+    const connectable = a.allowed && a.works;
+    return (
+      <div key={a.id} className={"app-card" + (wide ? " wide" : "") + (!connectable ? " quiet" : "") + (!a.allowed ? " off" : st.onCls ? " on" : "")} data-testid={`app-${a.id}`}>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <span aria-hidden="true" className={"app-mono" + (a.allowed ? "" : " off")}>{a.mono}</span>
+          <div className="stack-sm" style={{ gap: 2, minWidth: 0 }}>
+            <span style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "baseline" }}>
+              <span style={{ fontWeight: 600 }}>{a.name}</span>
+              {badge && <span className={"app-badge " + badge.toLowerCase()}>{badge}</span>}
+              {!connectable && <span className="small muted">· {a.group}</span>}
+            </span>
+            <span className="small muted">{a.desc}</span>
+          </div>
+        </div>
+        <div className="between" style={{ gap: 8 }}>
+          <span className={"small " + st.cls} data-testid="app-state">{st.state}</span>
+          {connectable && <button type="button" className={"btn" + (st.btn === "Connect" ? " primary" : "")} aria-label={`${st.btn} ${a.name}`} disabled={st.blocked} onClick={st.act}>{st.btn}</button>}
+        </div>
+      </div>
+    );
   };
 
   const runText = needsJira
@@ -148,10 +190,23 @@ export function ConnectApps(p: Props) {
       <div className="stack-sm">
         <span className="small muted">Step 3 · connect your apps</span>
         <h1>Connect the tools your teams use</h1>
-        <p className="lead" style={{ maxWidth: 720 }}>Connections are read-only — nothing is created or changed. Apps your company hasn't approved are greyed out; ask your admin to enable them. {needsJira ? "For your stage, Jira is required." : "Nothing is required at your stage — a directory makes suggestions much more useful."}</p>
+        <p className="lead" style={{ maxWidth: 720 }}>{needsJira ? "Jira is required for your stage: it is how we see who is doing the work." : "Nothing is required at your stage; a directory turns team names into people."} Every connection is read-only.</p>
       </div>
 
-      {consentDef?.id === "jira" && live && (
+      {consentDef?.id === "jira" && oauth && (
+        <div className="consent accent" role="dialog" aria-labelledby="atl-title">
+          <span className="eyebrow">Jira · Sign in with Atlassian</span>
+          <h2 id="atl-title">Readiness Review wants read-only access to Jira</h2>
+          <p className="sm muted" style={{ margin: 0 }}>Atlassian's own sign-in page opens in a new window. You sign in there, approve the access below, and come back here. No token to paste; access can be withdrawn from your Atlassian account at any time.</p>
+          <Scopes can={p.jira.scopes.can} cannot={p.jira.scopes.cannot} />
+          {connectError && <div className="notice-grey" role="alert">{connectError}</div>}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <button type="button" className="btn primary" disabled={busy} onClick={signInAtlassian}>{busy ? "Waiting for Atlassian…" : "Continue to Atlassian"}</button>
+            <button type="button" className="btn" onClick={closeConsent}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {consentDef?.id === "jira" && live && !oauth && (
         <form className="consent accent" aria-labelledby="connect-title" onSubmit={connectJira}>
           <span className="eyebrow">Jira Cloud · API token</span>
           <h2 id="connect-title">Connect to your Jira site</h2>
@@ -176,7 +231,7 @@ export function ConnectApps(p: Props) {
           </div>
         </form>
       )}
-      {consentDef?.id === "jira" && !live && (
+      {consentDef?.id === "jira" && !live && !oauth && (
         <div className="consent accent" role="dialog" aria-labelledby="consent-title">
           <span className="eyebrow">Jira · authorization (simulated)</span>
           <h2 id="consent-title">Readiness Review wants read-only access to Jira</h2>
@@ -224,39 +279,23 @@ export function ConnectApps(p: Props) {
         </div>
       )}
 
-      {groups.map((g) => (
-        <section key={g.title} className="stack" style={{ gap: 10 }}>
-          <h2 style={{ fontSize: 16 }}>{g.title}</h2>
-          <div className="app-grid">
-            {g.apps.map((a) => {
-              const s = cardState(a);
-              const badge = a.allowed ? appBadge(a.id, p.stage) : "";
-              return (
-                <div key={a.id} className={"app-card" + (!a.allowed ? " off" : s.onCls ? " on" : "")} data-testid={`app-${a.id}`}>
-                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                    <span aria-hidden="true" className={"app-mono" + (a.allowed ? "" : " off")}>{a.mono}</span>
-                    <div className="stack-sm" style={{ gap: 2, minWidth: 0 }}>
-                      <span style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "baseline" }}>
-                        <span style={{ fontWeight: 600 }}>{a.name}</span>
-                        {badge && <span className={"app-badge " + badge.toLowerCase()}>{badge}</span>}
-                      </span>
-                      <span className="small muted">{a.desc}</span>
-                    </div>
-                  </div>
-                  <div className="between" style={{ gap: 8 }}>
-                    <span className={"small " + s.cls} data-testid="app-state">{s.state}</span>
-                    <button type="button" className={"btn" + (s.btn === "Connect" ? " primary" : "")} aria-label={`${s.btn} ${a.name}`} disabled={s.blocked} onClick={s.act}>{s.btn}</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ))}
-
+      {/* The one connection the stage needs, first and full width; what it unlocks follows right under it. */}
+      <section className="stack" style={{ gap: 10 }}>
+        <h2 style={{ fontSize: 16 }}>Where the work is tracked</h2>
+        <div className="app-grid">{renderCard(apps.find((a) => a.id === "jira")!, true)}</div>
+      </section>
       {needsJira && on && (
         <section className="card">
           <h2>Which work in Jira is this?</h2>
+          {sites && sites.sites.length > 1 && (
+            <div className="stack-sm" style={{ gap: 4, maxWidth: 420 }}>
+              <label htmlFor="jira-site-pick" className="label">Jira site</label>
+              <select id="jira-site-pick" className="input" value={sites.current ?? ""} onChange={async (e) => { p.setJiraState("connecting"); p.setJiraState(await p.jira.chooseSite(e.target.value)); setSites((s) => (s ? { ...s, current: e.target.value } : s)); }}>
+                {sites.sites.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.url.replace(/^https?:\/\//, "")}</option>)}
+              </select>
+              <span className="small muted">Your Atlassian account reaches {sites.sites.length} Jira sites; pick the one this work lives in.</span>
+            </div>
+          )}
           {suggested && epicVal !== suggested && (
             <div className="between notice" style={{ gap: 10 }}>
               <span>Your plan names epic <span className="mono" style={{ fontSize: 14 }}>{suggested}</span>.</span>
@@ -353,8 +392,19 @@ export function ConnectApps(p: Props) {
         </section>
       )}
 
+      <section className="stack" style={{ gap: 10 }}>
+        <h2 style={{ fontSize: 16 }}>Also helpful</h2>
+        <div className="app-grid">{helpers.map((a) => renderCard(a))}</div>
+      </section>
+
+      <details className="more card" style={{ padding: "14px 18px" }} data-testid="more-apps">
+        <summary>Other apps your company could enable <span className="muted" style={{ fontWeight: 400 }}>({others.length})</span></summary>
+        <p className="sm muted" style={{ margin: "8px 0 0" }}>These are part of the design but not connectable yet: some are not built, some your company has not enabled. Ask your admin about the ones you need.</p>
+        <div className="app-grid">{others.map((a) => renderCard(a))}</div>
+      </details>
+
       {p.runError && <div className="notice-grey" role="alert">The review did not finish: {p.runError}</div>}
-      <div className="between" style={{ gap: 16 }}>
+      <div className="between actions" style={{ gap: 16 }}>
         <span className="sm muted" style={{ maxWidth: 640 }}>{runText}</span>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <button type="button" className="btn" onClick={p.onBack}>Back</button>

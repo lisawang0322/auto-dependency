@@ -43,6 +43,9 @@ import { DevinClient, devinFromEnv, readWithDevin, itemRules, signalRuleLines, t
 import { createHash } from "node:crypto";
 import { Store, type User } from "./store.js";
 import { Auth, authFromEnv, LOCAL_USER, type AuthConfig } from "./auth.js";
+import { Atlassian, atlassianFromEnv, type AtlassianConfig } from "./atlassian.js";
+import { TokenBox } from "./crypto.js";
+import { randomBytes } from "node:crypto";
 
 export interface ServerOptions {
   port?: number;
@@ -62,6 +65,12 @@ export interface ServerOptions {
   auth?: AuthConfig;
   /** The SQLite file for users, sessions, settings and decisions (default out/rrr.sqlite; ":memory:" for tests). */
   storePath?: string;
+  /** Jira through Sign in with Atlassian; undefined reads ATLASSIAN_* from the environment, null disables (the token form stays). */
+  atlassian?: AtlassianConfig | null;
+  /** Where the browser reaches this server (OAuth callbacks); default APP_URL, else the sign-in config's, else http://localhost:8787. */
+  appUrl?: string;
+  /** Encrypts stored tokens; default TOKEN_KEY, else SESSION_SECRET, else a random key (connections are lost on restart). */
+  tokenKey?: string;
 }
 
 /** What the GUI shows about the agent's reading of the uploads. */
@@ -110,7 +119,13 @@ export function createApp(opts: ServerOptions = {}) {
   const store = new Store(opts.storePath ?? (process.env.DATA_DIR ? join(process.env.DATA_DIR, "rrr.sqlite") : "out/rrr.sqlite"));
   const authCfg: AuthConfig = opts.auth ?? authFromEnv();
   const auth = new Auth(authCfg, store, log);
+  const appUrl = (opts.appUrl ?? process.env.APP_URL ?? (authCfg.mode === "oidc" ? authCfg.appUrl : "http://localhost:8787")).replace(/\/+$/, "");
   const appOrigin = authCfg.mode === "oidc" ? new URL(authCfg.appUrl).origin : null;
+  const tokenKey = opts.tokenKey ?? process.env.TOKEN_KEY ?? process.env.SESSION_SECRET ?? null;
+  if (!tokenKey) log("tokens: TOKEN_KEY and SESSION_SECRET not set; a random key is used, so Jira connections are lost on restart");
+  const box = new TokenBox(tokenKey ?? randomBytes(32).toString("hex"));
+  const atlCfg = opts.atlassian === undefined ? atlassianFromEnv(process.env, appUrl) : opts.atlassian ? { ...opts.atlassian, appUrl: opts.atlassian.appUrl || appUrl } : null;
+  const atlassian = atlCfg ? new Atlassian(atlCfg, store, box, log) : null;
   /** With sign-in, each organisation's runs, uploads and caches live under orgs/<org>/; without it, the plain roots. */
   const rootsFor = (u: User) => authCfg.mode === "none" ? { runsRoot, uploadRoot, cacheRoot, agentCacheRoot } : {
     runsRoot: join(runsRoot, "orgs", safeSeg(u.org)), uploadRoot: join(uploadRoot, "orgs", safeSeg(u.org)), cacheRoot: join(cacheRoot, "orgs", safeSeg(u.org)), agentCacheRoot: join(agentCacheRoot, "orgs", safeSeg(u.org)),
@@ -120,15 +135,18 @@ export function createApp(opts: ServerOptions = {}) {
     const { JIRA_SITE, JIRA_EMAIL, JIRA_API_TOKEN } = process.env;
     return JIRA_SITE && JIRA_EMAIL && JIRA_API_TOKEN ? { site: JIRA_SITE, email: JIRA_EMAIL, token: JIRA_API_TOKEN } : null;
   }
-  function credsFor(u: User): { creds: RestCreds; user: string | null } | null {
+  /** The person's Atlassian sign-in first, then a token they typed, then the company's environment credentials. */
+  function credsFor(u: User): { creds: RestCreds; user: string | null; method: "oauth" | "token" | "company" } | null {
+    const oauth = atlassian?.creds(u);
+    if (oauth) return { creds: oauth, user: atlassian!.info(u)?.user ?? null, method: "oauth" };
     const mine = userCreds.get(u.id);
-    if (mine) return mine;
-    return companyCreds ? { creds: companyCreds, user: null } : null;
+    if (mine) return { ...mine, method: "token" };
+    return companyCreds ? { creds: companyCreds, user: null, method: "company" } : null;
   }
   function jiraInfo(u: User = LOCAL_USER) {
-    if (fixtureDir) return { connected: true, site: `fixture ${basename(fixtureDir)}`, user: "sample data", fixture: true };
+    if (fixtureDir) return { connected: true, site: `fixture ${basename(fixtureDir)}`, user: "sample data", fixture: true, oauth: false, method: "fixture" as const, sites: 0 };
     const c = credsFor(u);
-    return { connected: !!c, site: c ? c.creds.site.replace(/^https?:\/\//, "") : null, user: c?.user ?? null, fixture: false };
+    return { connected: !!c, site: c ? c.creds.site.replace(/^https?:\/\//, "") : null, user: c?.user ?? null, fixture: false, oauth: !!atlassian, method: c?.method ?? null, sites: c?.method === "oauth" ? (atlassian?.info(u)?.sites ?? 0) : 0 };
   }
   function source(u: User, epic: string, label: string, fresh = false): SourceSpec {
     if (fixtureDir) return { kind: "fixture", dir: fixtureDir };
@@ -301,8 +319,14 @@ export function createApp(opts: ServerOptions = {}) {
       return jiraInfo(u);
     },
 
-    /** Forgets what the person entered; the company's environment credentials, if any, still apply. */
-    async disconnect(u: User) { if (!fixtureDir) userCreds.delete(u.id); return jiraInfo(u); },
+    /** Forgets the person's Atlassian sign-in and any token they typed; the company's environment credentials, if any, still apply. */
+    async disconnect(u: User) { if (!fixtureDir) { userCreds.delete(u.id); atlassian?.disconnect(u); } return jiraInfo(u); },
+    async jiraSites(u: User) { return { sites: atlassian?.sites(u) ?? [], current: atlassian?.connection(u)?.cloud_id ?? null }; },
+    async chooseJiraSite(u: User, body: any) {
+      if (!atlassian) throw new HttpError(400, "Sign in with Atlassian is not set up on this server.");
+      try { await atlassian.chooseSite(u, String(body?.cloud_id ?? "")); } catch (e) { throw new HttpError(400, (e as Error).message); }
+      return jiraInfo(u);
+    },
 
     /** Sync (rules only) → 200 {plan…}; with agent: "devin" → a job (202) whose result adds {agent}. */
     async plan(u: User, body: any): Promise<{ status: number; data: unknown }> {
@@ -429,6 +453,7 @@ export function createApp(opts: ServerOptions = {}) {
     const p = url.pathname;
     const send = (status: number, data: unknown) => { res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify(data)); };
     try {
+      if (p.startsWith("/auth/atlassian/")) { if (!atlassian) return send(404, { error: "Sign in with Atlassian is not set up on this server." }); if (await atlassian.handle(req, res, url, auth.userOf(req))) return; return send(404, { error: `No route ${req.method} ${p}` }); }
       if (p.startsWith("/auth/")) { if (await auth.handle(req, res, url)) return; return send(404, { error: `No route ${req.method} ${p}` }); }
       if (p.startsWith("/api/")) {
         if (p === "/api/health" && req.method === "GET") return send(200, await routes.health(req));
@@ -449,6 +474,8 @@ export function createApp(opts: ServerOptions = {}) {
         if ((m = p.match(/^\/api\/decisions\/(.+)$/)) && req.method === "PUT") return send(200, await routes.saveDecisions(u, decodeURIComponent(m[1]), body));
         if (p === "/api/jira/connect" && req.method === "POST") return send(200, await routes.connect(u, body));
         if (p === "/api/jira/disconnect" && req.method === "POST") return send(200, await routes.disconnect(u));
+        if (p === "/api/jira/sites" && req.method === "GET") return send(200, await routes.jiraSites(u));
+        if (p === "/api/jira/site" && req.method === "POST") return send(200, await routes.chooseJiraSite(u, body));
         if (p === "/api/plan" && req.method === "POST") { const r = await routes.plan(u, body); return send(r.status, r.data); }
         if (p === "/api/target" && req.method === "POST") return send(200, await routes.target(u, body));
         if (p === "/api/run" && req.method === "POST") return send(202, await routes.startRun(u, body));
@@ -508,7 +535,7 @@ if (isMain) {
     const devinWhoami = s.app.devinWhoami;
     const j = s.app.jiraInfo();
     console.error(`Release Readiness Review server on ${s.url}`);
-    console.error(j.fixture ? `  Jira: demo mode, reading ${j.site}` : j.connected ? `  Jira: ${j.site} (from environment)` : "  Jira: not connected; the GUI's Connect step asks for a site, email and API token");
+    console.error(j.fixture ? `  Jira: demo mode, reading ${j.site}` : j.connected ? `  Jira: ${j.site} (from environment)` : j.oauth ? "  Jira: Sign in with Atlassian on the Connect step (ATLASSIAN_CLIENT_ID set)" : "  Jira: not connected; the GUI's Connect step asks for a site, email and API token (set ATLASSIAN_CLIENT_ID and ATLASSIAN_CLIENT_SECRET for Sign in with Atlassian)");
     const a = s.app.agentInfo();
     console.error(s.app.auth.mode === "oidc" ? "  Sign-in: with your identity provider (OIDC_ISSUER)" : "  Sign-in: off (AUTH=none); set OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET and APP_URL to require it");
     if (a.available) {

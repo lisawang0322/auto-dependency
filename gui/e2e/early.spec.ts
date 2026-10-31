@@ -81,7 +81,7 @@ test("building: PRD + Jira → which needed teams are missing and which approval
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
 
   // Step 3: Jira is required; the needed teams and their projects show once the epic is found.
-  await expect(page.getByText("For your stage, Jira is required.")).toBeVisible();
+  await expect(page.getByText(/Jira is required for your stage/)).toBeVisible();
   await expect(page.getByTestId("app-jira")).toContainText("Required");
   const run = page.getByRole("button", { name: "Check my team and approvals" });
   await expect(run).toBeDisabled();

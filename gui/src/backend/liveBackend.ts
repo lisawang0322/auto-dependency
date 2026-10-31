@@ -7,7 +7,7 @@ import { PlanDraft, ReleaseTarget, Run, Signal, Starter, type Stage } from "@rrr
 import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, JiraConnection, JiraCredentials, JiraState, PlanExtract, StarterRunInput, AgentInfo, AgentRead, AgentReadStage, ExtractOptions, Settings, UserInfo } from "./types";
 import { fmtDate } from "../model/dates";
 
-export interface JiraInfo { connected: boolean; site: string | null; user: string | null; fixture: boolean }
+export interface JiraInfo { connected: boolean; site: string | null; user: string | null; fixture: boolean; oauth?: boolean; method?: "oauth" | "token" | "company" | "fixture" | null; sites?: number }
 
 async function apiRaw<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<{ status: number; data: T }> {
   const res = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
@@ -128,13 +128,35 @@ export class LiveJiraConnection implements JiraConnection {
   site = "";
   user: string | null = null;
   fixture = false;
-  readonly credentialsNeeded = true;
+  oauthAvailable = false;
+  method: JiraConnection["method"] = null;
+  /** The token form is the fallback when Sign in with Atlassian is not set up on the server. */
+  get credentialsNeeded() { return !this.oauthAvailable; }
   readonly scopes = {
     can: ["Read issues, comments, links and due dates", "Read projects, components and fix versions", "Read user names, to find owners"],
     cannot: ["Create, edit, comment on or move issues"],
   };
   constructor(info?: JiraInfo) { if (info) this.take(info); }
-  private take(info: JiraInfo) { this.site = info.site ?? ""; this.user = info.user; this.fixture = info.fixture; return info.connected ? "on" as const : "off" as const; }
+  private take(info: JiraInfo) { this.site = info.site ?? ""; this.user = info.user; this.fixture = info.fixture; this.oauthAvailable = !!info.oauth; this.method = info.method ?? null; return info.connected ? "on" as const : "off" as const; }
+  /** Atlassian's consent page in a popup; the callback page posts a message and closes. Poll health too, for browsers that block the message. */
+  async startOAuth(): Promise<JiraState> {
+    const popup = window.open("/auth/atlassian/start?popup=1", "rrr-atlassian", "popup=yes,width=620,height=720");
+    if (!popup) { location.href = `/auth/atlassian/start?next=${encodeURIComponent(location.pathname + location.search)}`; return "connecting"; }
+    const outcome = await new Promise<"done" | "closed" | "failed">((resolve) => {
+      const onMessage = (e: MessageEvent) => { if (e.origin === location.origin && e.data?.type === "rrr:atlassian") { cleanup(); resolve(e.data.ok ? "done" : "failed"); } };
+      const timer = setInterval(async () => {
+        if (popup.closed) { cleanup(); resolve("closed"); return; }
+        const h = await probeServer(1000).catch(() => null);
+        if (h?.jira.connected && h.jira.method === "oauth") { cleanup(); try { popup.close(); } catch { /* cross-origin while on Atlassian */ } resolve("done"); }
+      }, 1000);
+      const cleanup = () => { window.removeEventListener("message", onMessage); clearInterval(timer); };
+      window.addEventListener("message", onMessage);
+    });
+    if (outcome === "failed") throw new Error("Atlassian did not grant access. Try again, and check the site you picked.");
+    return this.initialState();
+  }
+  async sites() { return api<{ sites: { id: string; url: string; name: string }[]; current: string | null }>("GET", "/api/jira/sites"); }
+  async chooseSite(cloudId: string): Promise<JiraState> { return this.take(await api<JiraInfo>("POST", "/api/jira/site", { cloud_id: cloudId })); }
   async initialState(): Promise<JiraState> {
     const h = await probeServer();
     return h ? this.take(h.jira) : "off";

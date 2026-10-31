@@ -16,7 +16,7 @@ async function pickLaunching(page: Page) {
   const prep = page.getByTestId("prep");
   await expect(prep).toContainText("Plan of record (doc or slides)");
   await expect(prep).toContainText("Access to Jira and the release epic");
-  await expect(prep.locator(".need")).toHaveCount(4);
+  await expect(prep.locator("div")).toHaveCount(4); // one row per thing to have ready, inside the chosen stage card
   await expect(page.getByTestId("stage-chip")).toHaveText("Stage: Preparing to launch");
   await cont.click();
 }
@@ -49,10 +49,10 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await page.getByRole("button", { name: "Show source" }).nth(3).click();
   await expect(page.getByTestId("quote-p4")).toContainText("SRE capacity and on-call will be in place the week before launch.");
   // inferred date is flagged until edited
-  await expect(page.getByText("is a guess. Confirm the date.")).toHaveCount(4); // SRE item + 3 relative checklist dates
-  await expect(page.getByText('POR says "the week before launch" — Nov 13 is a guess. Confirm the date.')).toBeVisible();
+  await expect(page.locator("[data-testid^=inferred-p]")).toHaveCount(4); // SRE item + 3 relative checklist dates
+  await expect(page.getByTestId("inferred-note")).toContainText("4 dates were inferred");
   await page.getByLabel("Due date for SRE capacity and on-call in place").fill("2026-11-12");
-  await expect(page.getByText("is a guess. Confirm the date.")).toHaveCount(3);
+  await expect(page.locator("[data-testid^=inferred-p]")).toHaveCount(3);
   await expect(page.getByText("Edited · was Nov 13")).toBeVisible();
   await expect(confirm).toBeEnabled();
   await confirm.click();
@@ -61,9 +61,11 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await expect(page.getByRole("heading", { name: "Connect the tools your teams use" })).toBeVisible();
   await expect(page.getByTestId("app-jira")).toContainText("Required");
   await expect(page.getByTestId("app-directory")).toContainText("Recommended");
+  // Apps that cannot be connected are folded away and carry no button.
+  await page.getByTestId("more-apps").locator("summary").click();
   await expect(page.getByTestId("app-asana").getByTestId("app-state")).toHaveText("Not enabled by your company");
   await expect(page.getByTestId("app-confluence").getByTestId("app-state")).toHaveText("Shown for the design · not built yet");
-  await expect(page.getByRole("button", { name: "Unavailable Confluence" })).toBeDisabled();
+  await expect(page.getByTestId("app-confluence").getByRole("button")).toHaveCount(0);
   const run = page.getByRole("button", { name: "Run readiness review" });
   await expect(run).toBeDisabled();
   await expect(page.getByText("Connect Jira to continue")).toBeVisible();

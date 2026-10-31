@@ -209,6 +209,26 @@ memory under their user; each organisation's runs, uploads and caches live under
 require same-origin JSON requests. `server/tests/fake-idp.ts` is the provider the tests sign in with.
 Keep secrets in a `.env` you never commit (it is in `.gitignore`).
 
+## Jira through Sign in with Atlassian
+
+With an Atlassian OAuth 2.0 app registered, the Jira card on Connect your apps opens Atlassian's own
+consent page in a popup instead of asking for an API token. Register the app at developer.atlassian.com
+(Create → OAuth 2.0 integration), give it the Jira API classic scopes `read:jira-work` and `read:jira-user`,
+and set its callback URL to `APP_URL + /auth/atlassian/callback`. Then:
+
+```
+ATLASSIAN_CLIENT_ID=…  ATLASSIAN_CLIENT_SECRET=…
+TOKEN_KEY=<long random string>      # encrypts stored tokens at rest (SESSION_SECRET is used when unset)
+```
+
+The person signs in at Atlassian, approves read-only access, and the window closes. The server stores
+the access and refresh tokens per person, encrypted with AES-256-GCM, refreshes the access token before
+it expires (Atlassian rotates refresh tokens; the new one is stored at once), and reads Jira through
+`https://api.atlassian.com/ex/jira/<cloudId>` with a bearer token. An account with several Jira sites
+gets a site switch on the epic step. Disconnect deletes the tokens. Without `ATLASSIAN_CLIENT_ID` the
+token form stays, so a laptop setup and the CLI's `JIRA_*` variables keep working. The fake Jira in
+`skills/release-reader/tests/fake-jira.ts` also plays Atlassian's OAuth endpoints for the tests.
+
 ## Devin behind the upload step
 
 With `DEVIN_API_KEY` set (a Devin service-user key, held by the server and never shown to the browser), the
@@ -328,8 +348,10 @@ Still sample or deliberately simple:
 
 - **Sample mode's Jira** is the fixture snapshot behind a simulated consent page; it only knows
   INGEST-142.
-- **Connect apps.** Only Jira and the employee directory work. The directory is a team-list export
-  read the same way as an uploaded team list, not a live directory connector. Linear, Confluence,
+- **Connect apps.** Only Jira and the employee directory work. Jira connects through Sign in with
+  Atlassian when the company has registered the app, otherwise through an API token. The directory is a
+  team-list export read the same way as an uploaded team list, not a live directory connector; no
+  directory product exposes a sign-in the app could use yet. Linear, Confluence,
   Google Drive and Aha! are shown as the PRD asks but cannot be connected; Asana, SharePoint,
   Productboard, the HR org chart and Slack are shown as not enabled by the company.
 - **The early stages' sample data.** The sample PRD and directory are the tool author's placeholders,

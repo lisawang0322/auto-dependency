@@ -102,7 +102,7 @@ Constraints: sample data only. The review screen states what the tool can't see:
 The product is built so that every action stays in the GUI and the company's accounts do the work behind it:
 
 1. **Sign in** with the company identity provider (OpenID Connect; Microsoft Entra ID first). The server keeps a session cookie and a small store of users, connections, runs and decisions, so decisions leave the browser's local storage. A no-sign-in mode keeps the demo and the tests working.
-2. **Jira through Sign in with Atlassian** (OAuth 2.0, read-only scopes) instead of an API token. The token is stored per user, encrypted at rest, and revoked on disconnect.
+2. **Jira through Sign in with Atlassian** (built Oct 31): OAuth 2.0 with read-only scopes instead of an API token; Atlassian's consent page opens in a popup, the tokens are stored per user encrypted at rest, refreshed before expiry, and deleted on disconnect; Jira is read through Atlassian's gateway. The API-token form remains only where no app is registered.
 3. **Devin behind the upload step** (built Oct 31). A Devin service-user key held by the server, never by the person. On the Your plan step the person is asked once whether Devin may read their files; if so, each plan document is uploaded to Devin and one short session reads it with the reader skill's instructions and returns the items as structured output, which go through Stage A's quote check. Reading is cached per document, capped in ACUs per session, and falls back to the rules with the error shown. Sessions are attributed to the signed-in person once sign-in exists.
 4. **Hardening** a multi-user server needs: HTTPS, an encryption key for stored tokens, OAuth state and CSRF checks, a connection audit log.
 
