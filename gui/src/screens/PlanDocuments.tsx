@@ -57,14 +57,16 @@ export const PLAN_INTRO: Record<Stage, string> = {
 export function fileSummary(entry: { read_as: string[]; notes: string }): string {
   const n = entry.notes;
   if (!n) return "";
-  if (entry.read_as.includes("launch_checks")) { const m = n.match(/(\d+) checks · (\d+) apply/); return m ? `${m[2]} of ${m[1]} checks apply to this release` : n; }
-  if (entry.read_as.includes("teams_and_owners")) { const m = n.match(/(\d+) teams.*?(\d+) (?:owners|people)/); return m ? `${m[1]} teams, ${m[2]} people` : n; }
+  const standIn = /sample data stands in/.test(n) ? " · sample data stands in for this file" : "";
+  const done = (s: string) => s + standIn;
+  if (entry.read_as.includes("launch_checks")) { const m = n.match(/(\d+) checks · (\d+) apply/); return done(m ? `${m[2]} of ${m[1]} checks apply to this release` : n); }
+  if (entry.read_as.includes("teams_and_owners")) { const m = n.match(/(\d+) teams.*?(\d+) (?:owners|people)/); return done(m ? `${m[1]} teams, ${m[2]} people` : n); }
   if (entry.read_as.includes("plan_items")) {
     const sig = n.match(/(\d+) signals/);
-    if (sig) return `${sig[1]} line${sig[1] === "1" ? "" : "s"} point to a team or an approval`;
+    if (sig) return done(`${sig[1]} line${sig[1] === "1" ? "" : "s"} point to a team or an approval`);
     const items = n.match(/(\d+) plan items/), slides = n.match(/(\d+) slides/), teams = n.match(/names (\d+) teams/), epic = n.match(/epic ([A-Z][A-Z0-9]+-\d+)/), agent = n.match(/(\d+) items? read by the agent/);
     if (!items) return n;
-    return [`${items[1]} commitment${items[1] === "1" ? "" : "s"} found${slides ? ` on ${slides[1]} slides` : ""}`, teams ? `${teams[1]} teams named` : null, epic ? `epic ${epic[1]}` : null, agent ? `${agent[1]} from the agent` : null].filter(Boolean).join(" · ");
+    return done([`${items[1]} commitment${items[1] === "1" ? "" : "s"} found${slides ? ` on ${slides[1]} slides` : ""}`, teams ? `${teams[1]} teams named` : null, epic ? `epic ${epic[1]}` : null, agent ? `${agent[1]} from the agent` : null].filter(Boolean).join(" · "));
   }
   return n;
 }
@@ -134,9 +136,8 @@ export function PlanDocuments(p: Props) {
           >
             <span style={{ fontWeight: 500 }}>Drop any files here</span>
             <span className="small muted">Docs, slides, spreadsheets, PDFs, CSV or YAML — any format</span>
-            <label htmlFor="plan-files" className="btn dark" style={{ cursor: "pointer" }}>Choose files</label>
+            <label htmlFor="plan-files" className="btn" style={{ cursor: "pointer" }}>Choose files</label>
             <input id="plan-files" className="sr-only" type="file" multiple onChange={(e) => { p.onAddFiles(e.target.files); e.target.value = ""; }} />
-            <span className="small muted">Plan lives in Confluence, Google Drive or Aha!? Export it for now — those connectors are shown, not built.</span>
           </div>
           {p.files.length > 0 && (
             <div className="stack-sm" style={{ gap: 8 }}>
@@ -200,19 +201,37 @@ export function PlanDocuments(p: Props) {
         </section>
       )}
       {agentOn && !reading && hasPlan && p.plan && (
-        <section className="card" data-testid="agent-panel" style={{ gap: 10 }}>
+        <section className={"card" + (read?.status === "done" ? " agent-done" : "")} data-testid="agent-panel" style={{ gap: 10 }}>
           <div className="between" style={{ gap: 12, alignItems: "flex-start" }}>
-            <div className="stack-sm" style={{ gap: 4 }}>
-              <span style={{ fontWeight: 600 }}>{read ? `${agent.info.name} has read your files` : `Ready for ${agent.info.name} to read`}</span>
-              <span className="sm muted">
-                {read
-                  ? "Change a file or how it is read, and the reading above no longer applies; read again to refresh it."
-                  : docs.length ? `Check "Read as" on each file first. Then ${agent.info.name} opens ${docs.map((f) => f.name).join(", ")}${modeLabel ? ` in ${modeLabel} mode` : ""} and writes down what ${docs.length === 1 ? "it" : "they"} commit${docs.length === 1 ? "s" : ""} to. Nothing is sent until you click.` : "Add a plan document first; checklists and team lists are read by the rules."}
-              </span>
-            </div>
+            {read?.status === "done" ? (
+              <div className="stack-sm" style={{ gap: 4 }} data-testid="agent-result">
+                <span>
+                  <strong style={{ fontWeight: 600 }}>{agent.info.name}{read.mode ? ` (${read.mode})` : ""} read {launching ? `${read.items_read} plan item${read.items_read === 1 ? "" : "s"}` : `${read.signals_read} signal${read.signals_read === 1 ? "" : "s"}`}</strong>
+                  {read.files_read.length > 0 && <> from {read.files_read.map((f) => `${f.name}${f.how ? ` (${f.how})` : ""}`).join(", ")}</>}
+                  {read.cached ? " · from an earlier reading of the same file" : ""}
+                  {read.session_url && <> · <a href={read.session_url} target="_blank" rel="noreferrer">open the {agent.info.name} session</a></>}
+                </span>
+                {read.unreadable.length > 0 && <span className="small">Could not open: {read.unreadable.map((u) => `${u.name}${u.reason ? ` (${u.reason})` : ""}`).join(", ")}</span>}
+                {read.warnings.length > 0 && <span className="small">{read.warnings.join(" ")}</span>}
+                {unchecked > 0 && <span className="small">{unchecked} item{unchecked === 1 ? "" : "s"} could not be checked against the file (the server cannot open that format); confirm them below.</span>}
+                <span className="small muted">Change a file or how it is read and this reading no longer applies; read again to refresh it.</span>
+              </div>
+            ) : read?.status === "failed" ? (
+              <div className="stack-sm" style={{ gap: 4 }} role="alert" data-testid="agent-result">
+                <span><strong style={{ fontWeight: 600 }}>{agent.info.name} could not read your files.</strong> {read.error}</span>
+                <span className="small muted">Showing what the rules found on their own.</span>
+              </div>
+            ) : (
+              <div className="stack-sm" style={{ gap: 4 }}>
+                <span style={{ fontWeight: 600 }}>Ready for {agent.info.name} to read</span>
+                <span className="sm muted">
+                  {docs.length ? `Check "Read as" on each file first. Then ${agent.info.name} opens ${docs.map((f) => f.name).join(", ")}${modeLabel ? ` in ${modeLabel} mode` : ""} and writes down what ${docs.length === 1 ? "it" : "they"} commit${docs.length === 1 ? "s" : ""} to. Nothing is sent until you click.` : "Add a plan document first; checklists and team lists are read by the rules."}
+                </span>
+              </div>
+            )}
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 10 }}>
               <ModeSelect agent={agent} id="agent-mode-plan" />
-              <button type="button" className={"btn" + (read ? "" : " primary")} disabled={!docs.length} onClick={agent.read_now} data-testid="agent-read">{read ? `Read again with ${agent.info.name}` : `Read with ${agent.info.name}`}</button>
+              <button type="button" className={"btn" + (read ? "" : " primary")} disabled={!docs.length} onClick={agent.read_now} data-testid="agent-read">{read?.status === "failed" ? "Try again" : read ? `Read again with ${agent.info.name}` : `Read with ${agent.info.name}`}</button>
             </div>
           </div>
         </section>
@@ -234,25 +253,6 @@ export function PlanDocuments(p: Props) {
             );
           })}
         </section>
-      )}
-      {!reading && read && read.status === "failed" && (
-        <div className="notice-grey between" role="alert" data-testid="agent-result" style={{ gap: 12 }}>
-          <span>{agent.info.name} could not read your files: {read.error} Showing what the rules found on their own.</span>
-          <button type="button" className="btn" style={{ minHeight: 36 }} onClick={agent.read_now}>Try again</button>
-        </div>
-      )}
-      {!reading && read && read.status === "done" && (
-        <div className="notice stack-sm" data-testid="agent-result" style={{ gap: 4 }}>
-          <span>
-            <strong style={{ fontWeight: 600 }}>{agent.info.name}{read.mode ? ` (${read.mode})` : ""} read {launching ? `${read.items_read} plan item${read.items_read === 1 ? "" : "s"}` : `${read.signals_read} signal${read.signals_read === 1 ? "" : "s"}`}</strong>
-            {read.files_read.length > 0 && <> from {read.files_read.map((f) => `${f.name}${f.how ? ` (${f.how})` : ""}`).join(", ")}</>}
-            {read.cached ? " · from an earlier reading of the same file" : ""}
-            {read.session_url && <> · <a href={read.session_url} target="_blank" rel="noreferrer">open the {agent.info.name} session</a></>}
-          </span>
-          {read.unreadable.length > 0 && <span className="small">Could not open: {read.unreadable.map((u) => `${u.name}${u.reason ? ` (${u.reason})` : ""}`).join(", ")}</span>}
-          {read.warnings.length > 0 && <span className="small">{read.warnings.join(" ")}</span>}
-          {unchecked > 0 && <span className="small">{unchecked} item{unchecked === 1 ? "" : "s"} could not be checked against the file (the server cannot open that format); confirm them below.</span>}
-        </div>
       )}
 
       {hasPlan && p.plan && !launching && p.signals.length > 0 && (
@@ -336,7 +336,7 @@ export function PlanDocuments(p: Props) {
         </span>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <button type="button" className="btn" onClick={p.onBack}>Back</button>
-          <button type="button" className="btn primary" style={{ padding: "0 20px" }} disabled={notReady} onClick={p.onConfirm}>Confirm and connect apps</button>
+          <button type="button" className={"btn " + (agentOn && !read && docs.length ? "outline-accent" : "primary")} style={{ padding: "0 20px" }} disabled={notReady} onClick={p.onConfirm}>Confirm and connect apps</button>
         </div>
       </div>
     </div>

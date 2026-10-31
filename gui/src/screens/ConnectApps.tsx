@@ -143,7 +143,7 @@ export function ConnectApps(p: Props) {
       if (p.agent.consent === "yes") return { state: `Connected · set up by your company · reads your plan files${p.agent.mode ? ` in ${p.agent.mode} mode` : ""}`, cls: "ok", btn: "Disconnect", blocked: false, onCls: true, act: () => p.agent.setConsent("no") };
       return { state: "Not connected", cls: "muted", btn: "Connect", blocked: false, onCls: false, act: () => openConsent("devin") };
     }
-    if (!a.works) return { state: "Shown for the design · not built yet", cls: "muted", btn: "Unavailable", blocked: true, onCls: false, act: () => {} };
+    if (!a.works) return { state: "Not available yet", cls: "muted", btn: "Unavailable", blocked: true, onCls: false, act: () => {} };
     if (a.id === "jira") {
       if (on) return { state: `Connected · read-only · ${p.jira.site}${p.jira.method === "oauth" ? " · via Atlassian sign-in" : p.jira.method === "company" ? " · set up by your company" : ""}`, cls: "ok", btn: "Disconnect", blocked: false, onCls: true, act: () => p.setJiraState(p.jira.disconnect()) };
       if (p.jiraState === "connecting") return { state: "Connecting…", cls: "muted", btn: "Connect", blocked: true, onCls: false, act: () => {} };
@@ -233,7 +233,7 @@ export function ConnectApps(p: Props) {
       )}
       {consentDef?.id === "jira" && !live && !oauth && (
         <div className="consent accent" role="dialog" aria-labelledby="consent-title">
-          <span className="eyebrow">Jira · authorization (simulated)</span>
+          <span className="eyebrow">Jira · sample sign-in</span>
           <h2 id="consent-title">Readiness Review wants read-only access to Jira</h2>
           <div className="stack-sm" style={{ gap: 4 }}><span className="label">Site</span><span className="mono" style={{ fontSize: 14 }}>{p.jira.site}</span></div>
           <Scopes can={p.jira.scopes.can} cannot={p.jira.scopes.cannot} />
@@ -241,7 +241,6 @@ export function ConnectApps(p: Props) {
             <button type="button" className="btn primary" disabled={busy} onClick={acceptJira}>Accept</button>
             <button type="button" className="btn" onClick={closeConsent}>Cancel</button>
           </div>
-          <span className="small muted">In the product this is Atlassian's own consent page, opened in a new window.</span>
         </div>
       )}
       {consentDef?.id === "devin" && (
@@ -259,7 +258,7 @@ export function ConnectApps(p: Props) {
       )}
       {consentDef?.id === "directory" && (
         <div className="consent accent" role="dialog" aria-labelledby="dir-title">
-          <span className="eyebrow">Employee directory · {live ? "from a file" : "authorization (simulated)"}</span>
+          <span className="eyebrow">Employee directory · {live ? "from a file" : "sample sign-in"}</span>
           <h2 id="dir-title">Readiness Review wants read-only access to your employee directory</h2>
           {live ? (
             <div className="stack-sm" style={{ gap: 4, maxWidth: 420 }}>
@@ -275,7 +274,6 @@ export function ConnectApps(p: Props) {
             <button type="button" className="btn primary" disabled={live && !dirFile} onClick={acceptDirectory}>Accept</button>
             <button type="button" className="btn" onClick={closeConsent}>Cancel</button>
           </div>
-          {!live && <span className="small muted">In the product this is the app's own sign-in and consent page.</span>}
         </div>
       )}
 
@@ -399,7 +397,7 @@ export function ConnectApps(p: Props) {
 
       <details className="more card" style={{ padding: "14px 18px" }} data-testid="more-apps">
         <summary>Other apps your company could enable <span className="muted" style={{ fontWeight: 400 }}>({others.length})</span></summary>
-        <p className="sm muted" style={{ margin: "8px 0 0" }}>These are part of the design but not connectable yet: some are not built, some your company has not enabled. Ask your admin about the ones you need.</p>
+        <p className="sm muted" style={{ margin: "8px 0 0" }}>Not connectable yet. Ask your admin about the ones you need.</p>
         <div className="app-grid">{others.map((a) => renderCard(a))}</div>
       </details>
 

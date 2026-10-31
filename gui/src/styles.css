@@ -1,6 +1,6 @@
 :root {
   --ink: #17191C; --accent: #1F4FBF; --accent-dark: #163A8F; --ground: #F6F6F3; --paper: #FFFFFF;
-  --line: #E2E2DC; --line-soft: #EFEFEA; --line-strong: #C9C9C1; --muted: #5B616B; --text-2: #2E3440;
+  --line: #E2E2DC; --line-soft: #EFEFEA; --line-strong: #C9C9C1; --muted: #4F5560; --text-2: #2E3440;
   --amber-bg: #FFF4DF; --amber: #6B4300; --amber-line: #E3B866; --amber-text: #8A4B00; --amber-input: #C77C1A;
   --late: #8E2A1B; --green: #2F6B3A; --green-bg: #EDF6EE; --green-line: #B9DABF; --green-dark: #1F4D28;
   --blue-bg: #EEF3FF; --blue-line: #C9D6F5; --blue-text: #17306E; --grey-bg: #EEF0F4; --disabled-bg: #E2E2DC; --disabled-text: #6B7079;
@@ -171,3 +171,6 @@ details.more > summary::-webkit-details-marker { display: none; }
 details.more > summary::before { content: "›"; display: inline-block; transition: transform 0.15s; color: var(--muted); }
 details.more[open] > summary::before { transform: rotate(90deg); }
 details.more > .app-grid { margin-top: 12px; }
+
+/* The agent's reading, once done, reads as a result rather than a prompt. */
+.card.agent-done { border-color: var(--blue-line); background: var(--blue-bg); }

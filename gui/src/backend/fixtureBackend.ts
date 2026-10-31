@@ -90,7 +90,7 @@ export class FixtureBackend implements ReviewBackend {
       const fileEntries = files.map((f) => {
         if (f.kind === "other") return { name: f.name, read_as: [], notes: "Nothing used from this file" };
         if (f.kind === "teams") return { name: f.name, read_as: ["teams_and_owners" as const], notes: teamsNote(f) };
-        return { name: f.name, read_as: ["plan_items" as const], notes: `${signals.filter((g) => g.file === f.name).length || (f.sample ? 0 : signals.length)} signals about teams and approvals${f.sample ? "" : " (prototype: read as the sample PRD)"}` };
+        return { name: f.name, read_as: ["plan_items" as const], notes: `${signals.filter((g) => g.file === f.name).length || (f.sample ? 0 : signals.length)} signals about teams and approvals${f.sample ? "" : " (sample data stands in for this file)"}` };
       });
       return { plan: { ...STARTER_PLAN, files: fileEntries }, signals: signals.map((g) => Signal.parse(g)), project: STARTING.project };
     }
@@ -98,10 +98,10 @@ export class FixtureBackend implements ReviewBackend {
     const items = base.items.filter((i) => i.kind !== "checklist" || has("checks"));
     const fileEntries = files.map((f) => {
       if (f.kind === "other") return { name: f.name, read_as: [], notes: "Nothing used from this file" };
-      if (f.kind === "teams") return { name: f.name, read_as: [kindOf.teams], notes: teamsNote(f) + (f.sample ? "" : " (prototype: read as the sample data)") };
+      if (f.kind === "teams") return { name: f.name, read_as: [kindOf.teams], notes: teamsNote(f) + (f.sample ? "" : " (sample data stands in for this file)") };
       const ra = kindOf[f.kind as keyof typeof kindOf];
       const fx = base.files.find((b) => b.read_as.includes(ra));
-      return { name: f.name, read_as: [ra], notes: fx ? fx.notes + (f.sample ? "" : " (prototype: read as the sample data)") : "Nothing used from this file" };
+      return { name: f.name, read_as: [ra], notes: fx ? fx.notes + (f.sample ? "" : " (sample data stands in for this file)") : "Nothing used from this file" };
     });
     return { plan: { ...base, items, files: fileEntries, teams: base.teams.map((t) => ({ ...t, mentioned_in: t.mentioned_in.filter((m) => !m.includes("checklist") || has("checks")) })) }, signals: [], project: null };
   }

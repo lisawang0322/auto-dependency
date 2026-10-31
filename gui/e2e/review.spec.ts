@@ -64,7 +64,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   // Apps that cannot be connected are folded away and carry no button.
   await page.getByTestId("more-apps").locator("summary").click();
   await expect(page.getByTestId("app-asana").getByTestId("app-state")).toHaveText("Not enabled by your company");
-  await expect(page.getByTestId("app-confluence").getByTestId("app-state")).toHaveText("Shown for the design · not built yet");
+  await expect(page.getByTestId("app-confluence").getByTestId("app-state")).toHaveText("Not available yet");
   await expect(page.getByTestId("app-confluence").getByRole("button")).toHaveCount(0);
   const run = page.getByRole("button", { name: "Run readiness review" });
   await expect(run).toBeDisabled();

@@ -118,7 +118,7 @@ export function Review(p: Props) {
         <div className="stack-sm" style={{ gap: 4 }}>
           <span className="small muted">Step 4 · next steps · {STAGE_SHORT[p.stage]}</span>
           <h1>Launch {fmtDate(p.launch)} · {daysOut} days out</h1>
-          <span className="muted">Viewing the {fmtDate(run.release.snapshot_label)}{isLatest ? " (latest)" : ""} run · read {epic}, its links one hop into {hopProjects.join(", ")}, and a search of each team's project</span>
+          <span className="muted">{fmtDate(run.release.snapshot_label)} run{isLatest ? " (latest)" : ""} · {epic}, its linked tickets in {hopProjects.join(", ")}, and each team's project</span>
         </div>
         <div className="stack-sm">
           <span id="run-label" className="small muted">Status by run</span>
@@ -163,7 +163,7 @@ export function Review(p: Props) {
         </div>
         <div className="tile"><div className="small muted">Teams at risk or late</div><div className="big">{riskCount} of {viewTeams.length}</div></div>
         <div className="tile"><div className="small muted">Open findings</div><div className="big" data-testid="open-findings">{openCount}</div><div className="small muted">Comment-only findings not counted</div></div>
-        <div className="tile"><div className="small muted">Your calls</div><div className="big">{decs.filter((d) => d.kind === "kept").length} · {decs.filter((d) => d.kind === "dismissed").length}</div><div className="small muted">kept · dismissed</div></div>
+        {decs.length > 0 && <div className="tile"><div className="small muted">Your calls</div><div className="big">{decs.filter((d) => d.kind === "kept").length} · {decs.filter((d) => d.kind === "dismissed").length}</div><div className="small muted">kept · dismissed</div></div>}
       </div>
 
       <div className="row">
