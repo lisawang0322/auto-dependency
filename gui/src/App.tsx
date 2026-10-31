@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@rrr/schemas";
-import { PLAN_KINDS, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage, type AgentConsent, type AgentRead, type AgentReadStage, type UserInfo } from "./backend/types";
+import { PLAN_KINDS, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage, type AgentConsent, type AgentRead, type AgentReadStage, type ReadProgress, type UserInfo } from "./backend/types";
 import { sampleFilesFor, SAMPLE_DIRECTORY } from "./backend/fixtureBackend";
 import { fmtDate } from "./model/dates";
 import { applyChoices, type TeamChoice } from "./model/review";
@@ -56,6 +56,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
   const [agentMode, setAgentModeState] = useState<string | null>(initialMode);
   const setAgentMode = useCallback((m: string | null) => { setAgentModeState(m); void backend.saveSettings({ agent_mode: m }).catch(() => {}); }, [backend]);
   const [agentStage, setAgentStage] = useState<AgentReadStage | null>(null);
+  const [agentProgress, setAgentProgress] = useState<ReadProgress | null>(null);
   const [agentRead, setAgentRead] = useState<AgentRead | null>(null);
   const [planReading, setPlanReading] = useState(false);
   /** How the current plan was read (agent or rules), so a connector change can re-read the same way without asking again. */
@@ -113,12 +114,13 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
     const my = ++seq.current;
     setAgentRead(null);
     setAgentStage(useAgent ? 0 : null);
+    setAgentProgress(null);
     setPlanReading(true);
     setConfirmed(false);
-    backend.extractPlan(files, stage, { agent: useAgent, onProgress: (st) => { if (my === seq.current) setAgentStage(st); } }).then((r) => {
+    backend.extractPlan(files, stage, { agent: useAgent, onProgress: (st, pr) => { if (my === seq.current) { setAgentStage(st); if (pr) setAgentProgress(pr); } } }).then((r) => {
       if (my !== seq.current) return;
       setPlan(r.plan); setSignals(r.signals); setProject(r.project); setPlanError(null);
-      setAgentRead(r.agent ?? null); setAgentStage(null); setPlanReading(false);
+      setAgentRead(r.agent ?? null); setAgentStage(null); setAgentProgress(null); setPlanReading(false);
       if (r.plan.launch_date) setLaunch(r.plan.launch_date);
     }).catch((e) => { if (my === seq.current) { setPlan(null); setSignals([]); setAgentStage(null); setPlanReading(false); setPlanError(String(e.message ?? e)); } });
   }, [backend, files, stage, hasReadable]);
@@ -255,7 +257,9 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
       </header>
       <main className="wrap page">
         {screen === "start" && (
-          <GetStarted stage={stage} onPick={(s) => { if (stage && s !== stage && files.some((f) => f.via !== "directory")) setPlanNotice(`Stage changed to ${STAGE_SHORT[s]}. Your files are kept; check each file's "Read as" for this stage.`); setStageChoice(s); }} onContinue={() => { if (stage) setScreen("plan"); }} />
+          <GetStarted stage={stage} onPick={(s) => { if (stage && s !== stage && files.some((f) => f.via !== "directory")) setPlanNotice(`Stage changed to ${STAGE_SHORT[s]}. Your files are kept; check each file's "Read as" for this stage.`); setStageChoice(s); }} onContinue={() => { if (stage) setScreen("plan"); }}
+            directory={{ connected: !!directoryFile, name: directoryFile?.name ?? null, fromFiles: uploadedTeamList?.name ?? null }} live={live}
+            onConnectDirectory={connectDirectory} onDisconnectDirectory={disconnectDirectory} />
         )}
         {screen === "plan" && stage && (
           <PlanDocuments
@@ -267,7 +271,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
             onLoadSample={() => setFiles((cur) => { const replaced = cur.filter((f) => f.via !== "directory").length; setPlanNotice(replaced ? `Replaced ${replaced} file${replaced === 1 ? "" : "s"} with the sample set.` : null); return [...sampleFilesFor(stage), ...cur.filter((f) => f.via === "directory")]; })}
             onSetDate={(id, v) => setPlanDates((d) => ({ ...d, [id]: v }))}
             onToggleSignal={(id) => { setSignalsOff((s) => ({ ...s, [id]: !s[id] })); setConfirmed(false); }}
-            agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, mode: agentMode, setMode: setAgentMode, stage: agentStage, reading: planReading, read: agentRead, read_now: readFiles }}
+            agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, mode: agentMode, setMode: setAgentMode, stage: agentStage, progress: agentProgress, reading: planReading, read: agentRead, read_now: readFiles }}
             onBack={() => setScreen("start")}
             onConfirm={() => { setPlanConfirmed(true); setScreen("apps"); }}
           />

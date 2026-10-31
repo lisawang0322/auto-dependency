@@ -1,4 +1,7 @@
+import { useState } from "react";
 import type { Stage } from "../backend/types";
+import type { DirectoryState } from "./ConnectApps";
+import { DirectoryDialog } from "./DirectoryDialog";
 
 /** Step 1 (PRD R14): what the tool does, what counts as a plan, which stage the project is at, what to have ready. */
 
@@ -35,10 +38,17 @@ const PREP: Record<Stage, [string, string, string][]> = {
 
 const PLAN_KINDS = ["PRD", "One-pager", "POR slide deck", "Project brief", "Launch checklist", "Roadmap export"];
 
-interface Props { stage: Stage | null; onPick: (s: Stage) => void; onContinue: () => void }
+interface Props {
+  stage: Stage | null; onPick: (s: Stage) => void; onContinue: () => void;
+  /** The employee directory comes first: it grounds every team the reading names in the real org. */
+  directory: DirectoryState; live: boolean; onConnectDirectory: (file: File | null) => void; onDisconnectDirectory: () => void;
+}
 
 export function GetStarted(p: Props) {
   const picked = STAGES.find((s) => s.id === p.stage) ?? null;
+  const [dirOpen, setDirOpen] = useState(false);
+  const dirOn = p.directory.connected || !!p.directory.fromFiles;
+  const dirState = p.directory.connected ? `Connected · read-only · ${p.directory.name}` : p.directory.fromFiles ? `Covered by ${p.directory.fromFiles} from your files` : "Not connected";
   return (
     <div className="stack" style={{ gap: 24 }}>
       <div className="stack-sm" style={{ gap: 10, maxWidth: 760 }}>
@@ -79,6 +89,23 @@ export function GetStarted(p: Props) {
         </section>
 
         <section className="stack" style={{ flex: "1 1 340px", minWidth: 0, gap: 12 }}>
+          <div className={"card" + (dirOn ? " agent-done" : "")} style={{ gap: 10 }} data-testid="start-directory">
+            <div className="between" style={{ gap: 8, alignItems: "baseline" }}>
+              <h2 style={{ fontSize: 16 }}>Connect your employee directory first</h2>
+              <span className="small muted">Recommended</span>
+            </div>
+            <p className="sm text2">Before any document: it tells the reading which teams exist, so each owner is matched to a real team and its people rather than guessed from the wording. Read-only.</p>
+            <span className={"sm " + (dirOn ? "ok" : "muted")} data-testid="start-directory-state">{dirState}</span>
+            {dirOpen ? (
+              <DirectoryDialog live={p.live} onAccept={(f) => { p.onConnectDirectory(f); setDirOpen(false); }} onCancel={() => setDirOpen(false)} />
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {p.directory.connected
+                  ? <button type="button" className="btn" onClick={p.onDisconnectDirectory}>Disconnect directory</button>
+                  : <button type="button" className="btn" disabled={!!p.directory.fromFiles} onClick={() => setDirOpen(true)}>Connect directory</button>}
+              </div>
+            )}
+          </div>
           <div className="card" style={{ gap: 10 }}>
             <h2 style={{ fontSize: 16 }}>What counts as a plan?</h2>
             <p className="sm text2">Anything that says what you're building, for whom, and by when. Teams write these very differently — that's fine.</p>
@@ -92,7 +119,7 @@ export function GetStarted(p: Props) {
       </div>
 
       <div className="between actions" style={{ gap: 16 }}>
-        <span className="sm muted">{picked ? "You can change this later — results adapt to your stage." : "Pick where you are so we ask for the right things."}</span>
+        <span className="sm muted">{!picked ? "Pick where you are so we ask for the right things." : dirOn ? "You can change this later — results adapt to your stage." : "You can continue without a directory; teams are then inferred from your documents and get no names."}</span>
         <button type="button" className="btn primary" style={{ padding: "0 22px" }} disabled={!picked} onClick={p.onContinue}>Continue</button>
       </div>
     </div>

@@ -4,6 +4,7 @@ import type { JiraConnection, JiraState, UploadedFile, RunSummary, JiraCredentia
 import { fmtDate } from "../model/dates";
 import { allTeamsResolved, isResolved, type TeamChoice } from "../model/review";
 import { ModeSelect } from "./PlanDocuments";
+import { DirectoryDialog, Scopes } from "./DirectoryDialog";
 
 /**
  * Step 3 (PRD R15): a gallery of the apps a company's teams use, grouped by kind. Apps the company allows
@@ -65,7 +66,6 @@ export function ConnectApps(p: Props) {
   const [busy, setBusy] = useState(false);
   const [creds, setCreds] = useState<JiraCredentials>({ site: "", email: "", token: "" });
   const [connectError, setConnectError] = useState<string | null>(null);
-  const [dirFile, setDirFile] = useState<File | null>(null);
   const [sites, setSites] = useState<{ sites: { id: string; url: string; name: string }[]; current: string | null } | null>(null);
   // Live mode: either the token form or Sign in with Atlassian; the sample backend offers neither.
   const oauth = p.jira.oauthAvailable;
@@ -90,7 +90,7 @@ export function ConnectApps(p: Props) {
   // Building: needed teams without a Jira project are expected, and the "Teams your plan needs" box says so.
   const targetWarnings = (p.target?.warnings ?? []).filter((w) => !building || (!/: unresolved\. /.test(w) && !/in the team list but not in the plan/.test(w)));
 
-  const openConsent = (id: AppId) => { setConnectError(null); setDirFile(null); setConsentFor(id); if (id === "jira") p.setJiraState(p.jira.start()); };
+  const openConsent = (id: AppId) => { setConnectError(null); setConsentFor(id); if (id === "jira") p.setJiraState(p.jira.start()); };
   const closeConsent = () => { if (consentFor === "jira") p.setJiraState(p.jira.cancel()); setConsentFor(null); };
 
   const acceptJira = async () => {
@@ -131,7 +131,6 @@ export function ConnectApps(p: Props) {
     }
     setBusy(false);
   };
-  const acceptDirectory = () => { p.onConnectDirectory(live ? dirFile : null); setConsentFor(null); };
 
   // What leads depends on the stage: Jira when work is tracked there, the directory when a project is just starting.
   const primaryId: AppId = p.stage === "starting" ? "directory" : "jira";
@@ -153,8 +152,9 @@ export function ConnectApps(p: Props) {
       return { state: "Not connected", cls: "muted", btn: "Connect", blocked: false, onCls: false, act: () => openConsent("jira") };
     }
     // directory
-    if (p.directory.fromFiles) return { state: `Covered by ${p.directory.fromFiles} from your files`, cls: "ok", btn: "From your files", blocked: true, onCls: true, act: () => {} };
+    // The directory connected on step 1 outranks a team list among the uploads: it is the company's own record.
     if (p.directory.connected) return { state: `Connected · read-only · ${p.directory.name}`, cls: "ok", btn: "Disconnect", blocked: false, onCls: true, act: p.onDisconnectDirectory };
+    if (p.directory.fromFiles) return { state: `Covered by ${p.directory.fromFiles} from your files`, cls: "ok", btn: "From your files", blocked: true, onCls: true, act: () => {} };
     return { state: "Not connected", cls: "muted", btn: "Connect", blocked: false, onCls: false, act: () => openConsent("directory") };
   };
 
@@ -250,24 +250,7 @@ export function ConnectApps(p: Props) {
         </div>
       )}
       {consentDef?.id === "directory" && (
-        <div className="consent accent" role="dialog" aria-labelledby="dir-title">
-          <span className="eyebrow">Employee directory · {live ? "from a file" : "sample sign-in"}</span>
-          <h2 id="dir-title">Readiness Review wants read-only access to your employee directory</h2>
-          {live ? (
-            <div className="stack-sm" style={{ gap: 4, maxWidth: 420 }}>
-              <label htmlFor="directory-file" className="label">Directory export (a team list or org chart: YAML, CSV or spreadsheet)</label>
-              <input id="directory-file" type="file" className="input" style={{ padding: "9px 12px" }} onChange={(e) => setDirFile(e.target.files?.[0] ?? null)} />
-              <span className="small muted">No directory connector exists yet: an export stands in for it, and is read the same way as a team list.</span>
-            </div>
-          ) : (
-            <div className="stack-sm" style={{ gap: 4 }}><span className="label">Source</span><span className="sm">Sample directory (the sample team list)</span></div>
-          )}
-          <Scopes can={consentDef.scopes} cannot={["Create, edit, delete or comment on anything"]} />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <button type="button" className="btn primary" disabled={live && !dirFile} onClick={acceptDirectory}>Accept</button>
-            <button type="button" className="btn" onClick={closeConsent}>Cancel</button>
-          </div>
-        </div>
+        <DirectoryDialog live={live} onAccept={(f) => { p.onConnectDirectory(f); setConsentFor(null); }} onCancel={closeConsent} />
       )}
 
     </>
@@ -423,13 +406,3 @@ export function ConnectApps(p: Props) {
   );
 }
 
-function Scopes({ can, cannot }: { can: string[]; cannot: string[] }) {
-  return (
-    <div className="stack-sm sm">
-      <span style={{ fontWeight: 500 }}>It will be able to</span>
-      <ul className="list">{can.map((s) => <li key={s}>{s}</li>)}</ul>
-      <span style={{ fontWeight: 500, marginTop: 4 }}>It won't be able to</span>
-      <ul className="list">{cannot.map((s) => <li key={s}>{s}</li>)}</ul>
-    </div>
-  );
-}

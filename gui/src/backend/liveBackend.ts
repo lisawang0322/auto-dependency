@@ -78,8 +78,8 @@ export class LiveBackend implements ReviewBackend {
       opts.onProgress?.(0);
       for (;;) {
         await wait(500);
-        const j = await api<{ stage: AgentReadStage; done: boolean; result?: PlanRes; error?: string }>("GET", `/api/jobs/${first.data.job}`);
-        opts.onProgress?.(j.stage);
+        const j = await api<{ stage: AgentReadStage; done: boolean; result?: PlanRes; error?: string; progress?: number; detail?: string }>("GET", `/api/jobs/${first.data.job}`);
+        opts.onProgress?.(j.stage, j.progress !== undefined ? { pct: j.progress, detail: j.detail ?? "" } : undefined);
         if (j.error) throw new Error(j.error);
         if (j.done && j.result) { res = j.result; break; }
       }

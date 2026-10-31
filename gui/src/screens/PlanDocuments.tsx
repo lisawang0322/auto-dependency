@@ -1,12 +1,12 @@
 import { useState } from "react";
 import type { PlanDraft, Signal } from "@rrr/schemas";
-import { PLAN_KINDS, type UploadedFile, type FileKind, type Stage, type AgentInfo, type AgentConsent, type AgentRead, type AgentReadStage } from "../backend/types";
+import { PLAN_KINDS, type UploadedFile, type FileKind, type Stage, type AgentInfo, type AgentConsent, type AgentRead, type AgentReadStage, type ReadProgress } from "../backend/types";
 import { fmtDate } from "../model/dates";
 
 /** Step 2 (PRD R1–R3, R14): add plan files in any format, see what was read from them, fix dates, confirm. */
 
 /** The agent (Devin) that can read the uploads: whether the company set it up, the person's answer, and what it did. */
-export interface AgentPanel { info: AgentInfo; consent: AgentConsent; setConsent: (c: AgentConsent) => void; mode: string | null; setMode: (m: string | null) => void; stage: AgentReadStage | null; /** A read of any kind is in flight. */ reading: boolean; read: AgentRead | null; /** Read (or re-read) the current files: with the agent, or with the rules alone. */ read_now: (withAgent: boolean) => void }
+export interface AgentPanel { info: AgentInfo; consent: AgentConsent; setConsent: (c: AgentConsent) => void; mode: string | null; setMode: (m: string | null) => void; stage: AgentReadStage | null; /** How far the reading is, from the server. */ progress: ReadProgress | null; /** A read of any kind is in flight. */ reading: boolean; read: AgentRead | null; /** Read (or re-read) the current files: with the agent, or with the rules alone. */ read_now: (withAgent: boolean) => void }
 
 /** The Devin tier picker, shown only when the company lets people choose. */
 export function ModeSelect({ agent, id }: { agent: Pick<AgentPanel, "info" | "mode" | "setMode">; id: string }) {
@@ -119,6 +119,19 @@ export function PlanDocuments(p: Props) {
   const modeLabel = agent.mode ?? agent.info.default_mode;
   /** What the agent writes down depends on the stage: commitments from a plan of record, signals from a PRD. */
   const readsFor = launching ? "writes down what it commits to, which launch checks apply and which teams it names" : "writes down the sentences that point to a team or an approval, and the teams it names";
+  /** The stakeholder map: every team the reading names in the plan, the checklist or the PRD's signals, with what it owns
+   *  and whether a directory or team list grounds it. Teams only a list mentions are not part of this release. */
+  const teamFileNames = new Set(teamFiles.map((f) => f.name));
+  const stakeholders = (p.plan?.teams ?? []).map((t) => {
+    const mine = rows.filter((r) => r.owner_team === t.name);
+    const lines = p.signals.filter((g) => g.teams.includes(t.name)).length;
+    const inPlan = mine.length > 0 || lines > 0 || t.mentioned_in.some((m) => !teamFileNames.has(m) && m !== "signals") || t.mentioned_in.includes("signals");
+    const grounded = t.mentioned_in.some((m) => teamFileNames.has(m)) || (hasOrg && t.owners.length > 0);
+    const owns = launching
+      ? (mine.length ? [`Owns ${mine.length} item${mine.length === 1 ? "" : "s"}`, mine.some((r) => r.kind === "approval") ? `${mine.filter((r) => r.kind === "approval").length} approval${mine.filter((r) => r.kind === "approval").length === 1 ? "" : "s"}` : null, mine.some((r) => r.kind === "checklist") ? `${mine.filter((r) => r.kind === "checklist").length} launch check${mine.filter((r) => r.kind === "checklist").length === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ") : "Named in the plan, owns nothing yet")
+      : (lines ? `Implied by ${lines} line${lines === 1 ? "" : "s"} of your plan` : "Named in the plan");
+    return { t, grounded, owns, inPlan };
+  }).filter((s) => s.inPlan);
   const READ_STEPS: [string, string][] = [
     ["Uploading", `Sending your documents to ${agent.info.name}.`],
     ["Reading", `${agent.info.name} opens each file, in whatever format it is, and ${readsFor}.`],
@@ -285,6 +298,12 @@ export function PlanDocuments(p: Props) {
       {reading && (
         <section className="card" style={{ padding: "8px 20px", gap: 0, maxWidth: 640 }} role="status" aria-live="polite" data-testid="agent-reading">
           <div style={{ padding: "12px 0 4px" }}><span style={{ fontWeight: 600 }}>{agent.info.name} is reading your files</span><span className="small muted"> · this takes a few minutes</span></div>
+          {(() => { const pct = agent.progress?.pct ?? [5, 30, 85, 100][agent.stage ?? 0]; return (
+            <div className="stack-sm" style={{ gap: 6, padding: "4px 0 10px" }} data-testid="read-progress">
+              <div className="progress" role="progressbar" aria-label="Reading progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
+              <span className="sm muted"><span style={{ fontWeight: 600, color: "var(--ink)" }}>{pct}%</span>{agent.progress?.detail ? ` · ${agent.progress.detail}` : ""}</span>
+            </div>
+          ); })()}
           {READ_STEPS.map(([name, detail], i) => {
             const st = i < (agent.stage ?? 0) ? "done" : i === agent.stage ? "running" : "waiting";
             return (
@@ -372,6 +391,32 @@ export function PlanDocuments(p: Props) {
           </span>
           {inferredCount > 0 && <span className="sm muted" data-testid="inferred-note">{inferredCount} date{inferredCount === 1 ? " was" : "s were"} inferred from the plan's wording, such as "the week before launch"; they are marked <span className="inferred-tag">inferred</span>. Adjust any that are wrong.</span>}
           {p.plan.warnings.length > 0 && <div className="notice-grey">{p.plan.warnings.join(" ")}</div>}
+        </section>
+      )}
+
+      {p.plan && stakeholders.length > 0 && (
+        <section className="stack" style={{ gap: 12 }} data-testid="stakeholders">
+          <div className="stack-sm" style={{ gap: 4 }}>
+            <h2>Who this involves</h2>
+            <p className="sm muted" style={{ maxWidth: 680 }}>
+              {launching ? "The teams your plan names, with what each owns." : "The teams your plan points to."}{" "}
+              {viaDirectory ? "Names come from your directory." : hasOrg ? "Names come from your team list." : "Connect your directory on step 1 to add names, and to catch teams the document never mentions."}
+            </p>
+          </div>
+          <div className="tiles">
+            {stakeholders.map(({ t, grounded, owns }) => (
+              <div key={t.name} className="tile stack-sm" style={{ gap: 6 }} data-testid={`stk-${t.name}`}>
+                <div className="between" style={{ gap: 8, alignItems: "baseline" }}>
+                  <span style={{ fontWeight: 600 }}>{t.name}</span>
+                  {grounded ? <span className="small ok">In your {viaDirectory ? "directory" : "team list"}</span> : <span className="inferred-tag" title="No directory or team list names this team; it is taken from the document's wording">named in the plan only</span>}
+                </div>
+                {t.role && <span className="sm text2">{t.role}</span>}
+                <span className="sm muted">{owns}</span>
+                {t.owners.length > 0 ? <span className="sm">{t.owners.slice(0, 3).join(", ")}{t.owners.length > 3 ? ` and ${t.owners.length - 3} more` : ""}</span> : <span className="sm muted">No names yet</span>}
+              </div>
+            ))}
+          </div>
+          <span className="small muted">Processes your company documents in Confluence or a wiki are not read yet; when that connector exists, the steps those pages require will appear here too.</span>
         </section>
       )}
 

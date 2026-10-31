@@ -48,6 +48,11 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await expect(page.getByText("3 of 9 checks apply to this release")).toBeVisible();
   await expect(page.getByText("Not found — you'll get team names, not people.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Plan we read" })).toBeVisible();
+  // The stakeholder map follows the reading: the four teams the plan names, none grounded (no directory, no team list yet).
+  await expect(page.getByTestId("stakeholders")).toContainText("Who this involves");
+  await expect(page.locator("[data-testid^=stk-]")).toHaveCount(4);
+  await expect(page.getByTestId("stk-SRE")).toContainText("named in the plan only");
+  await expect(page.getByTestId("stk-Security")).toContainText("1 approval");
   const rows = page.locator(".plan-table tbody tr");
   await expect(rows).toHaveCount(7);
   await page.getByRole("button", { name: "Show source" }).nth(3).click();
@@ -236,4 +241,25 @@ test("works at phone width with no horizontal scroll", async ({ page }) => {
   expect(box!.height).toBeGreaterThanOrEqual(44);
   await btn.click();
   expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test("the employee directory connects on step 1, before any document, and grounds the teams the reading names", async ({ page }) => {
+  await page.goto("/?fast=1&backend=sample");
+  await expect(page.getByTestId("start-directory-state")).toHaveText("Not connected");
+  await page.getByRole("button", { name: "Connect directory" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Read names, titles, teams and reporting lines");
+  await page.getByRole("button", { name: "Accept" }).click();
+  await expect(page.getByTestId("start-directory-state")).toHaveText("Connected · read-only · directory.yaml");
+  await page.getByRole("radio", { name: /Preparing to launch/ }).check();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Use sample files" }).click();
+  await expect(page.getByText("via Employee directory")).toBeVisible();
+  await page.getByTestId("agent-read").click();
+  // While Devin reads, a progress bar says how far along it is.
+  await expect(page.getByRole("progressbar", { name: "Reading progress" })).toBeVisible();
+  await expect(page.getByText("Owners: from your directory")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("stk-SRE")).toContainText("In your directory");
+  // The apps step shows the same connection.
+  await page.getByRole("button", { name: "Confirm and connect apps" }).click();
+  await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Connected · read-only · directory.yaml");
 });

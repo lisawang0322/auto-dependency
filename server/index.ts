@@ -40,6 +40,8 @@ import { loadRules } from "../skills/release-starter/scripts/lib/config.js";
 import type { AgentItem, AgentTeam, AgentLaunchDate } from "../skills/release-reader/scripts/lib/plan-extract.js";
 import type { AgentSignal } from "../skills/release-starter/scripts/lib/signals.js";
 import { DevinClient, devinFromEnv, readWithDevin, itemRules, signalRuleLines, type DevinOptions, type ReadingOutcome, type DevinMode, type FileRole } from "./devin.js";
+import { loadFile } from "../skills/release-reader/scripts/lib/files.js";
+import { loadDirectory } from "../skills/release-starter/scripts/lib/directory.js";
 import { createHash } from "node:crypto";
 import { Store, type User } from "./store.js";
 import { Auth, authFromEnv, LOCAL_USER, type AuthConfig } from "./auth.js";
@@ -98,7 +100,7 @@ export interface AgentRead {
 /** One document's cached reading. */
 interface CachedRead { name: string; items: AgentItem[]; signals: AgentSignal[]; teams?: AgentTeam[]; launch_date?: AgentLaunchDate | null; epic_keys?: string[]; file_read: { name: string; how: string } | null; unreadable: { name: string; reason: string } | null; warnings: string[]; session_url: string | null; mode?: string | null }
 
-interface Job { stage: 0 | 1 | 2 | 3; done: boolean; run_id?: string; error?: string; log: string[]; result?: unknown }
+interface Job { stage: 0 | 1 | 2 | 3; done: boolean; run_id?: string; error?: string; log: string[]; result?: unknown; /** 0–100 and what is happening, for the GUI's progress bar. */ progress?: number; detail?: string }
 
 const KIND_TO_READ_AS: Record<string, ReadAs> = { prd: "plan_items", plan: "plan_items", checks: "launch_checks", teams: "teams_and_owners" };
 const MIME: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2" };
@@ -191,24 +193,29 @@ export function createApp(opts: ServerOptions = {}) {
   }
 
   /** Devin reads every upload: plans and PRDs, checklists, team lists (cached per file by content, role and tier). Never throws. */
-  async function readDocuments(u: User, paths: string[], files: any[], stage: "launching" | "starting" | "building", say: (l: string) => void): Promise<{ reading: AgentReading | null; signals: AgentSignal[]; agent: AgentRead }> {
+  async function readDocuments(u: User, paths: string[], files: any[], stage: "launching" | "starting" | "building", say: (l: string) => void, onProgress: (pct: number, detail: string) => void = () => {}): Promise<{ reading: AgentReading | null; signals: AgentSignal[]; agent: AgentRead }> {
     const root = rootsFor(u).agentCacheRoot;
     const mode = modeFor(u);
     const docs: { path: string; role: FileRole }[] = [];
+    const orgTeams: string[] = [];
     for (const p of paths) {
       const f = files.find((x) => safeName(x) === basename(p));
       const role = ROLE_OF[String(f?.kind)];
-      if (role && f?.via !== "directory") docs.push({ path: p, role });
+      if (!role) continue;
+      if (f?.via !== "directory") { docs.push({ path: p, role }); continue; }
+      // The directory connected on step 1 grounds the reading: Devin gets the company's team names and spells owners as it does.
+      try { for (const e of loadDirectory(await loadFile(p))) orgTeams.push(e.name, ...e.aliases); } catch { /* an export the loader cannot open: no grounding */ }
     }
+    const orgKey = orgTeams.length ? `.org-${createHash("sha256").update(orgTeams.join("|")).digest("hex").slice(0, 8)}` : "";
     const reads: CachedRead[] = [];
     const toRead: { path: string; role: FileRole; key: string }[] = [];
-    // A reading is cached per document, per role and per tier: read as something else, or by another tier, it reads again.
-    for (const d of docs) { const key = `${cacheKey(d.path)}.${d.role}${mode ? `.${mode}` : ""}`; const c = cachedRead(root, key); if (c) reads.push(c); else toRead.push({ ...d, key }); }
+    // A reading is cached per document, per role, per tier and per directory: any of those changing reads again.
+    for (const d of docs) { const key = `${cacheKey(d.path)}.${d.role}${mode ? `.${mode}` : ""}${orgKey}`; const c = cachedRead(root, key); if (c) reads.push(c); else toRead.push({ ...d, key }); }
     let outcome: ReadingOutcome | null = null;
     if (toRead.length) {
-      say(`Devin: reading ${toRead.map((t) => basename(t.path)).join(", ")}${reads.length ? ` (${reads.length} cached)` : ""}`);
+      say(`Devin: reading ${toRead.map((t) => basename(t.path)).join(", ")}${reads.length ? ` (${reads.length} cached)` : ""}${orgTeams.length ? ` (grounded in ${orgTeams.length} directory team names)` : ""}`);
       const early = stage !== "launching";
-      outcome = await readWithDevin(devin!, { files: toRead.map((t) => ({ path: t.path, role: t.role })), stage, rules: itemRules(), signalRules: early ? signalRuleLines(loadRules()) : undefined, user: u.id === LOCAL_USER.id ? null : u.name, mode, onLog: (l) => say(`Devin: ${l}`) });
+      outcome = await readWithDevin(devin!, { files: toRead.map((t) => ({ path: t.path, role: t.role })), stage, rules: itemRules(), signalRules: early ? signalRuleLines(loadRules()) : undefined, user: u.id === LOCAL_USER.id ? null : u.name, mode, orgTeams, onLog: (l) => say(`Devin: ${l}`), onProgress });
       if (outcome.status === "done") {
         for (const t of toRead) {
           const name = basename(t.path);
@@ -221,7 +228,7 @@ export function createApp(opts: ServerOptions = {}) {
           storeRead(root, t.key, c); reads.push(c);
         }
       } else say(`Devin: ${outcome.error}`);
-    } else if (docs.length) say(`Devin: all ${docs.length} file(s) read before; using the cached reading`);
+    } else if (docs.length) { say(`Devin: all ${docs.length} file(s) read before; using the cached reading`); onProgress(85, "Using the earlier reading of these files"); }
     const items = reads.flatMap((r) => r.items), signals = reads.flatMap((r) => r.signals), teams = reads.flatMap((r) => r.teams ?? []);
     const checks = items.filter((i) => i.kind === "checklist");
     const ok = !outcome || outcome.status === "done";
@@ -359,10 +366,10 @@ export function createApp(opts: ServerOptions = {}) {
       (async () => {
         try {
           const say = (l: string) => { job.log.push(l); log(`  ${l}`); if (/^Devin: Devin session /.test(l)) job.stage = 1; };
-          const read = await readDocuments(u, paths, files, stage, say);
-          job.stage = 2;
+          const read = await readDocuments(u, paths, files, stage, say, (pct, detail) => { job.progress = pct; job.detail = detail; });
+          job.stage = 2; job.progress = Math.max(job.progress ?? 0, 85); job.detail = "Checking every quote against your files";
           const data = await buildPlan(paths, readAs, dirPaths, files, stage, launchDate, read.reading, read.signals);
-          job.result = { ...data, agent: read.agent }; job.stage = 3; job.done = true;
+          job.result = { ...data, agent: read.agent }; job.stage = 3; job.progress = 100; job.detail = "Done"; job.done = true;
         } catch (e) {
           job.error = (e as Error).message ?? String(e); job.done = true;
           log(`plan (devin) failed: ${job.error}`);

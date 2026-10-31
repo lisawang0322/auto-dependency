@@ -56,7 +56,9 @@ export interface AgentRead {
   warnings: string[];
   error: string | null;
 }
-export interface ExtractOptions { agent?: boolean; onProgress?: (s: AgentReadStage) => void }
+/** How far along a reading is, from the server's job: 0–100 and what is happening. */
+export interface ReadProgress { pct: number; detail: string }
+export interface ExtractOptions { agent?: boolean; onProgress?: (s: AgentReadStage, progress?: ReadProgress) => void }
 
 /** Stage A's result. The early stages add the PRD's signals and the project name (release-starter). */
 export interface PlanExtract { plan: PlanDraft; signals: Signal[]; project: string | null; agent?: AgentRead | null }

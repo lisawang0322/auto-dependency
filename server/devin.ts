@@ -182,6 +182,8 @@ export interface ReadingRequest {
   signalRules?: string;
   /** Who asked, for the session title. */
   user?: string | null;
+  /** The company's team names (and aliases) from the employee directory connected first: owners are spelled as it spells them. */
+  orgTeams?: string[];
 }
 
 export function readingPrompt(req: ReadingRequest): string {
@@ -199,6 +201,12 @@ export function readingPrompt(req: ReadingRequest): string {
     req.rules,
     ``,
   ];
+  if (req.orgTeams?.length) {
+    lines.push(
+      `The company's teams, from its employee directory: ${req.orgTeams.join(", ")}. When a document refers to one of them, spell owner_team and the team's name exactly as the directory does, even where the document abbreviates or varies it. A team the directory does not list is kept as the document spells it, never dropped.`,
+      ``,
+    );
+  }
   if (early) {
     lines.push(
       `A signal is one sentence of the PRD that is an instance of one of these rules (the rule, not you, decides which teams it implies). Quote the sentence word for word, name the file, give a locator, and list the rule ids it is an instance of. Sentences that say what is not in scope, or describe something that already exists, are not signals.`,
@@ -353,25 +361,34 @@ export interface ReadingOutcome extends ReadingResult {
 }
 
 /** Upload the files, run one Devin session, wait for its structured output. Never throws: a failure is an outcome with status "failed". */
-export async function readWithDevin(client: DevinClient, req: { files: { path: string; role: FileRole }[]; stage: ReadingRequest["stage"]; rules: string; signalRules?: string; user?: string | null; mode?: DevinMode | null; onLog?: (line: string) => void }): Promise<ReadingOutcome> {
+export async function readWithDevin(client: DevinClient, req: { files: { path: string; role: FileRole }[]; stage: ReadingRequest["stage"]; rules: string; signalRules?: string; user?: string | null; mode?: DevinMode | null; orgTeams?: string[]; onLog?: (line: string) => void; /** How far along the reading is (0–100) and what is happening, for a progress bar. */ onProgress?: (pct: number, detail: string) => void }): Promise<ReadingOutcome> {
   const log = req.onLog ?? (() => {});
+  const progress = req.onProgress ?? (() => {});
+  const clock = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1000)).padStart(2, "0")}`;
   const names = req.files.map((f) => basename(f.path));
   const mode = client.api === "v3" ? (req.mode ?? client.defaultMode) : null;
   const fail = (error: string, session: DevinSession | null = null): ReadingOutcome => ({ status: "failed", error, session_url: session?.url ?? null, session_id: session?.session_id ?? null, mode, items: [], signals: [], teams: [], launch_date: null, epic_keys: [], files_read: [], unreadable: [], warnings: [] });
   let session: DevinSession | null = null;
   try {
     const files: { name: string; url: string; role: FileRole }[] = [];
-    for (const f of req.files) { files.push({ name: basename(f.path), role: f.role, url: await client.uploadAttachment(basename(f.path), readFileSync(f.path)) }); log(`uploaded ${basename(f.path)}`); }
+    progress(3, "Uploading your files");
+    for (const [i, f] of req.files.entries()) { files.push({ name: basename(f.path), role: f.role, url: await client.uploadAttachment(basename(f.path), readFileSync(f.path)) }); log(`uploaded ${basename(f.path)}`); progress(Math.round(5 + 15 * (i + 1) / req.files.length), "Uploading your files"); }
     const v3 = client.api === "v3";
-    const prompt = readingPrompt({ files, stage: req.stage, rules: req.rules, signalRules: req.signalRules, user: req.user, inlineAttachments: !v3 });
+    const prompt = readingPrompt({ files, stage: req.stage, rules: req.rules, signalRules: req.signalRules, user: req.user, inlineAttachments: !v3, orgTeams: req.orgTeams });
     session = await client.createSession({ prompt, title: `Readiness Review: read ${names.join(", ")}${req.user ? ` for ${req.user}` : ""}`, tags: ["readiness-review"], attachmentUrls: files.map((f) => f.url), outputSchema: v3 ? OUTPUT_SCHEMA : undefined, mode });
     log(`Devin session ${session.session_id} ${session.url}${mode ? ` (${mode})` : ""}`);
-    const deadline = Date.now() + client.timeoutMs;
+    progress(25, "Devin has started");
+    const startedAt = Date.now();
+    const deadline = startedAt + client.timeoutMs;
     for (;;) {
       const st = await client.getSession(session.session_id);
       const output = st.structured_output;
       const ready = !!output && typeof output === "object" && ((output as any).done === true || (Array.isArray((output as any).items) && (st.phase === "done" || st.phase === "waiting")));
+      // Reading has no inner progress to report, so the bar rises with time, fast at first and never past 80 until the result is in.
+      const elapsed = Date.now() - startedAt;
+      if (!ready) progress(Math.min(80, Math.round(25 + 55 * (1 - Math.exp(-elapsed / 180_000)))), `Devin is reading · ${clock(elapsed)} elapsed`);
       if (ready) {
+        progress(85, "Checking every quote against your files");
         const parsed = parseReading(output, names);
         log(`Devin read ${parsed.items.length} items, ${parsed.signals.length} signals, ${parsed.teams.length} teams (${parsed.files_read.map((f) => f.name).join(", ") || "no files listed"})`);
         return { ...parsed, status: "done", error: null, session_url: session.url || st.url || null, session_id: session.session_id, mode };

@@ -68,8 +68,10 @@ export class FixtureBackend implements ReviewBackend {
     await wait(this.delayMs);
     const r = await this.extract(files, stage);
     if (!opts.agent) return { ...r, agent: null };
-    for (const s of [0, 1, 2] as const) { opts.onProgress?.(s); await wait(this.delayMs * 3); }
-    opts.onProgress?.(3);
+    // The simulated reading moves a progress bar the way the server does: uploads, then a slow rise while Devin reads, then the check.
+    const ticks: [0 | 1 | 2, number, string][] = [[0, 5, "Uploading your files"], [0, 20, "Uploading your files"], [1, 25, "Devin has started"], [1, 45, "Devin is reading · 0:01 elapsed"], [1, 65, "Devin is reading · 0:02 elapsed"], [1, 80, "Devin is reading · 0:03 elapsed"], [2, 85, "Checking every quote against your files"], [2, 95, "Checking every quote against your files"]];
+    for (const [s, pct, detail] of ticks) { opts.onProgress?.(s, { pct, detail }); await wait(this.delayMs * 9 / ticks.length); }
+    opts.onProgress?.(3, { pct: 100, detail: "Done" });
     // Devin reads every upload: the plan, the checklist and the team list; the directory connector's export is structured data.
     const docs = files.filter((f) => f.kind !== "other" && f.via !== "directory");
     const count = (ra: string, re: RegExp) => Number(r.plan.files.find((f) => f.read_as.includes(ra as never) && docs.some((d) => d.name === f.name))?.notes.match(re)?.[1] ?? 0);

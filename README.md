@@ -243,6 +243,14 @@ apps step, which is structured data and stays with the directory reader. The GUI
 rules' result with a "Try again" button if the session fails. Every file's reading is cached by content, "read as"
 and tier under `out/agent-reads/`, so re-adding the same file spends nothing.
 
+Three things from the professor's review (Nov 2026) shape this step. The employee directory is connected on
+**Get started**, before any document, and its team names go into Devin's instructions so owners are spelled as
+the company spells them rather than guessed (a reading is cached per directory too). Right after the reading,
+**Who this involves** lists every team the plan, the checklist or the PRD's signals name, what each owns, its
+people, and whether a directory or team list grounds it. And while Devin reads, a progress bar reports how far
+along it is (`progress` and `detail` on the job): uploads, a rise with time while the session works, then the
+quote check.
+
 ```
 DEVIN_API_KEY=cog_…                 # enables it; Settings → Service users in Devin
 DEVIN_MAX_ACU=2                     # cap per reading session (default 2)

@@ -42,7 +42,7 @@ Current tools (Jira, Asana, Linear, Planview) don't track business-process depen
 
 ## User flow
 
-1. The TPM opens the tool, reads what it does, and picks "Preparing to launch". They add the POR (a slide deck) and launch checklist, confirm the plan extracted from them, correcting one date, and connect Jira.
+1. The TPM opens the tool, reads what it does, connects the employee directory (read-only), and picks "Preparing to launch". They add the POR (a slide deck) and launch checklist, read them with Devin, see who the plan involves, confirm the plan, correcting one date, and connect Jira.
 2. Four findings appear:
    - Security approval still open (process, strong).
    - A database permissions review promised in a comment, with no ticket (commitment, moderate).
@@ -107,6 +107,14 @@ The product is built so that every action stays in the GUI and the company's acc
 4. **Hardening** a multi-user server needs: HTTPS, an encryption key for stored tokens, OAuth state and CSRF checks, a connection audit log.
 
 This reverses three earlier "out this semester" lines (a live GUI connected to Devin, a multi-user server, credentials beyond an API token). The Devin piece is what "agentic reading contained in the GUI" means in practice; the reading happens on Devin's credits and the product holds no model API key.
+
+## Review feedback (Nov 2026)
+
+Three points from the professor's review of the demo, and what changed for each:
+
+1. **The employee directory comes first, before any document.** The tool needs the org upfront to map stakeholders from the document; without it the reading infers teams instead of grounding them in the real structure. Built: the directory connects on Get started, and its team names go into Devin's reading instructions, so owners are spelled as the company spells them (a reading is cached per directory as well as per file).
+2. **A stakeholder map right after the reading.** Which teams to involve (engineering, legal, data, compliance, TPM, vendors), drawn from org charts, Confluence and wikis to surface processes the person might miss. Built: "Who this involves" follows the reading on the plan step, listing every team the plan, the checklist or the PRD's signals name, what each owns, its people, and whether a directory or team list grounds it. Confluence and wiki pages are a connector still marked not available.
+3. **A progress bar while Devin reads.** Loading anxiety was visible in the demo; people need visibility into status. Built: the reading job reports a percentage and a line of status (uploading, a rise with time while the session works, the quote check), and the plan step shows them as a bar.
 
 ## How it works
 
