@@ -2,8 +2,8 @@
  * Shared contracts for the Release Readiness Review.
  *
  * The release-reader skill writes PlanDraft, ReleaseTarget and Release.
- * The (not yet built) analyzer writes Finding[] and LinkageGap[]; the status
- * skill writes Team[]. The GUI validates every file it loads against these.
+ * The release-analyzer writes Findings (findings.json); the release-status skill writes
+ * Status (status.json). The GUI validates every file it loads against these.
  */
 import { z } from "zod";
 
@@ -125,6 +125,8 @@ export const Story = z.object({
   key: IssueKey,
   summary: z.string(),
   status: z.string(),
+  /** Jira resolution name ("Done", "Duplicate", "Won't Do"); null when unresolved. Older files omit it. */
+  resolution: z.string().nullable().optional(),
   assignee: z.string().nullable(),
   due: IsoDate.nullable(),
   components: z.array(z.string()),
@@ -145,6 +147,7 @@ export const RelatedIssue = z.object({
   project: ProjectKey,
   summary: z.string(),
   status: z.string(),
+  resolution: z.string().nullable().optional(),
   assignee: z.string().nullable(),
   due: IsoDate.nullable(),
   updated: IsoDateTime,
@@ -162,6 +165,7 @@ export const SearchCandidate = z.object({
   project: ProjectKey,
   summary: z.string(),
   status: z.string(),
+  resolution: z.string().nullable().optional(),
   assignee: z.string().nullable(),
   due: IsoDate.nullable(),
   updated: IsoDateTime.optional(),
@@ -193,27 +197,58 @@ export const Release = z.object({
 });
 export type Release = z.infer<typeof Release>;
 
-// ---------- Analyzer output (not built yet; types only) ----------
+// ---------- Analyzer output: findings.json (skills/release-analyzer) ----------
 export const GapType = z.enum(["process", "cross_team_date", "commitment"]);
+export type GapType = z.infer<typeof GapType>;
 export const Strength = z.enum(["strong", "moderate", "weak"]);
+export type Strength = z.infer<typeof Strength>;
 export const OwnerSource = z.enum(["team_list", "jira_inferred"]);
 
+/** How a plan item was matched to a ticket, in the order the analyzer tries them. */
+export const MatchWay = z.enum(["linked_key", "linked_keywords", "search", "comment", "none"]);
+export type MatchWay = z.infer<typeof MatchWay>;
+
 export const Evidence = z.object({ key: z.string(), text: z.string(), meta: z.string() });
+export type Evidence = z.infer<typeof Evidence>;
 
 export const Linkage = z.object({ from: IssueKey, to: IssueKey, suggested_type: z.string() });
+
+export const NextAction = z.object({
+  /** One sentence from the template for the gap type. */
+  action: z.string().min(1),
+  /** Owner team, plus a person when the team list names one. */
+  who: z.string().min(1),
+  /** The plan date, or "before go/no-go (date)" when that is earlier. */
+  by_when: z.string().min(1),
+  /** The finding title. */
+  why: z.string().min(1),
+});
+export type NextAction = z.infer<typeof NextAction>;
 
 export const Finding = z.object({
   id: z.string(),
   title: z.string(),
   gap_type: GapType,
   strength: Strength,
+  /** The rule that set the strength, in words. */
+  strength_rule: z.string().optional(),
   owner: z.string(),
   owner_source: OwnerSource,
   plan_item_id: z.string(),
+  plan_quote: z.string().optional(),
+  plan_source: PlanSource.optional(),
+  match_way: MatchWay.optional(),
+  /** Jira evidence: key, text, meta. Empty when nothing was found; then none_found says what was searched. */
   evidence: z.array(Evidence),
+  none_found: z.object({ projects: z.array(ProjectKey), jql: z.array(z.string()) }).optional(),
   why: z.string(),
   linkage: Linkage.optional(),
-  /** What to ask the owner if the finding is kept (shown on the go/no-go card). */
+  next_action: NextAction.optional(),
+  /** Among the first 10 non-weak findings (R8). */
+  shown: z.boolean().optional(),
+  /** Weak findings (R8). */
+  hidden_by_default: z.boolean().optional(),
+  /** What to ask the owner if the finding is kept (shown on the go/no-go card). Same as next_action.action. */
   ask: z.string().optional(),
 });
 export type Finding = z.infer<typeof Finding>;
@@ -230,7 +265,33 @@ export const LinkageGap = z.object({
 });
 export type LinkageGap = z.infer<typeof LinkageGap>;
 
-// ---------- Status output (not built yet; types only) ----------
+export const ItemMatch = z.object({
+  plan_item_id: z.string(),
+  way: MatchWay,
+  key: IssueKey.nullable(),
+  score: z.string(),
+  note: z.string(),
+});
+export type ItemMatch = z.infer<typeof ItemMatch>;
+
+export const Findings = z.object({
+  schema_version: z.literal(1),
+  snapshot_label: z.string(),
+  snapshot_date: IsoDate,
+  analyzed_at: IsoDateTime,
+  epic: IssueKey,
+  launch_date: IsoDate.nullable(),
+  go_no_go: IsoDate.nullable(),
+  service_team: z.string().nullable(),
+  team_list_given: z.boolean(),
+  findings: z.array(Finding),
+  linkage_gaps: z.array(LinkageGap),
+  matches: z.array(ItemMatch),
+  warnings: z.array(z.string()),
+});
+export type Findings = z.infer<typeof Findings>;
+
+// ---------- Status output: status.json (skills/release-status) ----------
 export const TeamStatus = z.enum(["on_track", "at_risk", "late"]);
 export type TeamStatus = z.infer<typeof TeamStatus>;
 
@@ -258,6 +319,17 @@ export const Team = z.object({
   change_note: z.string(),
 });
 export type Team = z.infer<typeof Team>;
+
+export const Status = z.object({
+  schema_version: z.literal(1),
+  snapshot_label: z.string(),
+  epic: IssueKey,
+  /** Snapshot label of the run the change notes compare with, or null on a first run. */
+  compared_with: z.string().nullable(),
+  teams: z.array(Team),
+  warnings: z.array(z.string()),
+});
+export type Status = z.infer<typeof Status>;
 
 // ---------- Saved run: runs/<epic>/<snapshot>.json ----------
 export const Run = z.object({

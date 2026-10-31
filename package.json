@@ -14,6 +14,7 @@
     "reader:a": "tsx skills/release-reader/scripts/extract-plan.ts",
     "reader:b": "tsx skills/release-reader/scripts/resolve-release.ts",
     "reader:c": "tsx skills/release-reader/scripts/read-jira.ts",
+    "analyzer": "tsx skills/release-analyzer/scripts/analyze.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:runs": "tsx scripts/build-runs.ts",
     "build:jira-fixtures": "tsx fixtures/ingest-142/jira/generate.ts",
@@ -21,7 +22,11 @@
     "gui:test": "npm run test -w gui",
     "gui:e2e": "npm run e2e -w gui",
     "gui:build": "npm run build -w gui",
-    "test:all": "vitest run && npm run test -w gui && npm run e2e -w gui"
+    "test:all": "vitest run && npm run test -w gui && npm run e2e -w gui",
+    "status": "tsx skills/release-status/scripts/status.ts",
+    "review": "tsx scripts/review.ts",
+    "server": "tsx server/index.ts",
+    "start": "npm run gui:build && tsx server/index.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -29,5 +34,8 @@
     "typescript": "^5.6.0",
     "vitest": "^3.2.0"
   },
-  "type": "module"
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  }
 }

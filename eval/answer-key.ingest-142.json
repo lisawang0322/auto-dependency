@@ -1,0 +1,41 @@
+{
+  "release": "INGEST-142",
+  "snapshot": "2026-11-13",
+  "launch_date": "2026-11-20",
+  "author": "tool author (placeholder sample data; PRD R12 wants someone else to write the real one)",
+  "plan_files": ["Ingestion-service-POR-v3.md", "launch-checklist.csv", "team-list.yaml"],
+  "gaps": [
+    { "id": "k1", "plan_item_id": "p3", "plan_quote_contains": "security review approved", "gap_type": "process", "expected_strength": "strong",
+      "ticket": "SEC-881", "owner_team": "Security",
+      "why": "SEC-881 is linked to the epic (is blocked by) and still In Review on Nov 13; the plan wants approval by Nov 14." },
+    { "id": "k2", "plan_item_id": "p6", "plan_quote_contains": "Production DB permissions reviewed", "gap_type": "commitment", "expected_strength": "moderate",
+      "ticket": null, "owner_team": "Data Platform",
+      "why": "DATA-240 was closed as a duplicate on Nov 12; the review now exists only as Tomás Herrera's comment on INGEST-157: \"DBA will review prod permissions before launch\"." },
+    { "id": "k3", "plan_item_id": "p4", "plan_quote_contains": "SRE capacity and on-call", "gap_type": "cross_team_date", "expected_strength": "moderate",
+      "ticket": "SRE-412", "owner_team": "SRE",
+      "why": "SRE-412 is not linked to the epic and its due date moved from Nov 13 to Nov 22, two days after launch." },
+    { "id": "k4", "plan_item_id": "p7", "plan_quote_contains": "Rollback plan documented", "gap_type": "process", "expected_strength": "moderate",
+      "ticket": null, "owner_team": "Ingestion team",
+      "why": "Checklist row 9 applies to all launches and nothing in INGEST mentions a rollback plan." },
+    { "id": "k5", "plan_item_id": "p5", "plan_quote_contains": "Load test passed", "gap_type": "commitment", "expected_strength": "weak",
+      "ticket": "INGEST-163", "owner_team": "Ingestion team",
+      "why": "INGEST-163 is still In Progress; Dana Okafor's Nov 11 comment says \"load test looks fine. Will attach the report.\" Comment text only, so weak and hidden." }
+  ],
+  "linkage_gaps": [
+    { "from": "INGEST-142", "to": "SRE-412", "blocker": true, "how": "search_match", "why": "The capacity ticket the launch depends on; only a scoped search of SRE finds it." },
+    { "from": "INGEST-150", "to": "DATA-233", "blocker": false, "how": "comment_mention", "why": "The quota ticket is mentioned in a comment on INGEST-150 but never linked." }
+  ],
+  "noise": [
+    { "key": "DATA-251", "why": "A permissions review for another service (analytics warehouse); it comes back from the DATA search for p6 and must not be cited." },
+    { "key": "SRETOOLS-77", "why": "Lives in the decoy project SRE Tooling; must never be read as SRE's work." },
+    { "key": "SECOPS-12", "why": "Lives in the decoy project Security Operations; must never be read as Security's work." },
+    { "key": "INGEST-167", "why": "Its comment mentions SRE capacity; it is the consumer side, not SRE's ticket." }
+  ],
+  "status_changes": [
+    { "from_snapshot": "2026-11-10", "what": "SRE-412 due date moved from 2026-11-13 to 2026-11-22", "expected_effect": "k3 (cross_team_date) appears; on Nov 10 it is absent" },
+    { "from_snapshot": "2026-11-10", "what": "DATA-240 moved from To Do to Closed (Duplicate); comment on INGEST-157 promises the review", "expected_effect": "k2 (commitment) appears; on Nov 10 p6 is covered by DATA-240" },
+    { "from_snapshot": "2026-11-10", "what": "SEC-881 moved from Open to In Review", "expected_effect": "k1 stays; its evidence status changes" },
+    { "from_snapshot": "2026-11-10", "what": "Nov 11 comment on INGEST-163 \"load test looks fine\"", "expected_effect": "k5 (weak) appears" },
+    { "from_snapshot": "2026-11-10", "what": "INGEST-150, INGEST-164, INGEST-165 moved to Done (18 → 21 of 25)", "expected_effect": "no change to findings" }
+  ]
+}

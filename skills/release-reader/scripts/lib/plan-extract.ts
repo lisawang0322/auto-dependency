@@ -56,6 +56,8 @@ interface Section {
   heading: string;
   locator: string;
   body: string;
+  /** Table rows (decks). */
+  rows?: string[][];
 }
 
 export function splitSections(text: string): Section[] {
@@ -106,6 +108,29 @@ function candidateSentences(body: string): string[] {
     }
   }
   return out;
+}
+
+/**
+ * A table row is a plan item only when one cell names a known team; other rows (headers, phases,
+ * "Launch", "Go/no-go") are skipped and counted. The quote is the row's cells joined with " | ".
+ */
+export function rowItem(cells: string[], teams: string[], launchDate: string | null): { owner: string; label: string; quote: string; date: ReturnType<typeof findDatePhrase> } | null {
+  const trimmed = cells.map((c) => c.trim());
+  let ownerIdx = -1, owner = "";
+  for (let i = 0; i < trimmed.length && ownerIdx < 0; i++) {
+    for (const t of teams) if (trimmed[i].length <= t.length + 12 && teamRe(t).test(trimmed[i])) { ownerIdx = i; owner = t; break; }
+  }
+  if (ownerIdx < 0) return null;
+  let dateIdx = -1, date: ReturnType<typeof findDatePhrase> = null;
+  for (let i = 0; i < trimmed.length; i++) {
+    if (i === ownerIdx) continue;
+    const d = findDatePhrase(trimmed[i], launchDate);
+    if (d && d.end - d.start >= trimmed[i].length * 0.6) { dateIdx = i; date = d; break; }
+  }
+  const rest = trimmed.filter((_, i) => i !== ownerIdx && i !== dateIdx && _.length);
+  if (!rest.length) return null;
+  const label = rest.slice().sort((a, b) => b.length - a.length)[0];
+  return { owner, label: label.replace(/[\s.;,:]+$/, ""), quote: trimmed.join(" | "), date };
 }
 
 // ---------- teams ----------
@@ -206,9 +231,12 @@ export function extractPlan(opts: ExtractOptions): PlanDraft {
   const fileEntries: PlanDraft["files"] = [];
   const readAsOf = new Map<string, ReadAs[]>();
   for (const f of opts.files) {
-    const detected = opts.readAs?.[f.name] ?? classifyFile(f);
+    for (const w of f.warnings ?? []) warnings.push(w.includes(f.name) ? w : `${f.name}: ${w}`);
+    const unreadable = !f.text && !f.rows && !f.data && !f.segments;
+    const detected = unreadable ? [] : (opts.readAs?.[f.name] ?? classifyFile(f));
     readAsOf.set(f.name, detected);
-    if (!detected.length) warnings.push(`${f.name}: could not tell what it contains; not used. Pass --read-as ${f.name}=plan_items|launch_checks|teams_and_owners.`);
+    if (unreadable) { if (!(f.warnings ?? []).length) warnings.push(`${f.name}: nothing could be read from it; not used.`); }
+    else if (!detected.length) warnings.push(`${f.name}: could not tell what it contains; not used. Pass --read-as ${f.name}=plan_items|launch_checks|teams_and_owners.`);
   }
   const planFiles = opts.files.filter((f) => readAsOf.get(f.name)?.includes("plan_items"));
   const checkFiles = opts.files.filter((f) => readAsOf.get(f.name)?.includes("launch_checks"));
@@ -245,7 +273,10 @@ export function extractPlan(opts: ExtractOptions): PlanDraft {
   let profileText = "";
   for (const f of planFiles) {
     for (const k of extractIssueKeys(f.text)) epicKeys.add(k);
-    const sections = splitSections(f.text);
+    const sections: Section[] = f.segments
+      ? f.segments.map((seg) => ({ number: null, heading: seg.heading, locator: seg.locator, body: seg.body, rows: seg.rows }))
+      : splitSections(f.text);
+    let rowsSkipped = 0;
     const proseTeams = teamsFromProse(f.text);
     for (const t of proseTeams) addTeam(t.name, null, { role: t.role });
     const teamNames = [...teams.values()].map((t) => t.name);
@@ -253,6 +284,22 @@ export function extractPlan(opts: ExtractOptions): PlanDraft {
       if (/overview|summary|profile|context|background/i.test(sec.heading) || sec.locator === "preamble") profileText += sec.body + "\n";
       for (const t of teamNames) if (teamRe(t).test(sec.body)) addTeam(t, `${f.name} ${sec.locator}`);
       if (!isPlanSection(sec.heading)) continue;
+      for (const row of sec.rows ?? []) {
+        const r = rowItem(row, teamNames, launch_date);
+        if (!r) { rowsSkipped++; continue; }
+        const team = addTeam(r.owner, `${f.name} ${sec.locator}`);
+        for (const k of explicitProjectKeys(r.quote)) if (!team.project_keys_mentioned.includes(k)) team.project_keys_mentioned.push(k);
+        items.push({
+          id: "",
+          text: r.label,
+          kind: kindForSection(sec.heading, r.quote),
+          owner_team: team.name,
+          due: r.date?.due ?? null,
+          due_text: r.date?.due_text ?? null,
+          due_is_inferred: r.date?.inferred ?? false,
+          source: { file: f.name, locator: sec.locator, quote: r.quote },
+        });
+      }
       for (const sentence of candidateSentences(sec.body)) {
         const owner = ownerOf(sentence, teamNames);
         if (!owner) { warnings.push(`${f.name} ${sec.locator}: no owning team found, skipped: "${sentence}"`); continue; }
@@ -273,7 +320,8 @@ export function extractPlan(opts: ExtractOptions): PlanDraft {
     }
     if (!profileText.trim()) profileText = f.text;
     const counts = countKinds(items.filter((i) => i.source.file === f.name));
-    fileEntries.push({ name: f.name, read_as: readAsOf.get(f.name)!, notes: `${counts} · names ${teams.size} teams${epicKeys.size ? " and epic " + [...epicKeys].sort().join(", ") : ""}` });
+    const slides = f.segments ? f.segments.filter((sg) => !/\(notes\)$/.test(sg.locator)).length : 0;
+    fileEntries.push({ name: f.name, read_as: readAsOf.get(f.name)!, notes: `${slides ? slides + " slides · " : ""}${counts} · names ${teams.size} teams${epicKeys.size ? " and epic " + [...epicKeys].sort().join(", ") : ""}${rowsSkipped ? ` · ${rowsSkipped} table rows without a team skipped` : ""}` });
   }
 
   // Checklist

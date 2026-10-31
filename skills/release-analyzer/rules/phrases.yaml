@@ -1,0 +1,15 @@
+# Phrase rules for commitment gaps (regular expressions, case-insensitive). Edit freely.
+# promise: a comment that promises the item. With no ticket behind it → commitment gap (moderate).
+# claim: a comment that says the item is handled or done. On an item whose ticket is still open →
+#        commitment gap resting on comment text only (weak, hidden by default). Promise phrases count too.
+promise:
+  - "\\bwill\\b.*\\bbefore\\b"
+  - "\\bwe'll\\b"
+  - "\\bpromis(e|ed|es|ing)\\b"
+  - "\\bby launch\\b"
+  - "\\bbefore (the )?launch\\b"
+claim:
+  - "\\blooks (fine|good|ok|okay)\\b"
+  - "\\bis (done|complete|finished|all set)\\b"
+  - "\\bwill (attach|upload|add|send)\\b"
+  - "\\b(passed|signed off)\\b"

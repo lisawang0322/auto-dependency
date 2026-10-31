@@ -1,0 +1,28 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - run: make py-setup
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run gui:test
+      - run: npm run gui:build
+      - run: npx playwright install --with-deps chromium
+        working-directory: gui
+      - run: npm run gui:e2e
+      - name: Answer-key score on the sample runs
+        run: .venv/bin/python eval/score.py --key eval/answer-key.ingest-142.json runs/INGEST-142/2026-11-13.json

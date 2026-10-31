@@ -327,6 +327,7 @@
         "key": "INGEST-143",
         "summary": "Define ingestion event schema",
         "status": "Done",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -345,6 +346,7 @@
         "key": "INGEST-144",
         "summary": "Kafka consumer for raw events",
         "status": "Done",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -363,6 +365,7 @@
         "key": "INGEST-145",
         "summary": "Writer service skeleton",
         "status": "Done",
+        "resolution": null,
         "assignee": "Dana Okafor",
         "due": null,
         "components": [
@@ -387,6 +390,7 @@
         "key": "INGEST-146",
         "summary": "Backpressure and retry policy",
         "status": "Done",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -405,6 +409,7 @@
         "key": "INGEST-147",
         "summary": "Schema validation on ingest",
         "status": "Done",
+        "resolution": null,
         "assignee": "Dana Okafor",
         "due": null,
         "components": [
@@ -423,6 +428,7 @@
         "key": "INGEST-148",
         "summary": "Dead-letter topic handling",
         "status": "Done",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -447,6 +453,7 @@
         "key": "INGEST-149",
         "summary": "Metrics for ingestion throughput",
         "status": "Done",
+        "resolution": null,
         "assignee": "Dana Okafor",
         "due": null,
         "components": [
@@ -465,6 +472,7 @@
         "key": "INGEST-150",
         "summary": "Provision ingestion cluster namespace",
         "status": "Done",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -499,6 +507,7 @@
         "key": "INGEST-151",
         "summary": "Staging deployment pipeline",
         "status": "Done",
+        "resolution": null,
         "assignee": "Dana Okafor",
         "due": null,
         "components": [
@@ -517,6 +526,7 @@
         "key": "INGEST-152",
         "summary": "Batch importer compatibility shim",
         "status": "Done",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -541,6 +551,7 @@
         "key": "INGEST-153",
         "summary": "Idempotent writes to the platform store",
         "status": "Done",
+        "resolution": null,
         "assignee": "Dana Okafor",
         "due": null,
         "components": [
@@ -559,6 +570,7 @@
         "key": "INGEST-154",
         "summary": "Config and secrets wiring",
         "status": "Done",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -577,6 +589,7 @@
         "key": "INGEST-155",
         "summary": "Integration tests against staging",
         "status": "Done",
+        "resolution": null,
         "assignee": "Dana Okafor",
         "due": null,
         "components": [
@@ -601,6 +614,7 @@
         "key": "INGEST-156",
         "summary": "Partitioning strategy for hot tenants",
         "status": "Done",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -619,6 +633,7 @@
         "key": "INGEST-157",
         "summary": "Production database access for ingestion writer",
         "status": "In Progress",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": "2026-11-13",
         "components": [
@@ -653,6 +668,7 @@
         "key": "INGEST-158",
         "summary": "Alert rules for consumer lag",
         "status": "Done",
+        "resolution": null,
         "assignee": "Dana Okafor",
         "due": null,
         "components": [
@@ -671,6 +687,7 @@
         "key": "INGEST-159",
         "summary": "Canary rollout config",
         "status": "Done",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -695,6 +712,7 @@
         "key": "INGEST-160",
         "summary": "Staging soak, week 1",
         "status": "Done",
+        "resolution": null,
         "assignee": "Dana Okafor",
         "due": null,
         "components": [
@@ -713,6 +731,7 @@
         "key": "INGEST-161",
         "summary": "Tenant onboarding doc",
         "status": "Done",
+        "resolution": null,
         "assignee": "Dana Okafor",
         "due": null,
         "components": [
@@ -737,6 +756,7 @@
         "key": "INGEST-162",
         "summary": "Feature flag for streaming path",
         "status": "Done",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -755,6 +775,7 @@
         "key": "INGEST-163",
         "summary": "Load test at 2× peak",
         "status": "In Progress",
+        "resolution": null,
         "assignee": "Dana Okafor",
         "due": "2026-11-15",
         "components": [
@@ -779,6 +800,7 @@
         "key": "INGEST-164",
         "summary": "Fix duplicate events under rebalance",
         "status": "Done",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -803,6 +825,7 @@
         "key": "INGEST-165",
         "summary": "Dashboard for ingestion lag",
         "status": "Done",
+        "resolution": null,
         "assignee": "Dana Okafor",
         "due": null,
         "components": [
@@ -821,6 +844,7 @@
         "key": "INGEST-166",
         "summary": "Production runbook",
         "status": "In Progress",
+        "resolution": null,
         "assignee": "Marcus Lee",
         "due": null,
         "components": [
@@ -839,6 +863,7 @@
         "key": "INGEST-167",
         "summary": "Cut-over plan from batch importer",
         "status": "To Do",
+        "resolution": null,
         "assignee": "Priya Natarajan",
         "due": null,
         "components": [
@@ -904,6 +929,7 @@
         "project": "SEC",
         "summary": "Security review: ingestion service",
         "status": "In Review",
+        "resolution": null,
         "assignee": "Fatima Noor",
         "due": "2026-11-14",
         "updated": "2026-11-11T09:15:00.000+0000",
@@ -919,6 +945,7 @@
         "project": "DATA",
         "summary": "Production DB permissions for ingestion writer",
         "status": "Closed",
+        "resolution": "Duplicate",
         "assignee": "Tomás Herrera",
         "due": "2026-11-13",
         "updated": "2026-11-12T16:10:00.000+0000",
@@ -934,6 +961,7 @@
         "project": "SRE",
         "summary": "Alerting and runbook for ingestion service",
         "status": "Done",
+        "resolution": null,
         "assignee": "Lena Fischer",
         "due": "2026-11-06",
         "updated": "2026-11-05T17:00:00.000+0000",
@@ -949,6 +977,7 @@
         "project": "DATA",
         "summary": "Kafka topic ACLs for ingestion",
         "status": "Done",
+        "resolution": null,
         "assignee": "Wei Zhang",
         "due": "2026-10-20",
         "updated": "2026-10-19T15:00:00.000+0000",
@@ -964,6 +993,7 @@
         "project": "SEC",
         "summary": "Secrets rotation policy sign-off for ingestion",
         "status": "Done",
+        "resolution": null,
         "assignee": "Jordan Blake",
         "due": "2026-10-30",
         "updated": "2026-10-29T11:00:00.000+0000",
@@ -979,6 +1009,7 @@
         "project": "DATA",
         "summary": "Raise ingestion cluster quota",
         "status": "Done",
+        "resolution": null,
         "assignee": "Anika Rao",
         "due": "2026-11-12",
         "updated": "2026-11-12T10:30:00.000+0000",
@@ -996,6 +1027,7 @@
         "project": "DATA",
         "summary": "Permissions review for analytics warehouse writers",
         "status": "In Progress",
+        "resolution": null,
         "assignee": "Tomás Herrera",
         "due": null,
         "updated": "2026-11-08T12:00:00.000+0000",
@@ -1012,6 +1044,7 @@
         "project": "SRE",
         "summary": "Capacity for ingestion service",
         "status": "To Do",
+        "resolution": null,
         "assignee": "Omar Haddad",
         "due": "2026-11-22",
         "updated": "2026-11-12T11:20:00.000+0000",
@@ -1050,112 +1083,218 @@
   "findings": [
     {
       "id": "f1",
-      "title": "Security approval is still open",
+      "title": "Approval still open: Security review approved (SEC-881 is In Review)",
       "gap_type": "process",
       "strength": "strong",
+      "strength_rule": "the plan item matched a ticket in the epic or linked from it",
       "owner": "Security",
       "owner_source": "team_list",
       "plan_item_id": "p3",
+      "plan_quote": "Security will have the security review approved by Nov 14.",
+      "plan_source": {
+        "file": "Ingestion-service-POR-v3.md",
+        "locator": "§4",
+        "quote": "Security will have the security review approved by Nov 14."
+      },
+      "match_way": "linked_keywords",
       "evidence": [
         {
           "key": "SEC-881",
           "text": "Security review: ingestion service",
-          "meta": "In Review · linked to INGEST-142 (is blocked by)"
+          "meta": "In Review · due 2026-11-14 · linked to INGEST-142 (is blocked by)"
         }
       ],
-      "why": "Strong: the plan item matches a ticket linked to the epic.",
-      "ask": "Confirm SEC-881 is approved by the plan date."
+      "why": "Approval still open: Security review approved (SEC-881 is In Review)",
+      "next_action": {
+        "action": "Ask Security to get SEC-881 approved and moved to Done before go/no-go (2026-11-13).",
+        "who": "Security · Jordan Blake (security lead)",
+        "by_when": "before go/no-go (2026-11-13)",
+        "why": "Approval still open: Security review approved (SEC-881 is In Review)"
+      },
+      "shown": true,
+      "hidden_by_default": false,
+      "ask": "Ask Security to get SEC-881 approved and moved to Done before go/no-go (2026-11-13)."
     },
     {
       "id": "f2",
-      "title": "DB permissions review promised in a comment, no ticket",
-      "gap_type": "commitment",
-      "strength": "moderate",
-      "owner": "Data Platform",
-      "owner_source": "team_list",
-      "plan_item_id": "p6",
-      "evidence": [
-        {
-          "key": "INGEST-157",
-          "text": "Comment: \"DBA will review prod permissions before launch\"",
-          "meta": "DATA-240 closed as duplicate Nov 12 · no other ticket in DATA"
-        }
-      ],
-      "why": "Moderate: owner from the team list; the promise exists only as a comment.",
-      "ask": "Open a ticket for the prod permissions review and give it a date."
-    },
-    {
-      "id": "f3",
-      "title": "SRE capacity due two days after launch",
+      "title": "SRE capacity and on-call in place: SRE-412 is due 2026-11-22, after launch on 2026-11-20",
       "gap_type": "cross_team_date",
       "strength": "moderate",
+      "strength_rule": "the ticket came from a scoped search, not a link",
       "owner": "SRE",
       "owner_source": "team_list",
       "plan_item_id": "p4",
+      "plan_quote": "SRE capacity and on-call will be in place the week before launch.",
+      "plan_source": {
+        "file": "Ingestion-service-POR-v3.md",
+        "locator": "§4",
+        "quote": "SRE capacity and on-call will be in place the week before launch."
+      },
+      "match_way": "search",
       "evidence": [
         {
           "key": "SRE-412",
           "text": "Capacity for ingestion service",
-          "meta": "To do · due Nov 22 (was Nov 13 on Nov 10) · found by search, not linked"
+          "meta": "To Do · due 2026-11-22 · found by search in SRE, not linked to INGEST-142"
         }
       ],
-      "why": "Moderate: matched by searching SRE, not by a link.",
+      "why": "SRE capacity and on-call in place: SRE-412 is due 2026-11-22, after launch on 2026-11-20",
       "linkage": {
         "from": "INGEST-142",
         "to": "SRE-412",
         "suggested_type": "is blocked by"
       },
-      "ask": "Pull SRE-412 in to the plan date and link it to INGEST-142."
+      "next_action": {
+        "action": "Ask SRE to pull SRE-412 in before launch on 2026-11-20; it is due 2026-11-22. Link it to INGEST-142.",
+        "who": "SRE · Sam Whitfield (SRE lead)",
+        "by_when": "2026-11-13",
+        "why": "SRE capacity and on-call in place: SRE-412 is due 2026-11-22, after launch on 2026-11-20"
+      },
+      "shown": true,
+      "hidden_by_default": false,
+      "ask": "Ask SRE to pull SRE-412 in before launch on 2026-11-20; it is due 2026-11-22. Link it to INGEST-142."
+    },
+    {
+      "id": "f3",
+      "title": "Production DB permissions reviewed: promised in a comment on INGEST-157, no ticket",
+      "gap_type": "commitment",
+      "strength": "moderate",
+      "strength_rule": "no ticket was found; the promise exists only in a comment",
+      "owner": "Data Platform",
+      "owner_source": "team_list",
+      "plan_item_id": "p6",
+      "plan_quote": "6,Production DB permissions reviewed,Data Platform,Production database access,The week before launch",
+      "plan_source": {
+        "file": "launch-checklist.csv",
+        "locator": "#6",
+        "quote": "6,Production DB permissions reviewed,Data Platform,Production database access,The week before launch"
+      },
+      "match_way": "comment",
+      "evidence": [
+        {
+          "key": "INGEST-157",
+          "text": "Comment by Tomás Herrera (2026-11-12): \"Closing DATA-240 as a duplicate of the general access process. DBA will review prod permissions before launch.\"",
+          "meta": "promise phrase"
+        },
+        {
+          "key": "DATA-240",
+          "text": "Production DB permissions for ingestion writer",
+          "meta": "Closed (Duplicate) · due 2026-11-13 · linked to INGEST-142 (relates to) · closed without being done, so not counted"
+        }
+      ],
+      "none_found": {
+        "projects": [
+          "DATA"
+        ],
+        "jql": [
+          "project = DATA AND updated >= 2026-09-15 AND text ~ \"production db permissions\""
+        ]
+      },
+      "why": "Production DB permissions reviewed: promised in a comment on INGEST-157, no ticket",
+      "next_action": {
+        "action": "Ask Data Platform to open a ticket for \"Production DB permissions reviewed\", which Tomás Herrera promised in a comment on INGEST-157, with a date no later than 2026-11-13.",
+        "who": "Data Platform · Wei Zhang (eng lead)",
+        "by_when": "2026-11-13",
+        "why": "Production DB permissions reviewed: promised in a comment on INGEST-157, no ticket"
+      },
+      "shown": true,
+      "hidden_by_default": false,
+      "ask": "Ask Data Platform to open a ticket for \"Production DB permissions reviewed\", which Tomás Herrera promised in a comment on INGEST-157, with a date no later than 2026-11-13."
     },
     {
       "id": "f4",
-      "title": "No rollback plan",
+      "title": "No ticket for: Rollback plan documented",
       "gap_type": "process",
       "strength": "moderate",
+      "strength_rule": "nothing was found for the item in INGEST",
       "owner": "Ingestion team",
       "owner_source": "team_list",
       "plan_item_id": "p7",
+      "plan_quote": "9,Rollback plan documented,Service team,All launches,4 days before launch",
+      "plan_source": {
+        "file": "launch-checklist.csv",
+        "locator": "#9",
+        "quote": "9,Rollback plan documented,Service team,All launches,4 days before launch"
+      },
+      "match_way": "none",
       "evidence": [],
-      "why": "Moderate: owner from the team list; no ticket or doc matched.",
-      "ask": "Write and link a rollback plan before go/no-go."
+      "none_found": {
+        "projects": [
+          "INGEST"
+        ],
+        "jql": [
+          "project = INGEST AND updated >= 2026-09-15 AND text ~ \"rollback plan\""
+        ]
+      },
+      "why": "No ticket for: Rollback plan documented",
+      "next_action": {
+        "action": "Ask Ingestion team to open a ticket for \"Rollback plan documented\" (nothing found in INGEST) and give it a date before go/no-go (2026-11-13).",
+        "who": "Ingestion team · Priya Natarajan (TPM)",
+        "by_when": "before go/no-go (2026-11-13)",
+        "why": "No ticket for: Rollback plan documented"
+      },
+      "shown": true,
+      "hidden_by_default": false,
+      "ask": "Ask Ingestion team to open a ticket for \"Rollback plan documented\" (nothing found in INGEST) and give it a date before go/no-go (2026-11-13)."
     },
     {
       "id": "f5",
-      "title": "Load test sign-off mentioned, not tracked",
+      "title": "Load test passed at 2× peak: claimed in a comment only; INGEST-163 is still In Progress",
       "gap_type": "commitment",
       "strength": "weak",
+      "strength_rule": "comment text only: the ticket is still open and only a comment says the item is handled",
       "owner": "Ingestion team",
       "owner_source": "team_list",
       "plan_item_id": "p5",
+      "plan_quote": "4,Load test passed at 2× peak,Service team,New services,5 days before launch",
+      "plan_source": {
+        "file": "launch-checklist.csv",
+        "locator": "#4",
+        "quote": "4,Load test passed at 2× peak,Service team,New services,5 days before launch"
+      },
+      "match_way": "linked_keywords",
       "evidence": [
         {
           "key": "INGEST-163",
-          "text": "Comment: \"load test looks fine\"",
-          "meta": "No result attached"
+          "text": "Comment by Dana Okafor (2026-11-11): \"Ran the 2× peak run on staging yesterday, load test looks fine. Will attach the report.\"",
+          "meta": "claim phrase"
+        },
+        {
+          "key": "INGEST-163",
+          "text": "Load test at 2× peak",
+          "meta": "In Progress · due 2026-11-15 · in the epic"
         }
       ],
-      "why": "Weak: comment text only. Hidden by default.",
-      "ask": "Attach the load test result to INGEST-163."
+      "why": "Load test passed at 2× peak: claimed in a comment only; INGEST-163 is still In Progress",
+      "next_action": {
+        "action": "Ask Ingestion team to attach the evidence for \"Load test passed at 2× peak\" to INGEST-163 and move it to Done before go/no-go (2026-11-13).",
+        "who": "Ingestion team · Priya Natarajan (TPM)",
+        "by_when": "before go/no-go (2026-11-13)",
+        "why": "Load test passed at 2× peak: claimed in a comment only; INGEST-163 is still In Progress"
+      },
+      "shown": false,
+      "hidden_by_default": true,
+      "ask": "Ask Ingestion team to attach the evidence for \"Load test passed at 2× peak\" to INGEST-163 and move it to Done before go/no-go (2026-11-13)."
     }
   ],
   "linkage_gaps": [
     {
       "id": "lg1",
+      "from": "INGEST-142",
+      "to": "SRE-412",
+      "to_summary": "Capacity for ingestion service",
+      "how": "search_match",
+      "suggested_type": "is blocked by",
+      "finding_id": "f2"
+    },
+    {
+      "id": "lg2",
       "from": "INGEST-150",
       "to": "DATA-233",
       "to_summary": "Raise ingestion cluster quota",
       "how": "comment_mention",
       "suggested_type": "is blocked by",
       "finding_id": null
-    },
-    {
-      "id": "lg2",
-      "from": "INGEST-142",
-      "to": "SRE-412",
-      "to_summary": "Capacity for ingestion service",
-      "how": "search_match",
-      "suggested_type": "is blocked by",
-      "finding_id": "f3"
     }
   ],
   "teams": [
@@ -1169,7 +1308,7 @@
           "plan_item_id": "p1",
           "text": "Ingestion service live in production",
           "ticket": "INGEST-142",
-          "ticket_status": "In progress · 21 of 25 stories",
+          "ticket_status": "In Progress · 21 of 25 stories done",
           "plan_due": "2026-11-18",
           "jira_due": "2026-11-18",
           "result": "ok",
@@ -1177,29 +1316,60 @@
           "finding_id": null
         },
         {
-          "plan_item_id": "p7",
-          "text": "Rollback plan documented",
-          "ticket": null,
-          "ticket_status": "No ticket or doc found",
-          "plan_due": "2026-11-16",
-          "jira_due": null,
-          "result": "gap",
-          "note": "No rollback plan",
-          "finding_id": "f4"
-        },
-        {
           "plan_item_id": "p5",
           "text": "Load test passed at 2× peak",
           "ticket": "INGEST-163",
-          "ticket_status": "Comment only",
+          "ticket_status": "In Progress · comment only",
           "plan_due": "2026-11-15",
           "jira_due": "2026-11-15",
           "result": "weak",
           "note": "Weak evidence",
           "finding_id": "f5"
+        },
+        {
+          "plan_item_id": "p7",
+          "text": "Rollback plan documented",
+          "ticket": null,
+          "ticket_status": "No ticket found",
+          "plan_due": "2026-11-16",
+          "jira_due": null,
+          "result": "gap",
+          "note": "No ticket",
+          "finding_id": "f4"
         }
       ],
       "change_note": ""
+    },
+    {
+      "team": "Data Platform",
+      "project_key": "DATA",
+      "role": "Shared platform",
+      "status": "at_risk",
+      "items": [
+        {
+          "plan_item_id": "p2",
+          "text": "Cluster quota raised for ingestion load",
+          "ticket": "DATA-233",
+          "ticket_status": "Done · not linked to epic",
+          "plan_due": "2026-11-12",
+          "jira_due": "2026-11-12",
+          "result": "ok",
+          "note": "Done · linkage gap",
+          "finding_id": null
+        },
+        {
+          "plan_item_id": "p6",
+          "text": "Production DB permissions reviewed",
+          "ticket": null,
+          "ticket_status": "Promised in a comment on INGEST-157",
+          "plan_due": "2026-11-13",
+          "jira_due": null,
+          "result": "gap",
+          "note": "No ticket",
+          "finding_id": "f3"
+        }
+      ],
+      "change_note": "DATA-233 moved to Done; DATA-240 moved to Closed (Duplicate); DATA-240 no longer counts for \"Production DB permissions reviewed\"; promised in a comment on INGEST-157"
     },
     {
       "team": "Security",
@@ -1231,46 +1401,15 @@
           "plan_item_id": "p4",
           "text": "SRE capacity and on-call in place",
           "ticket": "SRE-412",
-          "ticket_status": "To do · not linked to epic",
+          "ticket_status": "To Do · not linked to epic",
           "plan_due": "2026-11-13",
           "jira_due": "2026-11-22",
           "result": "late",
           "note": "Due 2 days after launch",
-          "finding_id": "f3"
-        }
-      ],
-      "change_note": "SRE-412 due date moved Nov 13 → Nov 22"
-    },
-    {
-      "team": "Data Platform",
-      "project_key": "DATA",
-      "role": "Shared platform",
-      "status": "at_risk",
-      "items": [
-        {
-          "plan_item_id": "p2",
-          "text": "Cluster quota raised for ingestion load",
-          "ticket": "DATA-233",
-          "ticket_status": "Done · not linked to epic",
-          "plan_due": "2026-11-12",
-          "jira_due": "2026-11-12",
-          "result": "ok",
-          "note": "Done · linkage gap",
-          "finding_id": null
-        },
-        {
-          "plan_item_id": "p6",
-          "text": "Production DB permissions reviewed",
-          "ticket": null,
-          "ticket_status": "Promised in a comment on INGEST-157",
-          "plan_due": "2026-11-13",
-          "jira_due": null,
-          "result": "gap",
-          "note": "No ticket",
           "finding_id": "f2"
         }
       ],
-      "change_note": "DATA-240 closed; review now only in a comment"
+      "change_note": "SRE-412 due date moved Nov 13 → Nov 22"
     }
   ]
 }

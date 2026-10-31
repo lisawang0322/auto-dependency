@@ -7,7 +7,7 @@ const POR = { name: "Ingestion-service-POR-v3.md", mimeType: "text/markdown", bu
 const CHECKS = { name: "launch-checklist.csv", mimeType: "text/csv", buffer: readFileSync(resolve(DOCS, "launch-checklist.csv")) };
 
 test("walks plan documents → connect Jira (resolving SEC) → review", async ({ page }) => {
-  await page.goto("/?fast=1");
+  await page.goto("/?fast=1&backend=sample");
 
   // Step 1: upload the POR and the checklist but no team list, so Security will be ambiguous.
   const confirm = page.getByRole("button", { name: "Confirm plan and connect Jira" });
@@ -66,17 +66,17 @@ test("walks plan documents → connect Jira (resolving SEC) → review", async (
   await expect(page.getByTestId("release-status")).toHaveText("Amber");
   await expect(page.getByTestId("open-findings")).toHaveText("4");
   await expect(page.getByText("1 weak finding hidden")).toBeVisible();
-  await expect(page.getByText("Load test sign-off mentioned, not tracked")).toHaveCount(0);
+  await expect(page.getByText(/claimed in a comment only/)).toHaveCount(0);
   await page.getByRole("button", { name: "Show weak" }).click();
-  await expect(page.getByText("Load test sign-off mentioned, not tracked")).toBeVisible();
+  await expect(page.getByText(/claimed in a comment only/)).toBeVisible();
   await page.getByRole("button", { name: "Hide weak" }).click();
 
   // Keep the security finding: its owner lands on the go/no-go card.
-  await page.getByRole("button", { name: /Security approval is still open/ }).click();
-  await expect(page.getByRole("heading", { name: "Security approval is still open" })).toBeVisible();
+  await page.getByRole("button", { name: /Approval still open: Security review approved/ }).click();
+  await expect(page.getByRole("heading", { name: /Approval still open: Security review approved/ })).toBeVisible();
   const detail = page.getByRole("region", { name: "Finding detail" });
   await expect(detail.getByText("SEC-881", { exact: true })).toBeVisible();
-  await expect(detail.getByText("In Review · linked to INGEST-142 (is blocked by)")).toBeVisible();
+  await expect(detail.getByText(/In Review · due 2026-11-14 · linked to INGEST-142 \(is blocked by\)/)).toBeVisible();
   await expect(detail.getByText("Source: POR §4")).toBeVisible();
   await expect(detail.getByText("(inferred from Jira assignee)")).toBeVisible();
   await page.getByRole("button", { name: "Keep — chase Security" }).click();
@@ -85,7 +85,7 @@ test("walks plan documents → connect Jira (resolving SEC) → review", async (
   // Dismiss the rollback finding with a required reason: the Ingestion team goes back to On track.
   const ingest = page.getByTestId("team-INGEST");
   await expect(ingest.getByTestId("team-status")).toHaveText("At risk");
-  await ingest.getByRole("button", { name: /No rollback plan/ }).click();
+  await ingest.getByRole("button", { name: /No ticket for: Rollback plan documented/ }).click();
   await expect(page.getByText("Searched INGEST, DATA, SEC and SRE for a matching ticket or linked doc.")).toBeVisible();
   const dismiss = page.getByRole("button", { name: "Dismiss" });
   await expect(dismiss).toBeDisabled();
@@ -94,10 +94,10 @@ test("walks plan documents → connect Jira (resolving SEC) → review", async (
   await expect(ingest.getByTestId("team-status")).toHaveText("On track");
   await expect(page.getByTestId("open-findings")).toHaveText("2");
   await expect(page.getByRole("heading", { name: "Decision log" })).toBeVisible();
-  await expect(page.locator(".log-row").first()).toContainText("Dismissed \"No rollback plan\" — Rollback is covered by the feature flag");
+  await expect(page.locator(".log-row").first()).toContainText("Dismissed \"No ticket for: Rollback plan documented\" — Rollback is covered by the feature flag");
 
   // The SRE finding shows its linkage gap; the other gap is listed separately.
-  await page.getByRole("button", { name: /SRE capacity due two days after launch/ }).click();
+  await page.getByRole("button", { name: /SRE-412 is due 2026-11-22, after launch/ }).click();
   await expect(page.getByText(/Linkage gap: INGEST-142 isn't linked to SRE-412/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Other linkage gaps" })).toBeVisible();
   await expect(page.getByText("Raise ingestion cluster quota")).toBeVisible();
@@ -115,7 +115,7 @@ test("walks plan documents → connect Jira (resolving SEC) → review", async (
 
   // Decisions survive a reload (localStorage), and the kept finding can be reopened.
   await page.reload();
-  await page.goto("/?fast=1");
+  await page.goto("/?fast=1&backend=sample");
   await page.getByRole("button", { name: "Use sample files" }).click();
   await page.getByRole("button", { name: "Confirm plan and connect Jira" }).click();
   await page.getByRole("button", { name: "Connect with Atlassian" }).click();
@@ -125,14 +125,14 @@ test("walks plan documents → connect Jira (resolving SEC) → review", async (
   await page.getByRole("button", { name: "Run review" }).click();
   await expect(page.getByRole("heading", { name: /7 days out/ })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator(".owner-row")).toContainText(["Security"]);
-  await page.getByRole("button", { name: /Security approval is still open/ }).click();
+  await page.getByRole("button", { name: /Approval still open: Security review approved/ }).click();
   await page.getByRole("button", { name: "Reopen" }).click();
   await expect(page.getByText("Nothing kept yet.")).toBeVisible();
 });
 
 test("works at phone width with no horizontal scroll", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/?fast=1");
+  await page.goto("/?fast=1&backend=sample");
   await page.getByRole("button", { name: "Use sample files" }).click();
   await expect(page.getByRole("heading", { name: "Extracted plan" })).toBeVisible();
   // No horizontal page scroll: the plan table scrolls inside its own wrapper.

@@ -1,0 +1,6 @@
+# Python helpers used by the release-reader (deck reading), the fixture builder, the Jira seed script and eval/score.py.
+# Setup: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python-pptx>=1.0
+pdfplumber>=0.11
+reportlab>=4.0
+jsonschema>=4.0

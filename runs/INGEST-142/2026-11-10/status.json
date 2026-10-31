@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "snapshot_label": "2026-11-10",
+  "epic": "INGEST-142",
+  "compared_with": null,
+  "teams": [
+    {
+      "team": "Ingestion team",
+      "project_key": "INGEST",
+      "role": "Service team",
+      "status": "at_risk",
+      "items": [
+        {
+          "plan_item_id": "p1",
+          "text": "Ingestion service live in production",
+          "ticket": "INGEST-142",
+          "ticket_status": "In Progress · 18 of 25 stories done",
+          "plan_due": "2026-11-18",
+          "jira_due": "2026-11-18",
+          "result": "ok",
+          "note": "On track",
+          "finding_id": null
+        },
+        {
+          "plan_item_id": "p5",
+          "text": "Load test passed at 2× peak",
+          "ticket": "INGEST-163",
+          "ticket_status": "In Progress · in the epic",
+          "plan_due": "2026-11-15",
+          "jira_due": "2026-11-15",
+          "result": "ok",
+          "note": "On track",
+          "finding_id": null
+        },
+        {
+          "plan_item_id": "p7",
+          "text": "Rollback plan documented",
+          "ticket": null,
+          "ticket_status": "No ticket found",
+          "plan_due": "2026-11-16",
+          "jira_due": null,
+          "result": "gap",
+          "note": "No ticket",
+          "finding_id": "f2"
+        }
+      ],
+      "change_note": ""
+    },
+    {
+      "team": "Data Platform",
+      "project_key": "DATA",
+      "role": "Shared platform",
+      "status": "on_track",
+      "items": [
+        {
+          "plan_item_id": "p2",
+          "text": "Cluster quota raised for ingestion load",
+          "ticket": "DATA-233",
+          "ticket_status": "In Progress · not linked to epic",
+          "plan_due": "2026-11-12",
+          "jira_due": "2026-11-12",
+          "result": "ok",
+          "note": "On track · linkage gap",
+          "finding_id": null
+        },
+        {
+          "plan_item_id": "p6",
+          "text": "Production DB permissions reviewed",
+          "ticket": "DATA-240",
+          "ticket_status": "To Do · linked",
+          "plan_due": "2026-11-13",
+          "jira_due": "2026-11-13",
+          "result": "ok",
+          "note": "On track",
+          "finding_id": null
+        }
+      ],
+      "change_note": ""
+    },
+    {
+      "team": "Security",
+      "project_key": "SEC",
+      "role": "Approver",
+      "status": "at_risk",
+      "items": [
+        {
+          "plan_item_id": "p3",
+          "text": "Security review approved",
+          "ticket": "SEC-881",
+          "ticket_status": "Open · linked",
+          "plan_due": "2026-11-14",
+          "jira_due": "2026-11-14",
+          "result": "gap",
+          "note": "Approval still open",
+          "finding_id": "f1"
+        }
+      ],
+      "change_note": ""
+    },
+    {
+      "team": "SRE",
+      "project_key": "SRE",
+      "role": "Capacity and on-call",
+      "status": "on_track",
+      "items": [
+        {
+          "plan_item_id": "p4",
+          "text": "SRE capacity and on-call in place",
+          "ticket": "SRE-412",
+          "ticket_status": "To Do · not linked to epic",
+          "plan_due": "2026-11-13",
+          "jira_due": "2026-11-13",
+          "result": "ok",
+          "note": "On track · linkage gap",
+          "finding_id": null
+        }
+      ],
+      "change_note": ""
+    }
+  ],
+  "warnings": []
+}

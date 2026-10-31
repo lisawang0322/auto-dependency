@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
-import type { JiraConnection, JiraState, UploadedFile, RunSummary } from "../backend/types";
+import type { JiraConnection, JiraState, UploadedFile, RunSummary, JiraCredentials } from "../backend/types";
 import { fmtDate } from "../model/dates";
 import { allTeamsResolved, isResolved, type TeamChoice } from "../model/review";
 
@@ -11,7 +11,7 @@ interface Props {
   target: ReleaseTarget | null; targetError: string | null; latestRun: Run | null; runs: RunSummary[];
   launch: string; setLaunch: (v: string) => void;
   choices: Record<string, TeamChoice>; setChoice: (team: string, c: TeamChoice | null) => void;
-  confirmed: boolean; onBack: () => void; onRun: () => void;
+  confirmed: boolean; runError?: string | null; onBack: () => void; onRun: () => void;
 }
 
 const MATCH_LABEL: Record<string, string> = {
@@ -20,6 +20,9 @@ const MATCH_LABEL: Record<string, string> = {
 
 export function ConnectJira(p: Props) {
   const [busy, setBusy] = useState(false);
+  const [creds, setCreds] = useState<JiraCredentials>({ site: "", email: "", token: "" });
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const live = p.jira.credentialsNeeded;
   const on = p.jiraState === "on";
   const hasPor = p.files.some((f) => f.kind === "plan");
   const hasChecklist = p.files.some((f) => f.kind === "checks");
@@ -54,13 +57,28 @@ export function ConnectJira(p: Props) {
     p.setJiraState(s);
     setBusy(false);
   };
+  const connect = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setConnectError(null);
+    p.setJiraState("connecting");
+    try {
+      const s = await p.jira.connect({ ...creds, site: creds.site.trim(), email: creds.email.trim() });
+      p.setJiraState(s);
+      if (s === "on") setCreds((c) => ({ ...c, token: "" }));
+    } catch (err) {
+      setConnectError(String((err as Error).message ?? err));
+      p.setJiraState("consent");
+    }
+    setBusy(false);
+  };
 
   return (
     <div className="stack">
       <div className="stack-sm">
         <span className="small muted">Step 2 · Jira</span>
         <h1>Connect Jira</h1>
-        <p className="lead">The review reads Jira through the Atlassian MCP server, signed in with your own Atlassian account. Access is read-only — nothing in Jira is created or changed.</p>
+        <p className="lead">{live ? "The review reads Jira Cloud with an API token from your own Atlassian account. Access is read-only — nothing in Jira is created or changed, and the token stays on this machine." : "The review reads Jira through the Atlassian MCP server, signed in with your own Atlassian account. Access is read-only — nothing in Jira is created or changed."}</p>
       </div>
 
       <section className="card">
@@ -68,12 +86,42 @@ export function ConnectJira(p: Props) {
           <div className="between">
             <div className="stack-sm" style={{ gap: 2 }}>
               <span style={{ fontWeight: 600 }}>Atlassian (Jira)</span>
-              <span className="sm muted">Not connected · OAuth via the Atlassian MCP server</span>
+              <span className="sm muted">{live ? "Not connected · read-only API token" : "Not connected · OAuth via the Atlassian MCP server"}</span>
             </div>
-            <button type="button" className="btn primary" onClick={() => p.setJiraState(p.jira.start())}>Connect with Atlassian</button>
+            <button type="button" className="btn primary" onClick={() => p.setJiraState(p.jira.start())}>{live ? "Connect to Jira" : "Connect with Atlassian"}</button>
           </div>
         )}
-        {p.jiraState === "consent" && (
+        {p.jiraState === "consent" && live && (
+          <form className="consent" aria-labelledby="connect-title" onSubmit={connect}>
+            <span className="eyebrow">Jira Cloud · API token</span>
+            <h2 id="connect-title">Connect to your Jira site</h2>
+            <div className="stack-sm" style={{ gap: 4, maxWidth: 420 }}>
+              <label htmlFor="jira-site" className="label">Site</label>
+              <input id="jira-site" className="input mono" type="url" placeholder="https://your-company.atlassian.net" value={creds.site} onChange={(e) => setCreds({ ...creds, site: e.target.value })} required />
+            </div>
+            <div className="stack-sm" style={{ gap: 4, maxWidth: 420 }}>
+              <label htmlFor="jira-email" className="label">Atlassian account email</label>
+              <input id="jira-email" className="input" type="email" autoComplete="username" value={creds.email} onChange={(e) => setCreds({ ...creds, email: e.target.value })} required />
+            </div>
+            <div className="stack-sm" style={{ gap: 4, maxWidth: 420 }}>
+              <label htmlFor="jira-token" className="label">API token</label>
+              <input id="jira-token" className="input mono" type="password" autoComplete="current-password" value={creds.token} onChange={(e) => setCreds({ ...creds, token: e.target.value })} required />
+              <span className="small muted">Create one at id.atlassian.com → Security → API tokens. It is sent once to the local server and kept in memory only.</span>
+            </div>
+            <div className="stack-sm sm">
+              <span style={{ fontWeight: 500 }}>The review will</span>
+              <ul className="list">{p.jira.scopes.can.map((s) => <li key={s}>{s}</li>)}</ul>
+              <span style={{ fontWeight: 500, marginTop: 4 }}>It will not</span>
+              <ul className="list">{p.jira.scopes.cannot.map((s) => <li key={s}>{s}</li>)}</ul>
+            </div>
+            {connectError && <div className="notice-grey" role="alert">{connectError}</div>}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              <button type="submit" className="btn primary" disabled={busy}>Connect</button>
+              <button type="button" className="btn" onClick={() => p.setJiraState(p.jira.cancel())}>Cancel</button>
+            </div>
+          </form>
+        )}
+        {p.jiraState === "consent" && !live && (
           <div className="consent" role="dialog" aria-labelledby="consent-title">
             <span className="eyebrow">Atlassian · authorization (simulated)</span>
             <h2 id="consent-title">Release Readiness Review wants access to your Atlassian account</h2>
@@ -92,13 +140,13 @@ export function ConnectJira(p: Props) {
           </div>
         )}
         {p.jiraState === "connecting" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 44 }} role="status"><span className="dot lg" aria-hidden="true" /><span>Connecting to {p.jira.site}…</span></div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 44 }} role="status"><span className="dot lg" aria-hidden="true" /><span>Connecting to {p.jira.site || creds.site.replace(/^https?:\/\//, "")}…</span></div>
         )}
         {on && (
           <div className="between">
             <div className="stack-sm" style={{ gap: 2 }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 600 }}><span className="dot" aria-hidden="true" />Connected to Jira</span>
-              <span className="sm muted">{p.jira.site} · via Atlassian MCP · read-only</span>
+              <span className="sm muted">{p.jira.site} · {live ? "read-only API token" : "via Atlassian MCP · read-only"}</span>
             </div>
             <button type="button" className="btn" onClick={() => p.setJiraState(p.jira.disconnect())}>Disconnect</button>
           </div>
@@ -118,7 +166,7 @@ export function ConnectJira(p: Props) {
             <label htmlFor="epic-key" className="label">Epic key</label>
             <input id="epic-key" type="text" className={"input mono" + (epicVal && !p.epicOk ? " err" : "")} value={p.epic} placeholder="e.g. INGEST-142" onChange={(e) => p.setEpic(e.target.value)} />
             <span className="small" style={{ color: epicVal && !p.epicOk ? "var(--late)" : p.target ? "var(--green)" : p.targetError ? "var(--late)" : "var(--muted)" }}>
-              {!epicVal ? "Start here — the epic the release is tracked under" : !p.epicOk ? "Use a Jira key like INGEST-142" : p.targetError ? p.targetError : p.target ? "Found in Jira (sample data)" : "Looking up the epic…"}
+              {!epicVal ? "Start here — the epic the release is tracked under" : !p.epicOk ? "Use a Jira key like INGEST-142" : p.targetError ? p.targetError : p.target ? (live ? "Found in Jira" : "Found in Jira (sample data)") : "Looking up the epic…"}
             </span>
           </div>
           {p.target && (
@@ -205,6 +253,7 @@ export function ConnectJira(p: Props) {
         </section>
       )}
 
+      {p.runError && <div className="notice-grey" role="alert">The review did not finish: {p.runError}</div>}
       <div className="between" style={{ gap: 16 }}>
         <span className="sm muted" style={{ maxWidth: 640 }}>
           {!on ? "Connect Jira to continue." : !p.epicOk ? "Pick the release epic to continue." : !p.target ? (p.targetError ?? "Looking up the epic…") : !resolved ? "Pick a Jira project for each team, or mark it \"don't search\", to continue." : `Ready to read ${epicVal} and compare it with your confirmed plan.`}

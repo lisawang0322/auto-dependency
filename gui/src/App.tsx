@@ -3,7 +3,7 @@ import type { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
 import type { ReviewBackend, JiraConnection, DecisionStore, UploadedFile, FileKind, JiraState, RunSummary, ProgressStage } from "./backend/types";
 import { SAMPLE_FILES } from "./backend/fixtureBackend";
 import { fmtDate } from "./model/dates";
-import type { TeamChoice } from "./model/review";
+import { applyChoices, type TeamChoice } from "./model/review";
 import { PlanDocuments } from "./screens/PlanDocuments";
 import { ConnectJira } from "./screens/ConnectJira";
 import { Running } from "./screens/Running";
@@ -43,8 +43,12 @@ export function App({ backend, jira, store }: AppProps) {
 
   const hasPlanFile = files.some((f) => f.kind === "plan");
   const hasTeamList = files.some((f) => f.kind === "teams");
+  const live = backend.mode === "live";
 
-  // Stage A (stubbed): re-extract whenever the files or their "read as" change.
+  // Live mode may already be connected (credentials from the server's environment).
+  useEffect(() => { let on = true; jira.initialState().then((s) => { if (on) setJiraState(s); }); return () => { on = false; }; }, [jira]);
+
+  // Stage A: re-extract whenever the files or their "read as" change.
   useEffect(() => {
     const my = ++seq.current;
     setPlanConfirmed(false);
@@ -63,7 +67,7 @@ export function App({ backend, jira, store }: AppProps) {
   const epicVal = epic.trim();
   const epicOk = /^[A-Z][A-Z0-9]+-\d+$/.test(epicVal);
 
-  // Stage B (stubbed): resolve once connected and the epic key is valid.
+  // Stage B: resolve once connected and the epic key is valid.
   useEffect(() => {
     if (!plan || jiraState !== "on" || !epicOk) { setTarget(null); setTargetError(null); return; }
     let live = true;
@@ -89,21 +93,41 @@ export function App({ backend, jira, store }: AppProps) {
       const next = [...cur];
       picked.forEach((file) => {
         const kb = Math.max(1, Math.round(file.size / 1024));
-        next.push({ id: `u${Date.now()}-${next.length}`, name: file.name, size: `${kb} KB`, kind: guessKind(file.name, next), sample: false });
+        next.push({ id: `u${Date.now()}-${next.length}`, name: file.name, size: `${kb} KB`, kind: guessKind(file.name, next), sample: false, file });
       });
       return next;
     });
   }, []);
 
+  const [runError, setRunError] = useState<string | null>(null);
   const runReview = useCallback(async () => {
     if (!plan || !target) return;
     setScreen("running");
     setStage(0);
     setConfirmed(true);
-    const id = await backend.runReview(plan, target, setStage);
-    setRunId(id);
-    setScreen("review");
-  }, [backend, plan, target]);
+    setRunError(null);
+    // What the person confirmed: edited due dates, the launch date, and their team → project choices.
+    const confirmedPlan: PlanDraft = {
+      ...plan,
+      launch_date: launch || plan.launch_date,
+      items: plan.items.map((i) => (planDates[i.id] && planDates[i.id] !== i.due ? { ...i, due: planDates[i.id], due_text: planDates[i.id], due_is_inferred: false } : i)),
+    };
+    const confirmedTarget: ReleaseTarget = { ...target, projects: applyChoices(target.projects, choices) };
+    try {
+      const id = await backend.runReview(confirmedPlan, confirmedTarget, setStage);
+      const list = await backend.listRuns(confirmedTarget.epic.key);
+      const loaded: Record<string, Run> = {};
+      for (const r of list) loaded[r.id] = runsById[r.id] && r.id !== id ? runsById[r.id] : await backend.loadRun(confirmedTarget.epic.key, r.id);
+      setRuns(list);
+      setRunsById(loaded);
+      setRunId(id);
+      setScreen("review");
+    } catch (e) {
+      setRunError(String((e as Error).message ?? e));
+      setConfirmed(false);
+      setScreen("jira");
+    }
+  }, [backend, plan, target, launch, planDates, choices, runsById]);
 
   const headerEpic = target?.epic.key ?? plan?.epic_keys_mentioned[0] ?? null;
   const headerLaunch = launch || plan?.launch_date || null;
@@ -125,7 +149,7 @@ export function App({ backend, jira, store }: AppProps) {
               <span className="muted">{target?.epic.summary ? `${target.epic.summary} · ` : ""}<span className="mono">{headerEpic}</span>{headerLaunch ? ` · launch ${fmtDate(headerLaunch)}` : ""}</span>
             )}
           </div>
-          <span className="tag">Sample data</span>
+          <span className="tag">{live ? `Live · ${jira.site || "Jira"}` : "Sample data"}</span>
         </div>
         <nav className="wrap steps" aria-label="Review steps">
           {tabs.map((t) => (
@@ -152,7 +176,7 @@ export function App({ backend, jira, store }: AppProps) {
             target={target} targetError={targetError} latestRun={runs.length ? runsById[runs[runs.length - 1].id] ?? null : null} runs={runs}
             launch={launch} setLaunch={setLaunch}
             choices={choices} setChoice={(team, c) => setChoices((cur) => { const n = { ...cur }; if (c === null) delete n[team]; else n[team] = c; return n; })}
-            confirmed={confirmed}
+            confirmed={confirmed} runError={runError}
             onBack={() => setScreen("docs")} onRun={runReview}
           />
         )}

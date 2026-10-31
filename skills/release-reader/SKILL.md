@@ -25,16 +25,20 @@ analyzer's job. Everything you output must trace to a plan file or a Jira read.
 5. **Page through everything.** The helper scripts set `maxResults`; when the MCP server pages,
    fetch every page before saving a response.
 6. **Dates are ISO strings** (`YYYY-MM-DD`, timestamps as returned by Jira).
-7. **Same code path for fixtures and Jira.** Every stage takes `--source fixture|mcp`. Fixture mode
-   reads a snapshot folder; MCP mode reads a cache folder you fill with raw MCP responses.
+7. **Same code path for fixtures and Jira.** Every stage takes `--source fixture|mcp|rest`. Fixture
+   mode reads a snapshot folder; MCP mode reads a cache folder you fill with raw MCP responses; REST
+   mode fills that same cache itself from Jira Cloud's REST API (read-only, credentials from
+   `JIRA_SITE`, `JIRA_EMAIL`, `JIRA_API_TOKEN`) when no agent is in the loop.
 
 All helpers run with `npx tsx` from the repository root (run `npm install` once).
 
 ## Stage A — extract-plan (no Jira)
 
-**Input:** one or more plan files (md, txt, pdf, docx, xlsx, csv, yaml, json). A POR is required.
-A launch checklist and a team list are optional. Files are not labelled; the helper works out what
-each contains (`read_as`), and you can override it.
+**Input:** one or more plan files (md, txt, pdf, docx, pptx, xlsx, csv, yaml, json). A POR is
+required. A launch checklist and a team list are optional. Files are not labelled; the helper works
+out what each contains (`read_as`), and you can override it. A file that cannot be read (unknown
+format, legacy .doc/.ppt, missing) is a warning, never a crash. Stage A needs no Jira, so
+`--source` is accepted and ignored.
 
 ```
 npx tsx skills/release-reader/scripts/extract-plan.ts \
@@ -53,6 +57,23 @@ What the helper does on its own:
   row's "Applies to" appears in the POR overview. Each becomes `kind: "checklist"`, locator `#6`.
 - Records a team's Jira key, owners and components from the team list (`jira_project_hint`).
 
+**Slide decks.** A POR is often a deck. The helper reads `.pptx` with python-pptx (every text
+frame, table cells as rows, grouped shapes recursively, speaker notes) and a deck exported to PDF with
+pdfplumber (one page is one slide; a landscape PDF is a deck, a portrait PDF is a document). It needs
+Python with the packages in `requirements.txt` (`python3 -m venv .venv && .venv/bin/pip install -r
+requirements.txt`; or set `RRR_PYTHON`). Slide titles are the section headings, so the same section
+rules apply (Deliverables / Dependencies / Approvals / Readiness / Timeline / Milestones). Locators are
+`"slide 7"`, or `"slide 7 (notes)"` for speaker notes; every quote is text on that slide. A table row
+is an item only when a cell names a known team; its quote is the cells joined with `" | "`, its date
+comes from the date cell and its label from the longest remaining cell. Header rows and rows such
+as "Launch" or "Go/no-go" are skipped and counted in `files[].notes`. A slide with no text (images
+only) gives the warning `slide N has no extractable text`; there is no OCR.
+
+- **Google Slides:** export it as `.pptx` or as PDF and pass the export. Export **with speaker notes**
+  ("1 slide with notes" in the print settings); a plain PDF export drops the notes, and with them
+  anything only said there. A Drive connector would supply the export later; it is not built.
+- **Mixed inputs** work: a deck plus a CSV checklist plus a YAML team list.
+
 **When the POR is prose the helper cannot parse** (run it first; if `items` is short or
 `warnings` say sentences were skipped), read the document yourself and write `items.json`:
 
@@ -66,7 +87,8 @@ What the helper does on its own:
 Then re-run with `--agent-items items.json`. The quote must appear in the named file word for
 word (whitespace and curly quotes are ignored); otherwise the item is dropped with a warning.
 `kind` is one of `deliverable`, `dependency`, `approval`, `checklist`. Leave `due_text` null when
-the text gives no date; do not invent one.
+the text gives no date; do not invent one. For a deck, the locator is `"slide N"` or
+`"slide N (notes)"` and the quote must be on that slide.
 
 **Checkpoint.** Show the person `plan-draft.json` as a table (item, kind, owner, due, inferred?,
 source) and the warnings. Wait for their corrections and confirmation before Stage B. If they edit
@@ -152,8 +174,10 @@ compared with it.
 
 `--source fixture --dir fixtures/ingest-142/jira/2026-11-13` reads a snapshot folder with
 `projects.json` and `issues/*.json` in Jira REST shapes; JQL is evaluated locally over those
-issues. Sample plan files are in `fixtures/ingest-142/docs/`. Both are placeholders until the real
-sample data exists (PRD R12).
+issues. Sample plan files are in `fixtures/ingest-142/docs/`: the POR as markdown, as a `.pptx`
+deck and as that deck's PDF export (all three give the same plan items; rebuild the decks with
+`.venv/bin/python fixtures/build_pptx.py`), the launch checklist and the team list. All are
+placeholders until the real sample data exists (PRD R12).
 
 ## When the orchestrator calls you
 

@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
-    include: ["skills/release-reader/tests/**/*.test.ts", "packages/**/*.test.ts"],
+    include: ["skills/release-reader/tests/**/*.test.ts", "skills/release-analyzer/tests/**/*.test.ts", "skills/release-status/tests/**/*.test.ts", "server/**/*.test.ts", "packages/**/*.test.ts"],
   },
 });

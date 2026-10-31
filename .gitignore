@@ -6,3 +6,5 @@ gui/test-results/
 gui/playwright-report/
 skills/release-reader/.mcp-cache/
 out/
+.venv/
+.mcp-cache/

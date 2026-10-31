@@ -32,6 +32,7 @@ function toStory(i: RawIssue): Story {
     key: i.key,
     summary: f.summary,
     status: f.status?.name ?? "",
+    resolution: f.resolution?.name ?? null,
     assignee: f.assignee?.displayName ?? null,
     due: f.duedate ?? null,
     components: (f.components ?? []).map((c) => c.name),
@@ -49,6 +50,7 @@ function brief(i: RawIssue) {
     project: f.project?.key ?? projectOf(i.key),
     summary: f.summary,
     status: f.status?.name ?? "",
+    resolution: f.resolution?.name ?? null,
     assignee: f.assignee?.displayName ?? null,
     due: f.duedate ?? null,
     updated: f.updated ?? "",
@@ -127,7 +129,7 @@ export function readJira(opts: ReadOptions): Release | undefined {
         if (reached.has(h.key)) continue;
         if (search_candidates.some((c) => c.key === h.key && c.matched_plan_item_id === item.id)) continue;
         const b = brief(h);
-        search_candidates.push({ key: b.key, project: b.project, summary: b.summary, status: b.status, assignee: b.assignee, due: b.due, updated: b.updated, matched_plan_item_id: item.id, match_terms: terms, jql });
+        search_candidates.push({ key: b.key, project: b.project, summary: b.summary, status: b.status, resolution: b.resolution, assignee: b.assignee, due: b.due, updated: b.updated, matched_plan_item_id: item.id, match_terms: terms, jql });
       }
     }
   }

@@ -120,7 +120,7 @@ export class McpCacheSource implements JiraSource {
 export function openSource(opts: { source: string; dir: string; cloudId?: string }): JiraSource {
   if (opts.source === "fixture") return new FixtureSource(opts.dir);
   if (opts.source === "mcp") return new McpCacheSource(opts.dir, opts.cloudId);
-  throw new Error(`--source must be fixture or mcp, got ${opts.source}`);
+  throw new Error(`--source must be fixture, mcp or rest, got ${opts.source}`);
 }
 
 /** If MCP calls are still pending, write requests.json, explain, and exit 3. */

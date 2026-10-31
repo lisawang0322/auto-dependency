@@ -1,7 +1,7 @@
 /**
- * Interfaces the GUI talks to. Today they are backed by fixture and run files (fixtureBackend.ts),
- * a simulated OAuth flow (stubJira.ts) and localStorage (decisionStore.ts). A live agent can replace
- * them without touching the screens.
+ * Interfaces the GUI talks to. Two implementations: the sample-data demo (fixtureBackend.ts + stubJira.ts,
+ * no server) and live mode (liveBackend.ts, talking to server/index.ts, which runs the real stages against
+ * Jira). Decisions live in localStorage either way (decisionStore.ts).
  */
 import type { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
 
@@ -13,6 +13,8 @@ export interface UploadedFile {
   size: string;
   kind: FileKind;
   sample: boolean;
+  /** The browser File, for uploads in live mode. Sample files have none. */
+  file?: File;
 }
 
 export interface RunSummary {
@@ -23,25 +25,35 @@ export interface RunSummary {
 export type ProgressStage = 0 | 1 | 2 | 3; // 0 reader running … 3 done
 
 export interface ReviewBackend {
-  /** Stage A. Stubbed: any upload with plan items gives the fixture plan-draft, filtered by what was read as what. */
+  readonly mode: "sample" | "live";
+  /** Stage A. Sample: the fixture plan-draft, filtered by what was read as what. Live: the real extractor. */
   extractPlan(files: UploadedFile[]): Promise<PlanDraft>;
-  /** Stage B. Stubbed: fixture release-target, with or without the team list. */
+  /** Stage B. Sample: fixture release-target, with or without the team list. Live: the epic is looked up in Jira. */
   resolveRelease(plan: PlanDraft, epicKey: string, hasTeamList: boolean): Promise<ReleaseTarget>;
   listRuns(epicKey: string): Promise<RunSummary[]>;
   loadRun(epicKey: string, runId: string): Promise<Run>;
-  /** reader → analyzer → status. Stubbed: reports progress, then returns the latest saved run id. */
+  /** reader → analyzer → status; resolves to the saved run id. Sample: animated, then the latest saved run. */
   runReview(plan: PlanDraft, target: ReleaseTarget, onProgress: (stage: ProgressStage) => void): Promise<string>;
 }
 
 export type JiraState = "off" | "consent" | "connecting" | "on";
 
+export interface JiraCredentials { site: string; email: string; token: string }
+
 export interface JiraConnection {
+  /** Shown once connected ("sample-company.atlassian.net"). */
   readonly site: string;
   readonly scopes: { can: string[]; cannot: string[] };
+  /** Live mode asks for a site, email and API token instead of the simulated consent page. */
+  readonly credentialsNeeded: boolean;
+  /** The state to start in (live mode is already "on" when the server has credentials from its environment). */
+  initialState(): Promise<JiraState>;
   /** Open the authorization step. */
   start(): JiraState;
-  /** The person accepted; resolves when connected. */
+  /** The person accepted (sample mode); resolves when connected. */
   accept(): Promise<JiraState>;
+  /** The person entered credentials (live mode); resolves when connected, throws with a message otherwise. */
+  connect(creds: JiraCredentials): Promise<JiraState>;
   cancel(): JiraState;
   disconnect(): JiraState;
 }

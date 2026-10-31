@@ -19,6 +19,7 @@
       "key": "INGEST-143",
       "summary": "Define ingestion event schema",
       "status": "Done",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -37,6 +38,7 @@
       "key": "INGEST-144",
       "summary": "Kafka consumer for raw events",
       "status": "Done",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -55,6 +57,7 @@
       "key": "INGEST-145",
       "summary": "Writer service skeleton",
       "status": "Done",
+      "resolution": null,
       "assignee": "Dana Okafor",
       "due": null,
       "components": [
@@ -79,6 +82,7 @@
       "key": "INGEST-146",
       "summary": "Backpressure and retry policy",
       "status": "Done",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -97,6 +101,7 @@
       "key": "INGEST-147",
       "summary": "Schema validation on ingest",
       "status": "Done",
+      "resolution": null,
       "assignee": "Dana Okafor",
       "due": null,
       "components": [
@@ -115,6 +120,7 @@
       "key": "INGEST-148",
       "summary": "Dead-letter topic handling",
       "status": "Done",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -139,6 +145,7 @@
       "key": "INGEST-149",
       "summary": "Metrics for ingestion throughput",
       "status": "Done",
+      "resolution": null,
       "assignee": "Dana Okafor",
       "due": null,
       "components": [
@@ -157,6 +164,7 @@
       "key": "INGEST-150",
       "summary": "Provision ingestion cluster namespace",
       "status": "In Progress",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -183,6 +191,7 @@
       "key": "INGEST-151",
       "summary": "Staging deployment pipeline",
       "status": "Done",
+      "resolution": null,
       "assignee": "Dana Okafor",
       "due": null,
       "components": [
@@ -201,6 +210,7 @@
       "key": "INGEST-152",
       "summary": "Batch importer compatibility shim",
       "status": "Done",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -225,6 +235,7 @@
       "key": "INGEST-153",
       "summary": "Idempotent writes to the platform store",
       "status": "Done",
+      "resolution": null,
       "assignee": "Dana Okafor",
       "due": null,
       "components": [
@@ -243,6 +254,7 @@
       "key": "INGEST-154",
       "summary": "Config and secrets wiring",
       "status": "Done",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -261,6 +273,7 @@
       "key": "INGEST-155",
       "summary": "Integration tests against staging",
       "status": "Done",
+      "resolution": null,
       "assignee": "Dana Okafor",
       "due": null,
       "components": [
@@ -285,6 +298,7 @@
       "key": "INGEST-156",
       "summary": "Partitioning strategy for hot tenants",
       "status": "Done",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -303,6 +317,7 @@
       "key": "INGEST-157",
       "summary": "Production database access for ingestion writer",
       "status": "In Progress",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": "2026-11-13",
       "components": [
@@ -329,6 +344,7 @@
       "key": "INGEST-158",
       "summary": "Alert rules for consumer lag",
       "status": "Done",
+      "resolution": null,
       "assignee": "Dana Okafor",
       "due": null,
       "components": [
@@ -347,6 +363,7 @@
       "key": "INGEST-159",
       "summary": "Canary rollout config",
       "status": "Done",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -371,6 +388,7 @@
       "key": "INGEST-160",
       "summary": "Staging soak, week 1",
       "status": "Done",
+      "resolution": null,
       "assignee": "Dana Okafor",
       "due": null,
       "components": [
@@ -389,6 +407,7 @@
       "key": "INGEST-161",
       "summary": "Tenant onboarding doc",
       "status": "Done",
+      "resolution": null,
       "assignee": "Dana Okafor",
       "due": null,
       "components": [
@@ -413,6 +432,7 @@
       "key": "INGEST-162",
       "summary": "Feature flag for streaming path",
       "status": "Done",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -431,6 +451,7 @@
       "key": "INGEST-163",
       "summary": "Load test at 2× peak",
       "status": "In Progress",
+      "resolution": null,
       "assignee": "Dana Okafor",
       "due": "2026-11-15",
       "components": [
@@ -449,6 +470,7 @@
       "key": "INGEST-164",
       "summary": "Fix duplicate events under rebalance",
       "status": "In Progress",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -473,6 +495,7 @@
       "key": "INGEST-165",
       "summary": "Dashboard for ingestion lag",
       "status": "In Review",
+      "resolution": null,
       "assignee": "Dana Okafor",
       "due": null,
       "components": [
@@ -491,6 +514,7 @@
       "key": "INGEST-166",
       "summary": "Production runbook",
       "status": "To Do",
+      "resolution": null,
       "assignee": "Marcus Lee",
       "due": null,
       "components": [
@@ -509,6 +533,7 @@
       "key": "INGEST-167",
       "summary": "Cut-over plan from batch importer",
       "status": "To Do",
+      "resolution": null,
       "assignee": "Priya Natarajan",
       "due": null,
       "components": [
@@ -574,6 +599,7 @@
       "project": "SEC",
       "summary": "Security review: ingestion service",
       "status": "Open",
+      "resolution": null,
       "assignee": "Fatima Noor",
       "due": "2026-11-14",
       "updated": "2026-11-05T14:35:00.000+0000",
@@ -589,6 +615,7 @@
       "project": "DATA",
       "summary": "Production DB permissions for ingestion writer",
       "status": "To Do",
+      "resolution": null,
       "assignee": "Tomás Herrera",
       "due": "2026-11-13",
       "updated": "2026-11-04T09:35:00.000+0000",
@@ -604,6 +631,7 @@
       "project": "SRE",
       "summary": "Alerting and runbook for ingestion service",
       "status": "Done",
+      "resolution": null,
       "assignee": "Lena Fischer",
       "due": "2026-11-06",
       "updated": "2026-11-05T17:00:00.000+0000",
@@ -619,6 +647,7 @@
       "project": "DATA",
       "summary": "Kafka topic ACLs for ingestion",
       "status": "Done",
+      "resolution": null,
       "assignee": "Wei Zhang",
       "due": "2026-10-20",
       "updated": "2026-10-19T15:00:00.000+0000",
@@ -634,6 +663,7 @@
       "project": "SEC",
       "summary": "Secrets rotation policy sign-off for ingestion",
       "status": "Done",
+      "resolution": null,
       "assignee": "Jordan Blake",
       "due": "2026-10-30",
       "updated": "2026-10-29T11:00:00.000+0000",
@@ -649,6 +679,7 @@
       "project": "DATA",
       "summary": "Raise ingestion cluster quota",
       "status": "In Progress",
+      "resolution": null,
       "assignee": "Anika Rao",
       "due": "2026-11-12",
       "updated": "2026-11-06T10:00:00.000+0000",
@@ -666,6 +697,7 @@
       "project": "DATA",
       "summary": "Permissions review for analytics warehouse writers",
       "status": "In Progress",
+      "resolution": null,
       "assignee": "Tomás Herrera",
       "due": null,
       "updated": "2026-11-08T12:00:00.000+0000",
@@ -682,6 +714,7 @@
       "project": "SRE",
       "summary": "Capacity for ingestion service",
       "status": "To Do",
+      "resolution": null,
       "assignee": "Omar Haddad",
       "due": "2026-11-13",
       "updated": "2026-10-28T09:00:00.000+0000",

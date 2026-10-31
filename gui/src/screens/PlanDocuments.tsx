@@ -66,9 +66,9 @@ export function PlanDocuments(p: Props) {
             onDrop={(e) => { e.preventDefault(); setOver(false); p.onAddFiles(e.dataTransfer?.files ?? null); }}
           >
             <span style={{ fontWeight: 500 }}>Drop files here</span>
-            <span className="small muted">PDF, Word, Markdown, spreadsheets, CSV, YAML or JSON</span>
+            <span className="small muted">Slides (PPTX or PDF), Word, Markdown, spreadsheets, CSV, YAML or JSON</span>
             <label htmlFor="plan-files" className="btn dark" style={{ cursor: "pointer" }}>Choose files</label>
-            <input id="plan-files" className="sr-only" type="file" multiple accept=".pdf,.docx,.doc,.md,.txt,.xlsx,.csv,.yaml,.yml,.json"
+            <input id="plan-files" className="sr-only" type="file" multiple accept=".pptx,.pdf,.docx,.md,.txt,.xlsx,.csv,.yaml,.yml,.json"
               onChange={(e) => { p.onAddFiles(e.target.files); e.target.value = ""; }} />
           </div>
           {p.files.length > 0 && (

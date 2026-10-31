@@ -1,6 +1,21 @@
-/** Read plan files of any common type into text (and rows for tabular files). */
-import { readFileSync } from "node:fs";
-import { basename, extname } from "node:path";
+/**
+ * Read plan files of any common type into text (and rows for tabular files, slides for decks).
+ * A file that cannot be read gives a warning on the LoadedFile, never a crash.
+ */
+import { existsSync, readFileSync } from "node:fs";
+import { basename, dirname, extname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+
+export interface Segment {
+  /** "slide 7", "slide 7 (notes)", or "page 3" */
+  locator: string;
+  heading: string;
+  /** One line per text frame / paragraph. */
+  body: string;
+  /** Table rows on the slide (first row is usually a header). */
+  rows: string[][];
+}
 
 export interface LoadedFile {
   name: string;
@@ -14,12 +29,80 @@ export interface LoadedFile {
   rawLines: string[] | null;
   /** Parsed object for yaml/json. */
   data: unknown | null;
+  /** Slides (decks) or pages, in order. When present the extractor uses these instead of headings. */
+  segments: Segment[] | null;
+  /** Problems reading this file ("slide 3 has no extractable text", "could not read …"). */
+  warnings: string[];
+}
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(HERE, "../../../..");
+const READ_DECK = resolve(HERE, "../py/read_deck.py");
+
+/** The Python used for deck reading: $RRR_PYTHON, else the repo's .venv, else python3 on PATH. */
+export function pythonExe(): string {
+  if (process.env.RRR_PYTHON) return process.env.RRR_PYTHON;
+  const venv = resolve(REPO_ROOT, ".venv/bin/python");
+  if (existsSync(venv)) return venv;
+  return "python3";
+}
+
+interface DeckJson {
+  kind: "pptx" | "pdf";
+  slides: { n: number; title: string; texts: string[]; rows: string[][]; notes: string[] }[];
+  warnings: string[];
+  landscape?: boolean;
+}
+
+/** Run read_deck.py. Throws with a readable message when Python or its packages are missing. */
+export function readDeck(path: string): DeckJson {
+  let out: string;
+  try {
+    out = execFileSync(pythonExe(), ["-I", READ_DECK, path], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+  } catch (e: any) {
+    const stderr: string = String(e?.stderr ?? e?.message ?? e);
+    const hint = /No module named|not found|ENOENT/.test(stderr) ? " (deck reading needs Python with python-pptx and pdfplumber: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt)" : "";
+    throw new Error(stderr.trim().split("\n").pop() + hint);
+  }
+  return JSON.parse(out);
+}
+
+function deckToSegments(deck: DeckJson): { segments: Segment[]; text: string } {
+  const segments: Segment[] = [];
+  const textParts: string[] = [];
+  for (const s of deck.slides) {
+    const loc = `slide ${s.n}`;
+    const body = s.texts.join("\n");
+    segments.push({ locator: loc, heading: s.title, body, rows: s.rows });
+    textParts.push(`## ${loc}: ${s.title}`, body, ...s.rows.map((r) => r.join(" | ")));
+    if (s.notes.length) {
+      segments.push({ locator: `${loc} (notes)`, heading: s.title, body: s.notes.join("\n"), rows: [] });
+      textParts.push(`Notes: ${s.notes.join("\n")}`);
+    }
+  }
+  return { segments, text: textParts.filter((t) => t.length).join("\n") };
+}
+
+function looksBinary(buf: Buffer): boolean {
+  const n = Math.min(buf.length, 4096);
+  let bad = 0;
+  for (let i = 0; i < n; i++) { const b = buf[i]; if (b === 0) return true; if (b < 7 || (b > 13 && b < 32)) bad++; }
+  return n > 0 && bad / n > 0.05;
 }
 
 export async function loadFile(path: string): Promise<LoadedFile> {
   const ext = extname(path).toLowerCase();
   const name = basename(path);
-  const base: LoadedFile = { name, path, ext, text: "", rows: null, rawLines: null, data: null };
+  const base: LoadedFile = { name, path, ext, text: "", rows: null, rawLines: null, data: null, segments: null, warnings: [] };
+  if (!existsSync(path)) return { ...base, warnings: [`could not read ${name}: file not found`] };
+  try {
+    return await loadByType(path, ext, base);
+  } catch (e: any) {
+    return { ...base, warnings: [`could not read ${name}: ${String(e?.message ?? e).replace(/\s+/g, " ").trim()}`] };
+  }
+}
+
+async function loadByType(path: string, ext: string, base: LoadedFile): Promise<LoadedFile> {
   switch (ext) {
     case ".md":
     case ".txt":
@@ -55,19 +138,44 @@ export async function loadFile(path: string): Promise<LoadedFile> {
       const text = readFileSync(path, "utf8");
       return { ...base, text, data: JSON.parse(text) };
     }
+    case ".pptx": {
+      const deck = readDeck(path);
+      const { segments, text } = deckToSegments(deck);
+      return { ...base, text, segments, warnings: deck.warnings };
+    }
     case ".pdf": {
-      const mod = await import("pdf-parse/lib/pdf-parse.js");
-      const pdf = (mod as any).default ?? mod;
-      const out = await pdf(readFileSync(path));
-      return { ...base, text: String(out.text ?? "") };
+      // pdfplumber, page by page. A landscape PDF is a deck export: one page is one slide.
+      // A portrait PDF is a document: its pages are joined into one text, as before.
+      let deck: DeckJson;
+      try {
+        deck = readDeck(path);
+      } catch (e: any) {
+        const mod = await import("pdf-parse/lib/pdf-parse.js");
+        const pdf = (mod as any).default ?? mod;
+        const out = await pdf(readFileSync(path));
+        return { ...base, text: String(out.text ?? ""), warnings: [`${base.name}: read without page locators (${String(e?.message ?? e)})`] };
+      }
+      if (deck.landscape) {
+        const { segments, text } = deckToSegments(deck);
+        return { ...base, text, segments, warnings: deck.warnings };
+      }
+      const text = deck.slides.map((s) => [s.title, ...s.texts, ...s.rows.map((r) => r.join(" | ")), ...s.notes].filter(Boolean).join("\n")).join("\n\n");
+      return { ...base, text, warnings: deck.warnings.map((w) => w.replace(/^slide (\d+)/, "page $1")) };
     }
     case ".docx": {
       const mammoth = (await import("mammoth")).default;
       const out = await mammoth.extractRawText({ path });
       return { ...base, text: out.value };
     }
-    default:
-      return { ...base, text: readFileSync(path, "utf8") };
+    case ".doc":
+    case ".ppt":
+    case ".xls97":
+      throw new Error(`legacy ${ext} format is not supported; export it as ${ext === ".ppt" ? ".pptx or .pdf" : ".docx or .pdf"}`);
+    default: {
+      const buf = readFileSync(path);
+      if (looksBinary(buf)) throw new Error(`unknown binary format${ext ? ` (${ext})` : ""}`);
+      return { ...base, text: buf.toString("utf8") };
+    }
   }
 }
 

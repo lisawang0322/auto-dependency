@@ -33,6 +33,7 @@ export const SAMPLE_FILES: UploadedFile[] = [
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export class FixtureBackend implements ReviewBackend {
+  readonly mode = "sample" as const;
   constructor(private delayMs = 300) {}
 
   async extractPlan(files: UploadedFile[]): Promise<PlanDraft> {
