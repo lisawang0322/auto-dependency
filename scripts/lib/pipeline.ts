@@ -187,3 +187,145 @@ export function applyProjectChoices(target: ReleaseTarget, choices: Record<strin
 }
 
 export type { Team };
+
+// ---------- early stages: skills/release-starter ----------
+
+import { Starter, type Signal, type PlanFile } from "@rrr/schemas";
+import { type LoadedFile } from "../../skills/release-reader/scripts/lib/files.js";
+import { classifyFile } from "../../skills/release-reader/scripts/lib/plan-extract.js";
+import { loadRules, DEFAULT_RULES, type SignalRules } from "../../skills/release-starter/scripts/lib/config.js";
+import { readSignals, projectName } from "../../skills/release-starter/scripts/lib/signals.js";
+import { loadDirectory, findTeam, type DirectoryEntry } from "../../skills/release-starter/scripts/lib/directory.js";
+import { suggest } from "../../skills/release-starter/scripts/lib/starter.js";
+import { coverage, readApprovalTickets } from "../../skills/release-starter/scripts/lib/coverage.js";
+
+export type StarterStage = "signals" | "suggest" | "people" | "target" | "release" | "coverage" | "saved";
+
+export interface StarterInput {
+  stage: "starting" | "building";
+  /** The PRD (any format) and, optionally, a directory or team list; files are told apart by content. */
+  files: string[];
+  /** Files to read as the directory regardless of content. */
+  directoryFiles?: string[];
+  rulesPath?: string;
+  excludeSignals?: string[];
+  /** Building only. */
+  epicKey?: string | null;
+  source?: SourceSpec;
+  label?: string;
+  runsRoot?: string;
+  analyzedAt?: string;
+  readAt?: string;
+  onStage?: (stage: StarterStage, detail: string) => void;
+}
+
+export interface StarterInputs { docs: LoadedFile[]; directory: DirectoryEntry[]; files: PlanFile[]; project: string; warnings: string[] }
+
+/** Load the files and tell the PRD from the directory. */
+export async function readStarterInputs(files: string[], directoryFiles: string[] = []): Promise<StarterInputs> {
+  const docs: LoadedFile[] = [], directory: DirectoryEntry[] = [], out: PlanFile[] = [], warnings: string[] = [];
+  const dirSet = new Set(directoryFiles.map((p) => resolve(p)));
+  for (const p of files) {
+    const f = await loadFile(p);
+    warnings.push(...f.warnings);
+    const isDir = dirSet.has(resolve(p)) || classifyFile(f).includes("teams_and_owners");
+    if (isDir) {
+      const entries = loadDirectory(f);
+      directory.push(...entries);
+      out.push({ name: f.name, read_as: ["teams_and_owners"], notes: `${entries.length} teams · ${entries.reduce((n, e) => n + e.people.length, 0)} people` });
+    } else {
+      docs.push(f);
+      out.push({ name: f.name, read_as: ["plan_items"], notes: "" });
+    }
+  }
+  return { docs, directory, files: out, project: projectName(docs), warnings };
+}
+
+export function slug(s: string): string { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project"; }
+
+/** Where a starter run is saved: runs/<epic>/<label>.building.json or runs/<project-slug>/<label>.starting.json. */
+export function starterKey(stage: "starting" | "building", project: string, epic: string | null): string {
+  return stage === "building" && epic ? epic : slug(project);
+}
+export function listStarterLabels(runsRoot: string, key: string, stage: "starting" | "building"): string[] {
+  const dir = runDir(runsRoot, key);
+  if (!existsSync(dir)) return [];
+  const re = new RegExp(`^(\\d{4}-\\d{2}-\\d{2})\\.${stage}\\.json$`);
+  return readdirSync(dir).map((f) => f.match(re)?.[1]).filter((x): x is string => !!x).sort();
+}
+export function loadStarter(runsRoot: string, key: string, stage: "starting" | "building", label: string): Starter {
+  return Starter.parse(JSON.parse(readFileSync(join(runDir(runsRoot, key), `${label}.${stage}.json`), "utf8")));
+}
+
+/** Signals and what they imply, without Jira: shared by both stages and by the GUI's plan step. */
+export function starterSignals(inputs: StarterInputs, rules: SignalRules, excludeSignals: string[] = []) {
+  const signals = readSignals(inputs.docs, rules);
+  const s = suggest({ signals, rules, directory: inputs.directory, excludeSignals });
+  const files = inputs.files.map((f) => f.read_as.includes("plan_items") ? { ...f, notes: `${signals.filter((g) => g.file === f.name).length} signals about teams and approvals` } : f);
+  return { signals, files, ...s };
+}
+
+/** The plan Stage B needs at the early stages: Stage A's plan with the needed teams added (directory projects as hints).
+ *  A PRD has few dated items, so Stage A's item warnings are dropped; the files carry the signal counts. */
+export async function starterPlan(inputs: StarterInputs, sig: { teams: { team: string }[]; files: PlanFile[] }, filePaths: string[]): Promise<PlanDraft> {
+  const readAs: Record<string, ReadAs[]> = {};
+  for (const f of inputs.files) readAs[f.name] = f.read_as;
+  const plan = await stageA({ files: filePaths, readAs });
+  plan.files = sig.files;
+  plan.warnings = [...inputs.warnings, ...plan.warnings.filter((w) => !/no owning team found|No launch date found|read as plan items/.test(w))];
+  const needed = sig.teams;
+  for (const n of needed) {
+    const existing = plan.teams.find((t) => t.name.toLowerCase() === n.team.toLowerCase());
+    const d = findTeam(inputs.directory, n.team);
+    if (existing) { if (!existing.mentioned_in.includes("signals")) existing.mentioned_in.push("signals"); if (!existing.jira_project_hint && d?.project) existing.jira_project_hint = d.project; }
+    else plan.teams.push({ name: n.team, mentioned_in: ["signals"], jira_project_hint: d?.project ?? null, owners: d?.people.map((p) => p.title ? `${p.name} (${p.title})` : p.name) ?? [], components: [], role: null, project_keys_mentioned: [] });
+  }
+  return plan;
+}
+
+export async function runStarter(input: StarterInput): Promise<{ starter: Starter; file: string }> {
+  const label = input.label ?? todayLabel();
+  const runsRoot = input.runsRoot ?? "runs";
+  const say = input.onStage ?? (() => {});
+  const rules = loadRules(input.rulesPath ?? DEFAULT_RULES);
+  const inputs = await readStarterInputs(input.files, input.directoryFiles);
+  if (!inputs.docs.length) throw new Error("No PRD or plan file: every file was read as a team list or directory.");
+  const exclude = input.excludeSignals ?? [];
+  const sig = starterSignals(inputs, rules, exclude);
+  say("signals", `${sig.signals.length} signals in ${inputs.docs.map((d) => d.name).join(", ")}${exclude.length ? ` (${exclude.length} unticked)` : ""}`);
+  say("suggest", `${sig.teams.length} teams, ${sig.approvals.length} approvals`);
+  say("people", inputs.directory.length ? `${sig.teams.filter((t) => t.contact).length} of ${sig.teams.length} teams have a contact in the directory` : "no directory: teams without names");
+  const warnings = [...inputs.warnings];
+  const base = {
+    schema_version: 1 as const, stage: input.stage, project: inputs.project, label, analyzed_at: input.analyzedAt ?? new Date().toISOString(),
+    files: sig.files, directory_given: inputs.directory.length > 0, epic: null as string | null, snapshot_label: null as string | null,
+    excluded_signals: exclude, signals: sig.signals, teams: sig.teams, approvals: sig.approvals, coverage: [] as Starter["coverage"], approval_status: [] as Starter["approval_status"],
+    next_actions: sig.next_actions, warnings,
+  };
+  let starter: Starter;
+  if (input.stage === "starting") {
+    starter = Starter.parse(base);
+  } else {
+    if (!input.epicKey || !input.source) throw new Error("The building stage needs --epic and a Jira source.");
+    const plan = await starterPlan(inputs, sig, input.files);
+    const target = await stageB({ plan, epicKey: input.epicKey, source: input.source });
+    say("target", `epic ${target.epic.key}, ${target.projects.filter((p) => p.jira_project).length}/${target.projects.length} needed teams have a Jira project`);
+    const release = await stageC({ plan, target, source: input.source, label, readAt: input.readAt });
+    say("release", `${release.stories.length} stories, ${release.related.length} related, ${release.search_candidates.length} search candidates`);
+    const hits = await withSource(input.source, (src) => readApprovalTickets({ source: src, target, approvals: sig.approvals, rules, directory: inputs.directory }));
+    const cov = coverage({ needed: sig.teams, approvals: sig.approvals, release, target, directory: inputs.directory, rules, approvalHits: hits.hits, searched: hits.searched });
+    say("coverage", `${cov.coverage.filter((c) => c.state === "covered").length} of ${cov.coverage.length} teams covered; ${cov.approval_status.filter((a) => a.state === "not_started").length} approvals not started`);
+    // Needed teams without a Jira project are expected here (Privacy, Legal...); one line says so instead of one warning each.
+    const noProject = target.projects.filter((p) => !p.jira_project).map((p) => p.team);
+    const targetWarnings = target.warnings.filter((w) => !/: unresolved\. /.test(w) && !/in the team list but not in the plan/.test(w));
+    if (noProject.length) targetWarnings.unshift(`No Jira project for ${noProject.join(", ")}: checked by assignee only.`);
+    starter = Starter.parse({ ...base, epic: target.epic.key, snapshot_label: release.snapshot_label, coverage: cov.coverage, approval_status: cov.approval_status, next_actions: cov.next_actions, warnings: [...warnings, ...targetWarnings, ...hits.warnings, ...cov.warnings] });
+  }
+  const key = starterKey(input.stage, inputs.project, starter.epic);
+  const dir = runDir(runsRoot, key);
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, `${label}.${input.stage}.json`);
+  writeFileSync(file, JSON.stringify(starter, null, 2) + "\n");
+  say("saved", resolve(file));
+  return { starter, file: resolve(file) };
+}

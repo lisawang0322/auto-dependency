@@ -1,0 +1,217 @@
+import { useEffect, useState } from "react";
+import type { Starter, InvolveRole, CoverageState, ApprovalState } from "@rrr/schemas";
+import type { DecisionStore, RunDecisions } from "../backend/types";
+import { fmtDate, prettyDates } from "../model/dates";
+import { STAGE_SHORT } from "./GetStarted";
+
+/**
+ * Step 4 for the early stages (PRD R16, R17, R18): next actions first, then for "Just starting" the
+ * stakeholder map, teams to involve and approvals to plan for; for "Building" team coverage and
+ * approval status against Jira. Everything comes from release-starter's output, filtered by the
+ * signals the person left ticked.
+ */
+
+interface Props {
+  starter: Starter;
+  signalsOff: Record<string, boolean>;
+  store: DecisionStore;
+  launch: string | null;
+  onChangeStage: () => void; onAddFiles: () => void; onConnectApps: () => void;
+}
+
+const ROLE_LABEL: Record<InvolveRole, string> = { core: "Work with closely", consult: "Consult", approve: "Approves", inform: "Keep informed" };
+const ROLE_DESC: Record<InvolveRole, string> = { core: "In the room every week", consult: "Ask before decisions", approve: "Must sign off", inform: "Update at milestones" };
+const COV_LABEL: Record<CoverageState, string> = { covered: "Covered", unclear: "Unclear", missing: "Missing" };
+const APPR_LABEL: Record<ApprovalState, string> = { done: "Done", started: "In progress", no_owner: "No owner", not_started: "Not started" };
+const EMPTY: RunDecisions = { decisions: {}, log: [], actionsDone: {}, contacted: {} };
+
+export function EarlyResults(p: Props) {
+  const st = p.starter;
+  const key = `starter:${st.stage}:${st.epic ?? st.project}/${st.label}`;
+  const [saved, setSaved] = useState<RunDecisions>(EMPTY);
+  useEffect(() => { setSaved(p.store.load(key)); }, [key, p.store]);
+  const persist = (next: RunDecisions) => { setSaved(next); p.store.save(key, next); };
+  const actionsDone = saved.actionsDone ?? {};
+  const contacted = saved.contacted ?? {};
+
+  // Anything implied only by unticked signals is left out.
+  const on = (ids: string[]) => ids.length === 0 || ids.some((id) => !p.signalsOff[id]);
+  const teams = st.teams.filter((t) => on(t.signal_ids));
+  const approvals = st.approvals.filter((a) => on(a.signal_ids));
+  const coverage = st.coverage.filter((c) => on(c.signal_ids));
+  const approvalStatus = st.approval_status.filter((a) => on(a.signal_ids));
+  const actions = st.next_actions.filter((a) => on(a.signal_ids));
+  const openActions = actions.filter((a) => !actionsDone[a.id]).length;
+  const starting = st.stage === "starting";
+  const covered = coverage.filter((c) => c.state === "covered").length;
+  const missing = coverage.filter((c) => c.state === "missing").length;
+  const unclear = coverage.filter((c) => c.state === "unclear").length;
+  const notStarted = approvalStatus.filter((a) => a.state === "not_started").length;
+  const personOf = (team: string, contact: string | null) => contact ?? `${team} lead — connect your directory for a name`;
+
+  return (
+    <div className="stack" style={{ gap: 22 }}>
+      <div className="stack-sm" style={{ gap: 4 }}>
+        <span className="small muted">Step 4 · next steps · {STAGE_SHORT[st.stage]}</span>
+        <h1>{starting ? "Who to involve, and what to do first" : "Who's missing, and what hasn't started"}</h1>
+        <span className="muted">{starting
+          ? `From ${st.files.filter((f) => f.read_as.includes("plan_items")).map((f) => f.name).join(", ")}${st.directory_given ? " and your directory" : ""} · ${teams.length} teams suggested`
+          : `From your plan and ${st.epic} in Jira · the ${fmtDate(st.snapshot_label)} snapshot`}</span>
+      </div>
+
+      <section className="card" style={{ gap: 6, borderColor: "var(--accent)" }} data-testid="next-actions">
+        <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
+          <h2>Your next actions</h2>
+          <span className="small muted" data-testid="actions-count">{openActions} open · {actions.length - openActions} done</span>
+        </div>
+        {actions.length === 0 && <p className="sm muted">Nothing open. Re-run when the plan or the work changes.</p>}
+        {actions.map((a) => {
+          const done = !!actionsDone[a.id];
+          return (
+            <div key={a.id} className="action-row">
+              <input id={`act-${a.id}`} type="checkbox" checked={done} onChange={() => persist({ ...saved, actionsDone: { ...actionsDone, [a.id]: !done } })} />
+              <label htmlFor={`act-${a.id}`}>
+                <span className={done ? "done" : ""} style={done ? undefined : { fontWeight: 500 }}>{prettyDates(a.text)}</span>
+                <span className="small muted"><strong style={{ fontWeight: 500, color: "var(--text-2)" }}>{a.who}</strong> · {a.when} · {a.why}</span>
+              </label>
+            </div>
+          );
+        })}
+      </section>
+
+      {starting && (
+        <div className="stack" style={{ gap: 22 }}>
+          {!st.directory_given && (
+            <div className="between notice" style={{ gap: 10 }}>
+              <span>Connect your employee directory to see who to contact on each team.</span>
+              <button type="button" className="btn outline-accent" style={{ padding: "0 14px" }} onClick={p.onConnectApps}>Connect directory</button>
+            </div>
+          )}
+          <section className="stack" style={{ gap: 12 }}>
+            <h2>Stakeholder map</h2>
+            <div className="map-grid" data-testid="stakeholder-map">
+              {(["core", "consult", "approve", "inform"] as InvolveRole[]).map((role) => (
+                <div key={role} className="card" style={{ padding: 16, gap: 8 }}>
+                  <div className="stack-sm" style={{ gap: 2 }}>
+                    <span style={{ fontWeight: 600 }}>{role === "approve" ? "Approve" : ROLE_LABEL[role]}</span>
+                    <span className="small muted">{ROLE_DESC[role]}</span>
+                  </div>
+                  {teams.filter((t) => t.role === role).map((t) => (
+                    <div key={t.team} className="map-item">
+                      <span style={{ fontWeight: 500, fontSize: 14 }}>{t.team}</span>
+                      <span className="small muted">{t.contact ?? "Name needs a directory"}</span>
+                    </div>
+                  ))}
+                  {teams.filter((t) => t.role === role).length === 0 && <span className="small muted">—</span>}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="stack" style={{ gap: 12 }}>
+            <h2>Teams to involve</h2>
+            <div className="engage-grid" data-testid="teams-to-involve">
+              {teams.map((t) => {
+                const done = !!contacted[t.team];
+                return (
+                  <div key={t.team} className="card" style={{ padding: 16, gap: 10 }} data-testid={`involve-${t.team}`}>
+                    <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
+                      <span style={{ fontWeight: 600, fontSize: 16 }}>{t.team}</span>
+                      <span className="pill type">{ROLE_LABEL[t.role]}</span>
+                    </div>
+                    <span className="sm text2">{t.why}</span>
+                    <span className="small muted">Involve: <strong style={{ fontWeight: 500, color: "var(--ink)" }}>{t.when}</strong></span>
+                    <div className="between" style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 10, gap: 8 }}>
+                      <span className="sm">{personOf(t.team, t.contact)}</span>
+                      <button type="button" className={"btn" + (done ? " contacted" : "")} style={{ padding: "0 12px", fontSize: 14 }} aria-pressed={done} onClick={() => persist({ ...saved, contacted: { ...contacted, [t.team]: !done } })}>{done ? "Contacted" : "Mark contacted"}</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="stack" style={{ gap: 10 }}>
+            <h2>Approvals you'll need</h2>
+            <div className="card" style={{ padding: "4px 18px", gap: 0 }} data-testid="approvals">
+              {approvals.map((a) => (
+                <div key={a.name} className="approval-row">
+                  <span style={{ fontWeight: 500 }}>{a.name}</span>
+                  <span className="text2">{a.why}</span>
+                  <span className="muted">Start: {a.start}</span>
+                </div>
+              ))}
+              {approvals.length === 0 && <p className="sm muted" style={{ padding: "10px 0" }}>No approvals implied by the signals you kept.</p>}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {!starting && (
+        <div className="stack" style={{ gap: 22 }}>
+          <div className="tiles">
+            <div className={"tile " + (missing + unclear > 0 ? "amber" : "green")}>
+              <div className="small">Teams covered</div>
+              <div className="big" data-testid="covered-count">{covered} of {coverage.length}</div>
+              <div className="small">{missing} missing · {unclear} unclear</div>
+            </div>
+            <div className="tile"><div className="small muted">Approvals not started</div><div className="big" data-testid="not-started-count">{notStarted} of {approvalStatus.length}</div></div>
+            <div className="tile"><div className="small muted">Epic</div><div className="big mono" style={{ fontSize: 20 }}>{st.epic}</div><div className="small muted">{p.launch ? `Launch ${fmtDate(p.launch)} · from the fix version` : "No launch date yet"}</div></div>
+          </div>
+
+          <section className="stack" style={{ gap: 10 }}>
+            <h2>Team coverage</h2>
+            <p className="sm muted">Teams your plan needs, compared with who is actually working on {st.epic} in Jira.</p>
+            <div className="table-wrap">
+              <table className="coverage-table">
+                <thead><tr><th>Team</th><th>Status</th><th>What we found</th><th>Who to bring in</th></tr></thead>
+                <tbody>
+                  {coverage.map((c) => (
+                    <tr key={c.team} data-testid={`coverage-${c.team}`}>
+                      <td style={{ fontWeight: 500 }}>{c.team}</td>
+                      <td><span className={"cov " + c.state}>{COV_LABEL[c.state]}</span></td>
+                      <td className="sm text2">{c.found}</td>
+                      <td className="sm">{c.state === "covered" ? "—" : personOf(c.team, c.contact)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="stack" style={{ gap: 10 }}>
+            <h2>Approvals</h2>
+            <div className="card" style={{ padding: "4px 18px", gap: 0 }} data-testid="approval-status">
+              {approvalStatus.map((a) => (
+                <div key={a.name} className="approval-row" data-testid={`approval-${a.name}`}>
+                  <span style={{ fontWeight: 500 }}>{a.name}</span>
+                  <span><span className={"cov " + (a.state === "done" || a.state === "started" ? "covered" : a.state === "no_owner" ? "unclear" : "missing")}>{APPR_LABEL[a.state]}</span></span>
+                  <span className="text2">{prettyDates(a.detail)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {st.warnings.length > 0 && <div className="notice-grey">{st.warnings.join(" ")}</div>}
+
+      <section className="stack" style={{ gap: 10 }}>
+        <h2>What this review can't see</h2>
+        <div className="card sm text2" style={{ padding: "16px 18px", maxWidth: 560 }}>
+          <ul className="list" style={{ gap: 6 }}>
+            <li>Anything agreed only in meetings, chat or email</li>
+            <li>Approvals tracked in apps that aren't connected</li>
+            <li>Whether the technical work itself is adequate</li>
+          </ul>
+        </div>
+      </section>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        <button type="button" className="btn" onClick={p.onChangeStage}>Change stage</button>
+        <button type="button" className="btn" onClick={p.onAddFiles}>Add more files</button>
+        <button type="button" className="btn" onClick={p.onConnectApps}>Connect more apps</button>
+      </div>
+    </div>
+  );
+}

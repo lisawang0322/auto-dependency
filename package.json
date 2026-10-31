@@ -28,7 +28,9 @@
     "server": "tsx server/index.ts",
     "start": "npm run gui:build && tsx server/index.ts",
     "doctor": "tsx scripts/doctor.ts",
-    "report": "tsx scripts/report.ts"
+    "report": "tsx scripts/report.ts",
+    "starter": "tsx skills/release-starter/scripts/starter.ts",
+    "build:starter-fixtures": "tsx scripts/build-starter-fixtures.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

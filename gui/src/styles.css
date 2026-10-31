@@ -138,3 +138,19 @@ td { padding: 12px 16px; border-bottom: 1px solid var(--line-soft); vertical-ali
 .action-row input { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
 .action-row label { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; cursor: pointer; }
 .action-row .done { text-decoration: line-through; color: var(--muted); }
+/* Step 4, early stages */
+.map-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.map-item { display: flex; flex-direction: column; background: var(--ground); border-radius: 6px; padding: 8px 10px; }
+.engage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.btn.contacted { background: var(--green-bg); color: var(--green-dark); border-color: var(--green-line); }
+.approval-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; align-items: baseline; }
+@media (max-width: 560px) { .approval-row { grid-template-columns: 1fr; gap: 2px; } }
+.coverage-table { min-width: 760px; }
+.cov { font-size: 13px; font-weight: 500; border-radius: 4px; padding: 0 8px; white-space: nowrap; }
+.cov.covered { border: 1px solid var(--green); color: var(--green); }
+.cov.unclear { background: var(--grey-bg); color: var(--text-2); }
+.cov.missing { background: var(--amber-bg); border: 1px solid var(--amber-line); color: var(--amber); }
+/* Step 2: PRD signals */
+.signal-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+.signal-row input { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.signal-row label { display: flex; flex-direction: column; gap: 2px; cursor: pointer; }

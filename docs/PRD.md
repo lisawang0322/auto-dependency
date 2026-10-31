@@ -8,6 +8,8 @@ An agent that reads a project's plan and the tools its teams already use, then t
 
 **Revised Oct 25** after Professor Prayaga's review of the prototype: added onboarding, plan files in any format, "Connect your apps" in place of Jira-only, a stage-aware flow, and next actions on every result.
 
+**Revised Oct 30** (repo copy): the early-stage path (R17) and the building-stage path (R18) were built ahead of plan as the `release-starter` skill, on placeholder sample data (a PRD, a directory export) with their own answer key. Both are rule-based (`skills/release-starter/templates/signals.yaml`); the employee directory is a file export, not a live connector.
+
 ## Problem
 
 Cross-team launch blockers are found too late. From our survey (n=16):
@@ -64,9 +66,9 @@ The same flow adapts to earlier stages:
 
 **MVP (locked by Nov 4):** the launch review. Onboarding that explains the tool, what counts as a plan, and asks the project's stage; plan files in any format (doc, slides, spreadsheet, PDF), with a POR required and a launch checklist and team list optional; "Connect your apps", where apps the company allows can be connected and the rest are greyed out (Jira works; others are shown only); process, cross-team date and commitment gaps; linkage gaps between the epic and other teams' tickets; evidence, strength and a next action on every finding; one review screen over saved runs that combines findings and team status, with history across runs; an answer key for each sample release.
 
-**After the MVP (Nov 16–22):** the early-stage path — suggest teams, contacts and approvals from a PRD plus an employee directory.
+**Built Oct 30, ahead of the Nov 16–22 slot:** the early-stage path — suggest teams, contacts and approvals from a PRD plus an employee directory — and the building-stage path (teams missing from the Jira work; approvals not started or without an owner). Nov 16–22 now goes to evaluating both on a second sample release and fixing what the evaluation finds.
 
-**Designed only (prototype):** the building-stage path, and connectors other than Jira and the employee directory.
+**Designed only (prototype):** connectors other than Jira and the employee directory (shown in the gallery, not connectable).
 
 **Out this semester:** usability testing; meeting notes, Slack and email; follow-up chat; a live GUI connected to Devin; other gap types (coverage, ownership, assumption drift); briefs for other roles; launch reviews without a POR; writing to Jira; multi-release rollup; plugin packaging; Glean and Asana; real company data.
 
@@ -90,8 +92,8 @@ The same flow adapts to earlier stages:
 | R14 | Onboarding: say what the tool does and what counts as a plan (PRD, one-pager, POR deck, brief, checklist; any format, no template), ask the project's stage, and list what to have ready for that stage before upload |
 | R15 | Connect your apps: a gallery grouped by kind (work tracking, docs, product planning, people and org, chat); apps the company allows can be connected read-only, others are greyed out; required and recommended apps marked per stage. Jira and the employee directory work; others are shown only |
 | R16 | Next actions: every finding carries one (who, what, by when, why), and every result opens with the user's next actions for their stage, which they can tick off |
-| R17 | Early stage (after the MVP): from a PRD, list the signals that imply a team (with the quote), suggest teams to involve with why and when, a likely contact per team from the directory, a stakeholder map, and the approvals to plan for |
-| R18 | Building stage (designed only): compare the teams the plan needs with the people on the Jira work, and show approvals not started or without an owner |
+| R17 | Early stage: from a PRD, list the signals that imply a team (with the quote), suggest teams to involve with why and when, a likely contact per team from the directory, a stakeholder map, and the approvals to plan for |
+| R18 | Building stage: compare the teams the plan needs with the people on the Jira work, and show approvals not started or without an owner |
 
 Constraints: sample data only. The review screen states what the tool can't see: meetings, chat and email, approvals tracked in apps that aren't connected, and whether technical work is adequate.
 
@@ -111,7 +113,8 @@ Devin runs the orchestrator on each dated snapshot of a sample release (reader �
 | Status changes between snapshots shown correctly on the review screen | All known changes |
 | Shown findings with a next action | 100% |
 | Plan items extracted from the POR slide deck that match the markdown POR | All items |
-| Early stage (after the MVP): suggested teams that are in the sample PRD's answer key | ≥ 80% |
+| Early stage: suggested teams that are in the sample PRD's answer key | ≥ 80% |
+| Building stage: team coverage and approval states as in the answer key | All |
 
 ## Milestones
 
@@ -130,7 +133,7 @@ Timeline: Oct 12 to Dec 4, MVP locked Nov 4, away Nov 5–14.
 | Few TPMs in the survey | Validate the problem with 2–3 TPM interviews; note the limitation in the report |
 | Dropping usability testing leaves RQ3 and the proposal's evaluation objective unanswered | Agree the change with Shyamala; report evaluation as future work |
 | The dashboard and run history add scope, against the professor's advice to keep an achievable MVP | Build the dashboard from saved runs only; if time is short, ship the latest status first and add history after the MVP |
-| The stage-aware direction roughly doubles the build | Lock the MVP to the launch review by Nov 4; build the early stage after it; keep the building stage as a designed prototype |
+| The stage-aware direction roughly doubles the build | Lock the MVP to the launch review by Nov 4. (Oct 30: both early paths were built as one rule-based skill; the risk is now that their sample data is the tool author's, so the second sample release matters more.) |
 | Connectors beyond Jira look like promises | Build only Jira and the employee directory; show others in the gallery and say so in the report |
 | POR formats vary widely (slides, docs, spreadsheets) | Read slide decks first, test them against the markdown POR, and keep every plan item tied to a source quote the TPM confirms |
 

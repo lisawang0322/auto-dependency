@@ -14,7 +14,9 @@
  *   GET  /api/health                  {ok, jira:{connected, site, user}, fixture}
  *   POST /api/jira/connect            {site, email, token} → checks /myself, keeps the credentials
  *   POST /api/jira/disconnect
- *   POST /api/plan                    {files:[{name, kind, content_base64 | sample}], launch_date?} → {plan}
+ *   POST /api/plan                    {files:[{name, kind, content_base64 | sample}], launch_date?, stage?} → {plan}
+ *                                     stage starting|building adds {signals, project} (release-starter)
+ *   POST /api/starter                 {files, stage, exclude_signals?, epic?, label?} → {job}; the job's result is the Starter
  *   POST /api/target                  {plan, epic, no_search?} → {target}
  *   GET  /api/runs/:epic              [{id, label}]
  *   GET  /api/runs/:epic/:id          the saved run
@@ -27,7 +29,8 @@ import { basename, extname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { PlanDraft, ReleaseTarget, ReadAs } from "@rrr/schemas";
 import { JiraRest, JiraAuthError, type RestCreds } from "../skills/release-reader/scripts/lib/jira-rest.js";
-import { stageA, stageB, stageC, analyzeStep, statusStep, previousRun, saveRun, listRunLabels, loadRun, todayLabel, type SourceSpec } from "../scripts/lib/pipeline.js";
+import { stageA, stageB, stageC, analyzeStep, statusStep, previousRun, saveRun, listRunLabels, loadRun, todayLabel, readStarterInputs, starterSignals, starterPlan, runStarter, type SourceSpec } from "../scripts/lib/pipeline.js";
+import { loadRules } from "../skills/release-starter/scripts/lib/config.js";
 
 export interface ServerOptions {
   port?: number;
@@ -41,7 +44,7 @@ export interface ServerOptions {
   quiet?: boolean;
 }
 
-interface Job { stage: 0 | 1 | 2 | 3; done: boolean; run_id?: string; error?: string; log: string[] }
+interface Job { stage: 0 | 1 | 2 | 3; done: boolean; run_id?: string; error?: string; log: string[]; result?: unknown }
 
 const KIND_TO_READ_AS: Record<string, ReadAs> = { prd: "plan_items", plan: "plan_items", checks: "launch_checks", teams: "teams_and_owners" };
 const MIME: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2" };
@@ -76,6 +79,36 @@ export function createApp(opts: ServerOptions = {}) {
     return { kind: "rest", creds, cacheDir, log: (l) => log("  jira: " + l) };
   }
 
+  /** Write the request's files under out/gui-uploads/<uuid>/ (sample files are read from sampleDocs). */
+  function saveUploads(body: any): { paths: string[]; readAs: Record<string, ReadAs[]>; dirPaths: string[]; files: any[] } {
+    const files: any[] = Array.isArray(body?.files) ? body.files : [];
+    if (!files.length) throw new HttpError(400, "No files.");
+    const dir = join(uploadRoot, randomUUID());
+    mkdirSync(dir, { recursive: true });
+    const paths: string[] = [], dirPaths: string[] = [];
+    const readAs: Record<string, ReadAs[]> = {};
+    for (const f of files) {
+      const name = basename(String(f.name ?? "")).replace(/[^\w.\- ()]+/g, "_");
+      if (!name) throw new HttpError(400, "A file has no name.");
+      let path: string;
+      if (f.sample) {
+        path = join(sampleDocs, name);
+        if (!existsSync(path)) throw new HttpError(400, `No sample file named ${name}.`);
+      } else {
+        if (typeof f.content_base64 !== "string") throw new HttpError(400, `${name}: missing content.`);
+        path = join(dir, name);
+        writeFileSync(path, Buffer.from(f.content_base64, "base64"));
+      }
+      if (f.kind === "other") continue;
+      paths.push(path);
+      if (f.kind === "teams") dirPaths.push(path);
+      const ra = KIND_TO_READ_AS[String(f.kind)];
+      if (ra) readAs[name] = [ra];
+    }
+    if (!paths.length) throw new HttpError(400, "No file was read as a plan.");
+    return { paths, readAs, dirPaths, files };
+  }
+
   const routes = {
     async health() { return { ok: true, mode: "live", jira: jiraInfo(), runs_root: resolve(runsRoot) }; },
 
@@ -101,34 +134,50 @@ export function createApp(opts: ServerOptions = {}) {
     async disconnect() { if (!fixtureDir) { creds = null; user = null; } return jiraInfo(); },
 
     async plan(body: any) {
-      const files: any[] = Array.isArray(body?.files) ? body.files : [];
-      if (!files.length) throw new HttpError(400, "No files.");
-      const dir = join(uploadRoot, randomUUID());
-      mkdirSync(dir, { recursive: true });
-      const paths: string[] = [];
-      const readAs: Record<string, ReadAs[]> = {};
-      for (const f of files) {
-        const name = basename(String(f.name ?? "")).replace(/[^\w.\- ()]+/g, "_");
-        if (!name) throw new HttpError(400, "A file has no name.");
-        let path: string;
-        if (f.sample) {
-          path = join(sampleDocs, name);
-          if (!existsSync(path)) throw new HttpError(400, `No sample file named ${name}.`);
-        } else {
-          if (typeof f.content_base64 !== "string") throw new HttpError(400, `${name}: missing content.`);
-          path = join(dir, name);
-          writeFileSync(path, Buffer.from(f.content_base64, "base64"));
-        }
-        if (f.kind === "other") continue;
-        paths.push(path);
-        const ra = KIND_TO_READ_AS[String(f.kind)];
-        if (ra) readAs[name] = [ra];
+      const { paths, readAs, dirPaths, files } = saveUploads(body);
+      const stage = String(body?.stage ?? "launching");
+      if (stage === "starting" || stage === "building") {
+        // Early stages: the PRD's signals, and the plan Stage B needs (the needed teams, with directory projects).
+        const inputs = await readStarterInputs(paths, dirPaths);
+        if (!inputs.docs.length) throw new HttpError(400, "No PRD or plan file: every file was read as a team list or directory.");
+        const sig = starterSignals(inputs, loadRules());
+        const plan = await starterPlan(inputs, sig, paths);
+        log(`plan (${stage}): ${sig.signals.length} signals, ${sig.teams.length} teams from ${paths.map((p) => basename(p)).join(", ")}`);
+        return { plan, signals: sig.signals, project: inputs.project };
       }
-      if (!paths.length) throw new HttpError(400, "No file was read as a plan.");
       const plan = await stageA({ files: paths, readAs, launchDate: body?.launch_date ?? null });
       if (!files.some((f) => f.kind === "plan" || f.kind === "prd")) plan.warnings.unshift("No file was read as a plan.");
       log(`plan: ${plan.items.length} items from ${paths.map((p) => basename(p)).join(", ")}`);
       return { plan };
+    },
+
+    /** Early stages (release-starter): a job whose result is the Starter output. Jira only for building. */
+    async startStarter(body: any) {
+      const stage = String(body?.stage ?? "");
+      if (stage !== "starting" && stage !== "building") throw new HttpError(400, "stage must be starting or building.");
+      const { paths, dirPaths } = saveUploads(body);
+      const label = String(body?.label ?? todayLabel());
+      const epic = stage === "building" ? String(body?.epic ?? "").trim().toUpperCase() : null;
+      if (stage === "building" && !/^[A-Z][A-Z0-9]+-\d+$/.test(epic ?? "")) throw new HttpError(400, "The building stage needs an epic key like PROJ-123.");
+      const src = epic ? source(epic, label, true) : undefined;
+      const exclude: string[] = Array.isArray(body?.exclude_signals) ? body.exclude_signals.map(String) : [];
+      const job: Job = { stage: 0, done: false, log: [] };
+      const id = randomUUID();
+      jobs.set(id, job);
+      (async () => {
+        try {
+          const out = await runStarter({
+            stage, files: paths, directoryFiles: dirPaths, excludeSignals: exclude, epicKey: epic, source: src, label, runsRoot,
+            onStage: (s, d) => { job.log.push(`${s}: ${d}`); if (s === "suggest" || s === "target") job.stage = 1; if (s === "people" || s === "coverage") job.stage = 2; },
+          });
+          job.result = out.starter; job.run_id = label; job.stage = 3; job.done = true;
+          log(`starter: ${stage} ${out.starter.project} saved ${out.file}`);
+        } catch (e) {
+          job.error = (e as Error).message ?? String(e); job.done = true;
+          log(`starter: ${stage} failed: ${job.error}`);
+        }
+      })();
+      return { job: id };
     },
 
     async target(body: any) {
@@ -208,6 +257,7 @@ export function createApp(opts: ServerOptions = {}) {
         if (p === "/api/plan" && req.method === "POST") return send(200, await routes.plan(body));
         if (p === "/api/target" && req.method === "POST") return send(200, await routes.target(body));
         if (p === "/api/run" && req.method === "POST") return send(202, await routes.startRun(body));
+        if (p === "/api/starter" && req.method === "POST") return send(202, await routes.startStarter(body));
         if ((m = p.match(/^\/api\/runs\/([A-Z][A-Z0-9]+-\d+)$/)) && req.method === "GET") return send(200, await routes.runs(m[1]));
         if ((m = p.match(/^\/api\/runs\/([A-Z][A-Z0-9]+-\d+)\/(\d{4}-\d{2}-\d{2})$/)) && req.method === "GET") return send(200, await routes.run(m[1], m[2]));
         if ((m = p.match(/^\/api\/jobs\/([\w-]+)$/)) && req.method === "GET") return send(200, await routes.job(m[1]));

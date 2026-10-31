@@ -1,0 +1,140 @@
+{
+  "epic": {
+    "key": "INGEST-142",
+    "summary": "Ingestion service launch",
+    "fix_version": "1.0",
+    "release_date": "2026-11-20",
+    "created": "2026-09-15"
+  },
+  "release_window": {
+    "start": "2026-09-15",
+    "end": "2026-11-20"
+  },
+  "projects": [
+    {
+      "team": "Data Platform",
+      "jira_project": "DATA",
+      "match": "team_list",
+      "evidence": "Your team list gives project DATA ('Data Platform')",
+      "candidates": [],
+      "search": true
+    },
+    {
+      "team": "Security",
+      "jira_project": "SEC",
+      "match": "team_list",
+      "evidence": "Your team list gives project SEC ('Security Engineering')",
+      "candidates": [],
+      "search": true
+    },
+    {
+      "team": "SRE",
+      "jira_project": "SRE",
+      "match": "team_list",
+      "evidence": "Your team list gives project SRE ('Site Reliability Engineering')",
+      "candidates": [],
+      "search": true
+    },
+    {
+      "team": "Privacy",
+      "jira_project": null,
+      "match": "unresolved",
+      "evidence": "No visible project matches 'Privacy' by key, name, category, description or epic links.",
+      "candidates": [],
+      "search": true
+    },
+    {
+      "team": "Legal",
+      "jira_project": null,
+      "match": "unresolved",
+      "evidence": "No visible project matches 'Legal' by key, name, category, description or epic links.",
+      "candidates": [],
+      "search": true
+    },
+    {
+      "team": "UX",
+      "jira_project": null,
+      "match": "unresolved",
+      "evidence": "No visible project matches 'UX' by key, name, category, description or epic links.",
+      "candidates": [],
+      "search": true
+    },
+    {
+      "team": "QA",
+      "jira_project": null,
+      "match": "unresolved",
+      "evidence": "No visible project matches 'QA' by key, name, category, description or epic links.",
+      "candidates": [],
+      "search": true
+    },
+    {
+      "team": "VDR",
+      "jira_project": null,
+      "match": "unresolved",
+      "evidence": "No visible project matches 'VDR' by key, name, category, description or epic links.",
+      "candidates": [],
+      "search": true
+    },
+    {
+      "team": "Support",
+      "jira_project": null,
+      "match": "unresolved",
+      "evidence": "No visible project matches 'Support' by key, name, category, description or epic links.",
+      "candidates": [],
+      "search": true
+    }
+  ],
+  "visible_projects": [
+    {
+      "key": "DATA",
+      "name": "Data Platform",
+      "category": "Platform",
+      "description": "Shared data platform: clusters, storage and permissions.",
+      "lead": "Wei Zhang"
+    },
+    {
+      "key": "INGEST",
+      "name": "Ingestion service",
+      "category": "Product",
+      "description": "The streaming ingestion service and its batch importer predecessor.",
+      "lead": "Marcus Lee"
+    },
+    {
+      "key": "SEC",
+      "name": "Security Engineering",
+      "category": "Security",
+      "description": "Application security reviews and launch approvals.",
+      "lead": "Jordan Blake"
+    },
+    {
+      "key": "SECOPS",
+      "name": "Security Operations",
+      "category": "Security",
+      "description": "Incident response and security monitoring.",
+      "lead": "Ava Chen"
+    },
+    {
+      "key": "SRE",
+      "name": "Site Reliability Engineering",
+      "category": "Platform",
+      "description": "Capacity, on-call and production readiness.",
+      "lead": "Sam Whitfield"
+    },
+    {
+      "key": "SRETOOLS",
+      "name": "SRE Tooling",
+      "category": "Platform",
+      "description": "Internal tools built for the SRE org.",
+      "lead": "Noah Park"
+    }
+  ],
+  "warnings": [
+    "Ingestion team is in the team list but not in the plan; no Jira project resolved for it.",
+    "Privacy: unresolved. No visible project matches 'Privacy' by key, name, category, description or epic links.",
+    "Legal: unresolved. No visible project matches 'Legal' by key, name, category, description or epic links.",
+    "UX: unresolved. No visible project matches 'UX' by key, name, category, description or epic links.",
+    "QA: unresolved. No visible project matches 'QA' by key, name, category, description or epic links.",
+    "VDR: unresolved. No visible project matches 'VDR' by key, name, category, description or epic links.",
+    "Support: unresolved. No visible project matches 'Support' by key, name, category, description or epic links."
+  ]
+}

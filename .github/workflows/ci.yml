@@ -26,3 +26,5 @@ jobs:
       - run: npm run gui:e2e
       - name: Answer-key score on the sample runs
         run: .venv/bin/python eval/score.py --key eval/answer-key.ingest-142.json runs/INGEST-142/2026-11-13.json
+      - name: Early-stage answer-key score on the sample outputs
+        run: .venv/bin/python eval/score_starter.py --key eval/answer-key.starter.ingest-142.json fixtures/ingest-142/starter/starting.json fixtures/ingest-142/starter/building.2026-11-13.json

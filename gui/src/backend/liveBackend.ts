@@ -3,8 +3,8 @@
  * status stages. Jira is read with credentials the server holds in memory; the browser never sees a token
  * again after the connect form.
  */
-import { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
-import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, JiraConnection, JiraCredentials, JiraState } from "./types";
+import { PlanDraft, ReleaseTarget, Run, Signal, Starter, type Stage } from "@rrr/schemas";
+import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, JiraConnection, JiraCredentials, JiraState, PlanExtract, StarterRunInput } from "./types";
 import { fmtDate } from "../model/dates";
 
 export interface JiraInfo { connected: boolean; site: string | null; user: string | null; fixture: boolean }
@@ -42,14 +42,30 @@ export class LiveBackend implements ReviewBackend {
   /** Launch date and go/no-go the person set on the Connect step, applied on run. */
   launchDate: string | null = null;
 
-  async extractPlan(files: UploadedFile[]): Promise<PlanDraft> {
-    const payload = [];
+  private async payload(files: UploadedFile[]) {
+    const out = [];
     for (const f of files) {
-      if (f.sample || !f.file) payload.push({ name: f.name, kind: f.kind, sample: true });
-      else payload.push({ name: f.name, kind: f.kind, content_base64: toBase64(await f.file.arrayBuffer()) });
+      if (f.sample || !f.file) out.push({ name: f.name, kind: f.kind, sample: true });
+      else out.push({ name: f.name, kind: f.kind, content_base64: toBase64(await f.file.arrayBuffer()) });
     }
-    const { plan } = await api<{ plan: unknown }>("POST", "/api/plan", { files: payload });
-    return PlanDraft.parse(plan);
+    return out;
+  }
+
+  async extractPlan(files: UploadedFile[], stage: Stage): Promise<PlanExtract> {
+    const res = await api<{ plan: unknown; signals?: unknown[]; project?: string }>("POST", "/api/plan", { files: await this.payload(files), stage });
+    return { plan: PlanDraft.parse(res.plan), signals: (res.signals ?? []).map((s) => Signal.parse(s)), project: res.project ?? null };
+  }
+
+  async runStarter(input: StarterRunInput, onProgress: (s: ProgressStage) => void): Promise<Starter> {
+    const { job } = await api<{ job: string }>("POST", "/api/starter", { files: await this.payload(input.files), stage: input.stage, exclude_signals: input.excludeSignals, epic: input.epic });
+    onProgress(0);
+    for (;;) {
+      await wait(400);
+      const j = await api<{ stage: ProgressStage; done: boolean; result?: unknown; error?: string }>("GET", `/api/jobs/${job}`);
+      onProgress(j.stage);
+      if (j.error) throw new Error(j.error);
+      if (j.done && j.result) return Starter.parse(j.result);
+    }
   }
 
   async resolveRelease(plan: PlanDraft, epicKey: string): Promise<ReleaseTarget> {

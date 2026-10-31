@@ -66,13 +66,17 @@ export function ConnectApps(p: Props) {
   const epicVal = p.epic.trim();
   const resolved = p.target ? allTeamsResolved(p.target.projects, p.choices) : false;
   const needsJira = p.stage !== "starting";
-  const runNotReady = needsJira ? (!on || !p.epicOk || !p.target || !resolved) : false;
+  const building = p.stage === "building";
+  // Building: teams without a Jira project are expected (checked by assignee), so resolution is not a gate.
+  const runNotReady = needsJira ? (!on || !p.epicOk || !p.target || (!building && !resolved)) : false;
   const rel = p.latestRun?.release ?? null;
   const linkedProjects = rel ? [...new Set(rel.related.map((r) => r.project))].sort() : [];
   const commentCount = rel ? rel.stories.reduce((n, s) => n + s.comments.length, 0) + (rel.stories.length ? 3 : 0) : 0;
   const prevRun = p.runs.length > 1 ? p.runs[p.runs.length - 2] : null;
   const dirOn = p.directory.connected || !!p.directory.fromFiles;
   const consentDef = consentFor ? APPS.find((a) => a.id === consentFor)! : null;
+  // Building: needed teams without a Jira project are expected, and the "Teams your plan needs" box says so.
+  const targetWarnings = (p.target?.warnings ?? []).filter((w) => !building || (!/: unresolved\. /.test(w) && !/in the team list but not in the plan/.test(w)));
 
   const openConsent = (id: AppId) => { setConnectError(null); setDirFile(null); setConsentFor(id); if (id === "jira") p.setJiraState(p.jira.start()); };
   const closeConsent = () => { if (consentFor === "jira") p.setJiraState(p.jira.cancel()); setConsentFor(null); };
@@ -124,7 +128,7 @@ export function ConnectApps(p: Props) {
   };
 
   const runText = needsJira
-    ? (!on ? "Connect Jira to continue — it's how we see who is doing the work." : !p.epicOk ? "Pick the epic for this work to continue." : !p.target ? (p.targetError ?? "Looking up the epic…") : !resolved ? "Pick a Jira project for each team, or mark it \"don't search\", to continue." : (dirOn ? `Ready to read ${epicVal} and compare it with your confirmed plan.` : `Ready. Connecting your directory adds names to every suggestion.`))
+    ? (!on ? "Connect Jira to continue — it's how we see who is doing the work." : !p.epicOk ? "Pick the epic for this work to continue." : !p.target ? (p.targetError ?? "Looking up the epic…") : !building && !resolved ? "Pick a Jira project for each team, or mark it \"don't search\", to continue." : (dirOn ? `Ready to read ${epicVal} and compare it with your ${building ? "plan" : "confirmed plan"}.` : `Ready. Connecting your directory adds names to every suggestion.`))
     : (dirOn ? "Ready." : "You can continue now. Connecting your directory turns team suggestions into names.");
 
   return (
@@ -254,11 +258,26 @@ export function ConnectApps(p: Props) {
               </div>
             </div>
           )}
-          {p.target && p.target.warnings.length > 0 && <div className="notice-grey">{p.target.warnings.join(" ")}</div>}
+          {p.target && targetWarnings.length > 0 && <div className="notice-grey">{targetWarnings.join(" ")}</div>}
         </section>
       )}
 
-      {needsJira && on && p.target && (
+      {building && on && p.target && (
+        <section className="card" style={{ gap: 8 }} data-testid="needed-teams">
+          <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
+            <h2>Teams your plan needs</h2>
+            <span className="small muted">{p.target.projects.filter((t) => t.jira_project).length} of {p.target.projects.length} have a Jira project</span>
+          </div>
+          <p className="sm muted">From the signals in your PRD. A team with a Jira project is checked by project and assignee; the others by assignee only, through your directory.</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {p.target.projects.map((t) => (
+              <span key={t.team} className="pill type" style={{ fontSize: 13, padding: "3px 10px", fontWeight: 400 }}>{t.team} → {t.jira_project ? <span className="mono">{t.jira_project}</span> : <span className="muted">assignee only</span>}</span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {needsJira && !building && on && p.target && (
         <section className="card">
           <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
             <h2>Teams → Jira projects</h2>

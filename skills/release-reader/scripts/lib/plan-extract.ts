@@ -95,8 +95,8 @@ function kindForSection(heading: string, sentence: string): PlanItemKind {
   return "deliverable";
 }
 
-/** Bullets are one item each; other paragraphs split into sentences. */
-function candidateSentences(body: string): string[] {
+/** Bullets are one item each; other paragraphs split into sentences. Shared with release-starter's PRD reading. */
+export function candidateSentences(body: string): string[] {
   const out: string[] = [];
   for (const raw of body.split(/\r?\n/)) {
     const line = raw.trim();

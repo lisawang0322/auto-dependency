@@ -7,7 +7,9 @@ triggers: ["user"]
 # release-review
 
 Use this when someone asks for a release review, a readiness check, or "what is missing for the
-<EPIC> launch". You run one command in stages and show the person each checkpoint. You never judge
+<EPIC> launch". If they are earlier than that (a PRD but no team yet, or a team forming around an
+epic and no launch date), use `release-starter` instead. You run one command in stages and show the
+person each checkpoint. You never judge
 anything yourself: the findings come from rules, and your job is to run them, show them, and report.
 
 ## What you need from the person

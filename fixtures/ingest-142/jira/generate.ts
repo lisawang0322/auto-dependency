@@ -180,6 +180,13 @@ issues.push(
     comments: [{ created: "2026-11-12T11:20:00.000+0000", author: PEOPLE.omar, body: "Pushing this to Nov 22; the capacity team is tied up with the warehouse migration this week." }],
     at: { "2026-11-10": { status: "To Do", updated: "2026-10-28T09:00:00.000+0000", due: "2026-11-13" }, "2026-11-13": { status: "To Do", updated: "2026-11-12T11:20:00.000+0000", due: "2026-11-22" } },
   },
+  // An unowned test-plan task in the service team's project, not under the epic and not linked: the building
+  // stage's "approval has no owner" case. The launch review never reaches it (no link, no plan-item match).
+  {
+    key: "INGEST-170", type: "Task", summary: "Test plan for ingestion launch", description: "QA sign-off is needed before GA. Nobody has picked this up yet.",
+    assignee: null, created: "2026-11-01T09:00:00.000+0000", components: [],
+    at: same("To Do", "2026-11-01T09:00:00.000+0000"),
+  },
   // decoy-project issues: only reachable if someone picks the wrong project
   {
     key: "SRETOOLS-77", type: "Task", summary: "Capacity dashboard for the SRE org", assignee: PEOPLE.noah, created: "2026-10-01T09:00:00.000+0000", components: [],

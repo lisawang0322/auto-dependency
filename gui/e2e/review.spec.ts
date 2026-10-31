@@ -6,13 +6,12 @@ const DOCS = resolve(import.meta.dirname, "../../fixtures/ingest-142/docs");
 const POR = { name: "Ingestion-service-POR-v3.md", mimeType: "text/markdown", buffer: readFileSync(resolve(DOCS, "Ingestion-service-POR-v3.md")) };
 const CHECKS = { name: "launch-checklist.csv", mimeType: "text/csv", buffer: readFileSync(resolve(DOCS, "launch-checklist.csv")) };
 
-/** Step 1: the stage picker. Only "Preparing to launch" is built; the other two are shown disabled. */
+/** Step 1: the stage picker. */
 async function pickLaunching(page: Page) {
   await expect(page.getByRole("heading", { name: "Where is your project right now?" })).toBeVisible();
   const cont = page.getByRole("button", { name: "Continue" });
   await expect(cont).toBeDisabled();
-  await expect(page.getByRole("radio", { name: /Just starting/ })).toBeDisabled();
-  await expect(page.getByRole("radio", { name: /Team forming/ })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: /Just starting/ })).toBeEnabled();
   await page.getByRole("radio", { name: /Preparing to launch/ }).check();
   const prep = page.getByTestId("prep");
   await expect(prep).toContainText("Plan of record (doc or slides)");
@@ -197,7 +196,7 @@ test("connecting the employee directory stands in for a team list, and disconnec
   await page.getByRole("button", { name: "Connect Employee directory" }).click();
   await expect(page.getByRole("dialog")).toContainText("Read names, titles, teams and reporting lines");
   await page.getByRole("button", { name: "Accept" }).click();
-  await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Connected · read-only · team-list.yaml");
+  await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Connected · read-only · directory.yaml");
   await expect(page.getByText("From your team list").first()).toBeVisible();
   await expect(page.getByText("4 of 4 teams resolved")).toBeVisible();
 

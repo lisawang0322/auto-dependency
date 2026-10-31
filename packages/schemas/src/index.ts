@@ -55,6 +55,7 @@ export const PlanFile = z.object({
   read_as: z.array(ReadAs),
   notes: z.string(),
 });
+export type PlanFile = z.infer<typeof PlanFile>;
 
 export const PlanDraft = z.object({
   launch_date: IsoDate.nullable(),
@@ -341,3 +342,106 @@ export const Run = z.object({
   teams: z.array(Team),
 });
 export type Run = z.infer<typeof Run>;
+
+// ---------- Early stages: skills/release-starter (PRD R17 "just starting", R18 "building") ----------
+export const Stage = z.enum(["starting", "building", "launching"]);
+export type Stage = z.infer<typeof Stage>;
+
+/** A sentence in the PRD that implies a team or an approval, with the rule(s) that matched it. */
+export const Signal = z.object({
+  id: z.string(),
+  quote: z.string().min(1),
+  file: z.string(),
+  locator: z.string(),
+  rule_ids: z.array(z.string()),
+  teams: z.array(z.string()),
+  approvals: z.array(z.string()),
+});
+export type Signal = z.infer<typeof Signal>;
+
+export const InvolveRole = z.enum(["core", "consult", "approve", "inform"]);
+export type InvolveRole = z.infer<typeof InvolveRole>;
+
+export const TeamToInvolve = z.object({
+  team: z.string(),
+  role: InvolveRole,
+  why: z.string(),
+  when: z.string(),
+  signal_ids: z.array(z.string()),
+  /** "Name · title" from the directory, or null when no directory names this team. */
+  contact: z.string().nullable(),
+});
+export type TeamToInvolve = z.infer<typeof TeamToInvolve>;
+
+export const ApprovalNeeded = z.object({
+  name: z.string(),
+  team: z.string(),
+  why: z.string(),
+  start: z.string(),
+  signal_ids: z.array(z.string()),
+});
+export type ApprovalNeeded = z.infer<typeof ApprovalNeeded>;
+
+export const CoverageState = z.enum(["covered", "unclear", "missing"]);
+export type CoverageState = z.infer<typeof CoverageState>;
+
+/** Building stage: is the team the plan needs actually on the Jira work? */
+export const TeamCoverage = z.object({
+  team: z.string(),
+  state: CoverageState,
+  found: z.string(),
+  people: z.array(z.string()),
+  tickets: z.array(IssueKey),
+  contact: z.string().nullable(),
+  signal_ids: z.array(z.string()),
+});
+export type TeamCoverage = z.infer<typeof TeamCoverage>;
+
+export const ApprovalState = z.enum(["done", "started", "no_owner", "not_started"]);
+export type ApprovalState = z.infer<typeof ApprovalState>;
+
+export const ApprovalStatus = z.object({
+  name: z.string(),
+  team: z.string(),
+  state: ApprovalState,
+  detail: z.string(),
+  ticket: IssueKey.nullable(),
+  signal_ids: z.array(z.string()),
+});
+export type ApprovalStatus = z.infer<typeof ApprovalStatus>;
+
+export const StarterAction = z.object({
+  id: z.string(),
+  text: z.string(),
+  who: z.string(),
+  when: z.string(),
+  why: z.string(),
+  team: z.string(),
+  signal_ids: z.array(z.string()),
+});
+export type StarterAction = z.infer<typeof StarterAction>;
+
+/** Output of the release-starter skill for either early stage; the GUI's "Next steps" for those stages. */
+export const Starter = z.object({
+  schema_version: z.literal(1),
+  stage: z.enum(["starting", "building"]),
+  /** The project name (the PRD's title, or the file stem). */
+  project: z.string(),
+  label: z.string(),
+  analyzed_at: IsoDateTime,
+  files: z.array(PlanFile),
+  directory_given: z.boolean(),
+  /** Building only: the epic and the Jira snapshot read. */
+  epic: IssueKey.nullable(),
+  snapshot_label: z.string().nullable(),
+  /** Signal ids the person unticked; their teams, approvals and actions are left out. */
+  excluded_signals: z.array(z.string()),
+  signals: z.array(Signal),
+  teams: z.array(TeamToInvolve),
+  approvals: z.array(ApprovalNeeded),
+  coverage: z.array(TeamCoverage),
+  approval_status: z.array(ApprovalStatus),
+  next_actions: z.array(StarterAction),
+  warnings: z.array(z.string()),
+});
+export type Starter = z.infer<typeof Starter>;

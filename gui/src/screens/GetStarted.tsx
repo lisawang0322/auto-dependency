@@ -5,8 +5,8 @@ import type { Stage } from "../backend/types";
 export interface StageDef { id: Stage; title: string; desc: string; gets: string; built: boolean; note: string }
 
 export const STAGES: StageDef[] = [
-  { id: "starting", title: "Just starting", desc: "You have an idea, a PRD or a one-pager — but no team yet, and maybe no Jira.", gets: "You get: who to involve, who to contact, and the approvals you’ll need.", built: false, note: "Not built yet · planned after the MVP" },
-  { id: "building", title: "Team forming, work underway", desc: "Some people are on board and work is tracked somewhere, like Jira.", gets: "You get: which teams are missing, which approvals haven’t started, and what to do next.", built: false, note: "Not built yet · designed only" },
+  { id: "starting", title: "Just starting", desc: "You have an idea, a PRD or a one-pager — but no team yet, and maybe no Jira.", gets: "You get: who to involve, who to contact, and the approvals you’ll need.", built: true, note: "" },
+  { id: "building", title: "Team forming, work underway", desc: "Some people are on board and work is tracked somewhere, like Jira.", gets: "You get: which teams are missing, which approvals haven’t started, and what to do next.", built: true, note: "" },
   { id: "launching", title: "Preparing to launch", desc: "There’s a launch date and a go/no-go coming up.", gets: "You get: what blocks launch, with evidence and owners, and your next actions.", built: true, note: "" },
 ];
 
@@ -95,7 +95,7 @@ export function GetStarted(p: Props) {
       </div>
 
       <div className="between" style={{ gap: 16 }}>
-        <span className="sm muted">{picked ? "You can change this later — results adapt to your stage." : "Pick where you are so we ask for the right things. Only “Preparing to launch” runs in this prototype; the other two stages are designed, not built."}</span>
+        <span className="sm muted">{picked ? "You can change this later — results adapt to your stage." : "Pick where you are so we ask for the right things."}</span>
         <button type="button" className="btn primary" style={{ padding: "0 22px" }} disabled={!picked} onClick={p.onContinue}>Continue</button>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
+import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@rrr/schemas";
 import { PLAN_KINDS, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage } from "./backend/types";
-import { SAMPLE_FILES, SAMPLE_TEAM_LIST } from "./backend/fixtureBackend";
+import { sampleFilesFor, SAMPLE_DIRECTORY } from "./backend/fixtureBackend";
 import { fmtDate } from "./model/dates";
 import { applyChoices, type TeamChoice } from "./model/review";
 import { GetStarted, STAGE_SHORT } from "./screens/GetStarted";
@@ -9,6 +9,7 @@ import { PlanDocuments } from "./screens/PlanDocuments";
 import { ConnectApps } from "./screens/ConnectApps";
 import { Running } from "./screens/Running";
 import { Review, type OwnerSource } from "./screens/Review";
+import { EarlyResults } from "./screens/EarlyResults";
 
 /** The four steps of the prototype: get started → your plan → connect apps → next steps (running sits between 3 and 4). */
 export type Screen = "start" | "plan" | "apps" | "running" | "results";
@@ -30,6 +31,9 @@ export function App({ backend, jira, store }: AppProps) {
   const [stage, setStageChoice] = useState<Stage | null>(null);
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [plan, setPlan] = useState<PlanDraft | null>(null);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [signalsOff, setSignalsOff] = useState<Record<string, boolean>>({});
+  const [project, setProject] = useState<string | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [planDates, setPlanDates] = useState<Record<string, string>>({});
   const [planConfirmed, setPlanConfirmed] = useState(false);
@@ -44,6 +48,7 @@ export function App({ backend, jira, store }: AppProps) {
   const [confirmed, setConfirmed] = useState(false);
   const [progress, setProgress] = useState<ProgressStage>(0);
   const [runId, setRunId] = useState<string | null>(null);
+  const [starter, setStarter] = useState<Starter | null>(null);
   const seq = useRef(0);
 
   const hasPlanFile = files.some((f) => PLAN_KINDS.includes(f.kind));
@@ -53,6 +58,7 @@ export function App({ backend, jira, store }: AppProps) {
   const uploadedTeamList = teamFiles.find((f) => f.via !== "directory") ?? null;
   const ownerSource: OwnerSource = directoryFile ? "directory" : uploadedTeamList ? "files" : "inferred";
   const live = backend.mode === "live";
+  const needsJira = stage !== "starting";
 
   // Each step starts at the top of the page.
   useEffect(() => { window.scrollTo(0, 0); }, [screen]);
@@ -60,9 +66,9 @@ export function App({ backend, jira, store }: AppProps) {
   // Live mode may already be connected (credentials from the server's environment).
   useEffect(() => { let on = true; jira.initialState().then((s) => { if (on) setJiraState(s); }); return () => { on = false; }; }, [jira]);
 
-  // Stage A: re-extract whenever the files or their "read as" change. A directory connected on step 3 is a
-  // file too, but it does not send the person back to confirm the plan.
-  const uploadKey = files.filter((f) => f.via !== "directory").map((f) => `${f.id}:${f.kind}`).join("|");
+  // Stage A: re-extract whenever the files, their "read as" or the stage change. A directory connected on
+  // step 3 is a file too, but it does not send the person back to confirm the plan.
+  const uploadKey = files.filter((f) => f.via !== "directory").map((f) => `${f.id}:${f.kind}`).join("|") + `@${stage}`;
   const prevUploadKey = useRef(uploadKey);
   useEffect(() => {
     const my = ++seq.current;
@@ -70,27 +76,31 @@ export function App({ backend, jira, store }: AppProps) {
     setConfirmed(false);
     setTarget(null);
     setChoices({});
-    if (!hasPlanFile) { setPlan(null); setPlanError(null); return; }
-    backend.extractPlan(files).then((p) => {
+    setStarter(null);
+    if (!hasPlanFile || !stage) { setPlan(null); setSignals([]); setProject(null); setPlanError(null); return; }
+    backend.extractPlan(files, stage).then((r) => {
       if (my !== seq.current) return;
-      setPlan(p);
+      setPlan(r.plan);
+      setSignals(r.signals);
+      setProject(r.project);
       setPlanError(null);
-      if (p.launch_date) setLaunch(p.launch_date);
-    }).catch((e) => { if (my === seq.current) { setPlan(null); setPlanError(String(e.message ?? e)); } });
-  }, [files, backend, hasPlanFile, uploadKey]);
+      if (r.plan.launch_date) setLaunch(r.plan.launch_date);
+    }).catch((e) => { if (my === seq.current) { setPlan(null); setSignals([]); setPlanError(String(e.message ?? e)); } });
+  }, [files, backend, hasPlanFile, uploadKey, stage]);
 
   const epicVal = epic.trim();
   const epicOk = /^[A-Z][A-Z0-9]+-\d+$/.test(epicVal);
 
-  // Stage B: resolve once connected and the epic key is valid.
+  // Stage B: resolve once connected and the epic key is valid (not needed when just starting).
   useEffect(() => {
-    if (!plan || jiraState !== "on" || !epicOk) { setTarget(null); setTargetError(null); return; }
+    if (!plan || !needsJira || jiraState !== "on" || !epicOk) { setTarget(null); setTargetError(null); return; }
     let on = true;
     backend.resolveRelease(plan, epicVal, hasTeamList).then(async (t) => {
       if (!on) return;
       setTarget(t);
       setTargetError(null);
       setChoices({});
+      if (t.epic.release_date) setLaunch((cur) => cur || t.epic.release_date!);
       const list = await backend.listRuns(t.epic.key);
       const loaded: Record<string, Run> = {};
       for (const r of list) loaded[r.id] = await backend.loadRun(t.epic.key, r.id);
@@ -99,7 +109,7 @@ export function App({ backend, jira, store }: AppProps) {
       setRunsById(loaded);
     }).catch((e) => { if (on) { setTarget(null); setTargetError(String(e.message ?? e)); } });
     return () => { on = false; };
-  }, [plan, jiraState, epicOk, epicVal, hasTeamList, backend]);
+  }, [plan, jiraState, epicOk, epicVal, hasTeamList, backend, needsJira]);
 
   const addFiles = useCallback((list: FileList | File[] | null) => {
     if (!list) return;
@@ -122,45 +132,52 @@ export function App({ backend, jira, store }: AppProps) {
         const kb = Math.max(1, Math.round(file.size / 1024));
         return [...rest, { id: `d${Date.now()}`, name: file.name, size: `${kb} KB`, kind: "teams", sample: false, file, via: "directory" }];
       }
-      return [...rest, { ...SAMPLE_TEAM_LIST, id: "dir", via: "directory" }];
+      return [...rest, { ...SAMPLE_DIRECTORY, id: "dir", via: "directory" }];
     });
   }, [live]);
   const disconnectDirectory = useCallback(() => setFiles((cur) => cur.filter((f) => f.via !== "directory")), []);
 
   const [runError, setRunError] = useState<string | null>(null);
   const runReview = useCallback(async () => {
-    if (!plan || !target) return;
+    if (!plan || !stage) return;
     setScreen("running");
     setProgress(0);
     setConfirmed(true);
     setRunError(null);
-    // What the person confirmed: edited due dates, the launch date, and their team → project choices.
-    const confirmedPlan: PlanDraft = {
-      ...plan,
-      launch_date: launch || plan.launch_date,
-      items: plan.items.map((i) => (planDates[i.id] && planDates[i.id] !== i.due ? { ...i, due: planDates[i.id], due_text: planDates[i.id], due_is_inferred: false } : i)),
-    };
-    const confirmedTarget: ReleaseTarget = { ...target, projects: applyChoices(target.projects, choices) };
     try {
-      const id = await backend.runReview(confirmedPlan, confirmedTarget, setProgress);
-      const list = await backend.listRuns(confirmedTarget.epic.key);
-      const loaded: Record<string, Run> = {};
-      for (const r of list) loaded[r.id] = runsById[r.id] && r.id !== id ? runsById[r.id] : await backend.loadRun(confirmedTarget.epic.key, r.id);
-      setRuns(list);
-      setRunsById(loaded);
-      setRunId(id);
+      if (stage === "launching") {
+        if (!target) return;
+        // What the person confirmed: edited due dates, the launch date, and their team → project choices.
+        const confirmedPlan: PlanDraft = {
+          ...plan,
+          launch_date: launch || plan.launch_date,
+          items: plan.items.map((i) => (planDates[i.id] && planDates[i.id] !== i.due ? { ...i, due: planDates[i.id], due_text: planDates[i.id], due_is_inferred: false } : i)),
+        };
+        const confirmedTarget: ReleaseTarget = { ...target, projects: applyChoices(target.projects, choices) };
+        const id = await backend.runReview(confirmedPlan, confirmedTarget, setProgress);
+        const list = await backend.listRuns(confirmedTarget.epic.key);
+        const loaded: Record<string, Run> = {};
+        for (const r of list) loaded[r.id] = runsById[r.id] && r.id !== id ? runsById[r.id] : await backend.loadRun(confirmedTarget.epic.key, r.id);
+        setRuns(list);
+        setRunsById(loaded);
+        setRunId(id);
+      } else {
+        const exclude = signals.filter((g) => signalsOff[g.id]).map((g) => g.id);
+        const result = await backend.runStarter({ stage, files, excludeSignals: exclude, epic: stage === "building" ? epicVal : null }, setProgress);
+        setStarter(result);
+      }
       setScreen("results");
     } catch (e) {
       setRunError(String((e as Error).message ?? e));
       setConfirmed(false);
       setScreen("apps");
     }
-  }, [backend, plan, target, launch, planDates, choices, runsById]);
+  }, [backend, stage, plan, target, launch, planDates, choices, runsById, signals, signalsOff, files, epicVal]);
 
   const headerEpic = target?.epic.key ?? plan?.epic_keys_mentioned[0] ?? null;
-  const headerLaunch = launch || plan?.launch_date || null;
-  const project = target?.epic.summary ?? (plan ? "Your plan" : "New project");
-  const canResults = confirmed && !!runId;
+  const headerLaunch = stage === "launching" ? launch || plan?.launch_date || null : null;
+  const projectName = project ?? target?.epic.summary ?? (plan ? "Your plan" : "New project");
+  const canResults = confirmed && (stage === "launching" ? !!runId : !!starter);
   const tabs: { id: Screen; label: string; disabled: boolean; active: boolean }[] = [
     { id: "start", label: "1. Get started", disabled: false, active: screen === "start" },
     { id: "plan", label: "2. Your plan", disabled: !stage, active: screen === "plan" },
@@ -176,7 +193,7 @@ export function App({ backend, jira, store }: AppProps) {
         <div className="wrap top-row">
           <div className="brand">
             <span className="name">Readiness Review</span>
-            <span className="muted">{project}{headerEpic ? <> · <span className="mono">{headerEpic}</span></> : null}{headerLaunch ? ` · launch ${fmtDate(headerLaunch)}` : ""}</span>
+            <span className="muted">{projectName}{headerEpic ? <> · <span className="mono">{headerEpic}</span></> : null}{headerLaunch ? ` · launch ${fmtDate(headerLaunch)}` : ""}</span>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
             {stage && <span className="stage-chip" data-testid="stage-chip">Stage: {STAGE_SHORT[stage]}</span>}
@@ -195,12 +212,13 @@ export function App({ backend, jira, store }: AppProps) {
         )}
         {screen === "plan" && stage && (
           <PlanDocuments
-            stage={stage} files={files} plan={plan} planError={planError} planDates={planDates}
+            stage={stage} files={files} plan={plan} planError={planError} planDates={planDates} signals={signals} signalsOff={signalsOff}
             onAddFiles={addFiles}
             onSetKind={(id, kind) => setFiles((cur) => cur.map((f) => (f.id === id ? { ...f, kind } : f)))}
             onRemove={(id) => setFiles((cur) => cur.filter((f) => f.id !== id))}
-            onLoadSample={() => setFiles((cur) => [...SAMPLE_FILES, ...cur.filter((f) => f.via === "directory" && !SAMPLE_FILES.some((s) => s.name === f.name))])}
+            onLoadSample={() => setFiles((cur) => [...sampleFilesFor(stage), ...cur.filter((f) => f.via === "directory")])}
             onSetDate={(id, v) => setPlanDates((d) => ({ ...d, [id]: v }))}
+            onToggleSignal={(id) => { setSignalsOff((s) => ({ ...s, [id]: !s[id] })); setConfirmed(false); }}
             onBack={() => setScreen("start")}
             onConfirm={() => { setPlanConfirmed(true); setScreen("apps"); }}
           />
@@ -219,11 +237,20 @@ export function App({ backend, jira, store }: AppProps) {
             onBack={() => setScreen("plan")} onRun={runReview}
           />
         )}
-        {screen === "running" && <Running stage={progress} plan={plan} epic={epicVal} latestRun={runId ? runsById[runId] : runs.length ? runsById[runs[runs.length - 1].id] : null} runs={runs} />}
-        {screen === "results" && stage && runId && target && (
+        {screen === "running" && stage && (
+          <Running stage={progress} projectStage={stage} plan={plan} epic={epicVal} latestRun={runId ? runsById[runId] : runs.length ? runsById[runs[runs.length - 1].id] : null} runs={runs}
+            signalCount={signals.filter((g) => !signalsOff[g.id]).length} directoryGiven={hasTeamList} />
+        )}
+        {screen === "results" && stage === "launching" && runId && target && (
           <Review
             stage={stage} store={store} runs={runs} runsById={runsById} latestId={runId} target={target} launch={launch || target.release_window.end}
             planIds={planIds} planDates={planDates} plan={plan!} ownerSource={ownerSource}
+            onChangeStage={() => setScreen("start")} onAddFiles={() => setScreen("plan")} onConnectApps={() => setScreen("apps")}
+          />
+        )}
+        {screen === "results" && stage !== "launching" && starter && (
+          <EarlyResults
+            starter={starter} signalsOff={signalsOff} store={store} launch={target?.epic.release_date ?? null}
             onChangeStage={() => setScreen("start")} onAddFiles={() => setScreen("plan")} onConnectApps={() => setScreen("apps")}
           />
         )}

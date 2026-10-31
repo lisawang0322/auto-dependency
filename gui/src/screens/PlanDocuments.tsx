@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { PlanDraft } from "@rrr/schemas";
+import type { PlanDraft, Signal } from "@rrr/schemas";
 import { PLAN_KINDS, type UploadedFile, type FileKind, type Stage } from "../backend/types";
 import { fmtDate } from "../model/dates";
 
@@ -11,6 +11,10 @@ interface Props {
   plan: PlanDraft | null;
   planError: string | null;
   planDates: Record<string, string>;
+  /** The early stages: sentences of the PRD that imply a team, which the person can untick. */
+  signals: Signal[];
+  signalsOff: Record<string, boolean>;
+  onToggleSignal: (id: string) => void;
   onAddFiles: (list: FileList | File[] | null) => void;
   onSetKind: (id: string, kind: FileKind) => void;
   onRemove: (id: string) => void;
@@ -47,6 +51,7 @@ export function PlanDocuments(p: Props) {
   const hasOrg = teamFiles.length > 0;
   const viaDirectory = teamFiles.some((f) => f.via === "directory");
   const notReady = !hasPlan || !p.plan;
+  const launching = p.stage === "launching";
   const rows = p.plan?.items ?? [];
   const planCount = rows.filter((r) => r.kind !== "checklist").length;
   const checkTotal = p.plan?.files.find((f) => f.read_as.includes("launch_checks"))?.notes.match(/(\d+) checks/)?.[1];
@@ -133,7 +138,30 @@ export function PlanDocuments(p: Props) {
         </section>
       </div>
 
-      {hasPlan && p.plan && (
+      {hasPlan && p.plan && !launching && p.signals.length > 0 && (
+        <section className="stack" style={{ gap: 12 }} data-testid="signals">
+          <div className="stack-sm" style={{ gap: 4 }}>
+            <h2>What we read in your PRD</h2>
+            <p className="sm muted" style={{ maxWidth: 680 }}>Each line below points to a team you'll likely need. Untick anything that's wrong.</p>
+          </div>
+          <div className="card" style={{ padding: "4px 18px", gap: 0 }}>
+            {p.signals.map((g) => (
+              <div key={g.id} className="signal-row">
+                <input id={`sig-${g.id}`} type="checkbox" checked={!p.signalsOff[g.id]} onChange={() => p.onToggleSignal(g.id)} />
+                <label htmlFor={`sig-${g.id}`}>
+                  <span>“{g.quote}”</span>
+                  <span className="small muted">{sourceShort(p.plan!, g.file) === "POR" ? "PRD" : g.file} {g.locator} · points to <strong style={{ fontWeight: 500, color: "var(--ink)" }}>{g.teams.join(", ")}</strong></span>
+                </label>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {hasPlan && p.plan && !launching && p.signals.length === 0 && (
+        <div className="notice-grey">Nothing in {planFiles.map((f) => f.name).join(", ")} matched a signal (customer data, public APIs, peak load, user-facing screens, GA…). Check it was read as the right kind, or add a PRD.</div>
+      )}
+
+      {hasPlan && p.plan && launching && (
         <section className="stack" style={{ gap: 12 }}>
           <div className="stack-sm" style={{ gap: 4 }}>
             <h2>Plan we read</h2>
@@ -183,7 +211,7 @@ export function PlanDocuments(p: Props) {
 
       <div className="between" style={{ gap: 16 }}>
         <span className="sm muted" style={{ maxWidth: 640 }}>
-          {!hasPlan ? "Add something that describes what you're building to continue." : !p.plan ? (p.planError ? "Fix the file above, or read it as something else, to continue." : "Reading your files…") : "Looks good. Next, connect the apps your teams use."}
+          {!hasPlan ? "Add something that describes what you're building to continue." : !p.plan ? (p.planError ? "Fix the file above, or read it as something else, to continue." : "Reading your files…") : !launching && p.signals.length === 0 ? "No signals found yet; you can still continue." : "Looks good. Next, connect the apps your teams use."}
         </span>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <button type="button" className="btn" onClick={p.onBack}>Back</button>

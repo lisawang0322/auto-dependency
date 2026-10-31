@@ -22,6 +22,8 @@
     "fixtures/ingest-142/jira/generate.ts",
     "skills/release-status/scripts",
     "skills/release-status/tests",
+    "skills/release-starter/scripts",
+    "skills/release-starter/tests",
     "server"
   ]
 }

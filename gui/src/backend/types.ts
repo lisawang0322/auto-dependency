@@ -3,7 +3,7 @@
  * no server) and live mode (liveBackend.ts, talking to server/index.ts, which runs the real stages against
  * Jira). Decisions live in localStorage either way (decisionStore.ts).
  */
-import type { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
+import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@rrr/schemas";
 
 /** What a file is read as. "prd" and "plan" both feed Stage A's plan items; a PRD is the early stages' plan. */
 export type FileKind = "prd" | "plan" | "checks" | "teams" | "other";
@@ -31,16 +31,23 @@ export interface RunSummary {
 
 export type ProgressStage = 0 | 1 | 2 | 3; // 0 reader running … 3 done
 
+/** Stage A's result. The early stages add the PRD's signals and the project name (release-starter). */
+export interface PlanExtract { plan: PlanDraft; signals: Signal[]; project: string | null }
+
+export interface StarterRunInput { stage: "starting" | "building"; files: UploadedFile[]; excludeSignals: string[]; epic: string | null }
+
 export interface ReviewBackend {
   readonly mode: "sample" | "live";
   /** Stage A. Sample: the fixture plan-draft, filtered by what was read as what. Live: the real extractor. */
-  extractPlan(files: UploadedFile[]): Promise<PlanDraft>;
+  extractPlan(files: UploadedFile[], stage: Stage): Promise<PlanExtract>;
   /** Stage B. Sample: fixture release-target, with or without the team list. Live: the epic is looked up in Jira. */
   resolveRelease(plan: PlanDraft, epicKey: string, hasTeamList: boolean): Promise<ReleaseTarget>;
   listRuns(epicKey: string): Promise<RunSummary[]>;
   loadRun(epicKey: string, runId: string): Promise<Run>;
   /** reader → analyzer → status; resolves to the saved run id. Sample: animated, then the latest saved run. */
   runReview(plan: PlanDraft, target: ReleaseTarget, onProgress: (stage: ProgressStage) => void): Promise<string>;
+  /** The early stages (release-starter): signals → teams, contacts, approvals, actions; building adds Jira coverage. */
+  runStarter(input: StarterRunInput, onProgress: (stage: ProgressStage) => void): Promise<Starter>;
 }
 
 export type JiraState = "off" | "consent" | "connecting" | "on";
@@ -73,7 +80,7 @@ export interface Decision {
 export type Decisions = Record<string, Decision>;
 export interface LogEntry { time: string; text: string }
 /** Keep/dismiss per finding, the log, and which next actions were ticked off (R16), per run. */
-export interface RunDecisions { decisions: Decisions; log: LogEntry[]; actionsDone?: Record<string, boolean> }
+export interface RunDecisions { decisions: Decisions; log: LogEntry[]; actionsDone?: Record<string, boolean>; contacted?: Record<string, boolean> }
 
 export interface DecisionStore {
   load(runKey: string): RunDecisions;

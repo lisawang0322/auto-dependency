@@ -89,7 +89,16 @@ export function resolveRelease(opts: ResolveOptions): ReleaseTarget | undefined 
   const linked = linkedProjects(epic, kids ?? [], source);
   if (linked === undefined) return undefined;
   const noSearch = new Set((opts.noSearch ?? []).map((s) => s.toLowerCase()));
-  const teamProjects: TeamProject[] = plan.teams.map((t) => {
+  // A team that only appears in a team list or directory, and owns nothing in the plan, is not part of
+  // this release: it gets no project row (a directory may list the whole company).
+  const listFiles = new Set(plan.files.filter((f) => f.read_as.includes("teams_and_owners") && !f.read_as.includes("plan_items")).map((f) => f.name));
+  const owners = new Set(plan.items.map((i) => i.owner_team).filter(Boolean));
+  const inPlan = plan.teams.filter((t) => {
+    const listOnly = t.mentioned_in.length > 0 && t.mentioned_in.every((m) => listFiles.has(m)) && !owners.has(t.name);
+    if (listOnly) warnings.push(`${t.name} is in the team list but not in the plan; no Jira project resolved for it.`);
+    return !listOnly;
+  });
+  const teamProjects: TeamProject[] = inPlan.map((t) => {
     const m = matchTeam(t, projects, linked, warnings);
     if (noSearch.has(t.name.toLowerCase())) m.search = false;
     if (m.match === "unresolved") warnings.push(`${t.name}: unresolved. ${m.evidence}`);

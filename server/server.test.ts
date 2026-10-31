@@ -77,3 +77,44 @@ describe("local API server", () => {
     expect((await api("POST", "/api/target", { plan, epic: "INGEST-142" })).status).toBe(400);
   });
 });
+
+describe("local API server: the early stages", () => {
+  let jira: FakeJira, srv: Awaited<ReturnType<typeof startServer>>, tmp: string;
+  beforeAll(async () => {
+    tmp = mkdtempSync(join(tmpdir(), "rrr-server-starter-"));
+    jira = await startFakeJira("fixtures/ingest-142/jira/2026-11-13");
+    srv = await startServer({ port: 0, quiet: true, creds: { site: jira.url, email: "me@example.com", token: "secret" }, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache") });
+  });
+  afterAll(async () => { await srv.close(); await jira.close(); rmSync(tmp, { recursive: true, force: true }); });
+  const api = async (method: string, path: string, body?: unknown) => {
+    const res = await fetch(srv.url + path, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    return { status: res.status, data: await res.json() };
+  };
+  const files = [{ name: "ingestion-service-PRD.docx", kind: "prd", content_base64: readFileSync(join(DOCS, "ingestion-service-PRD.docx")).toString("base64") }, { name: "directory.yaml", kind: "teams", sample: true }];
+
+  it("returns the PRD's signals and the needed teams with stage=building", async () => {
+    const r = await api("POST", "/api/plan", { files, stage: "building" });
+    expect(r.status).toBe(200);
+    expect(r.data.project).toBe("Ingestion service");
+    expect(r.data.signals.map((g: any) => g.locator)).toEqual(["§1 Goals", "§1 Goals", "§2 Scope", "§3 Data", "§4 Users", "§5 Requirements"]);
+    expect(r.data.plan.teams.filter((t: any) => t.mentioned_in.includes("signals")).map((t: any) => t.name)).toContain("Privacy");
+    expect(r.data.plan.files.map((f: any) => f.notes)).toEqual(["6 signals about teams and approvals", "10 teams · 21 people"]);
+  });
+
+  it("runs the building stage as a job over the fake Jira and saves it", async () => {
+    const start = await api("POST", "/api/starter", { files, stage: "building", epic: "INGEST-142", exclude_signals: ["g4"], label: "2026-11-13" });
+    expect(start.status).toBe(202);
+    let job: any;
+    for (let i = 0; i < 100; i++) { job = (await api("GET", `/api/jobs/${start.data.job}`)).data; if (job.done) break; await new Promise((r) => setTimeout(r, 100)); }
+    expect(job.error).toBeUndefined();
+    const st = job.result;
+    expect(st.stage).toBe("building");
+    expect(st.excluded_signals).toEqual(["g4"]);
+    expect(st.coverage.map((c: any) => c.team)).not.toContain("Privacy"); // unticked with g4
+    expect(st.coverage.find((c: any) => c.team === "Security")).toMatchObject({ state: "covered" });
+    expect(st.approval_status.find((a: any) => a.name === "QA sign-off")).toMatchObject({ state: "no_owner", ticket: "INGEST-170" });
+    expect(existsSync(join(tmp, "runs/INGEST-142/2026-11-13.building.json"))).toBe(true);
+    const bad = await api("POST", "/api/starter", { files, stage: "building" });
+    expect(bad.status).toBe(400);
+  });
+});

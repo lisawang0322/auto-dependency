@@ -72,3 +72,36 @@ test("uploads real files, connects with a token and a directory export, reads Ji
   await expect(page.getByRole("region", { name: "Finding detail" }).getByText("(from your directory)")).toBeVisible();
   await expect(page.getByText("Raise ingestion cluster quota")).toBeVisible();
 });
+
+test("building stage over the API: PRD + directory upload, the real epic, coverage and approvals", async ({ page }) => {
+  await page.goto("/?backend=live");
+  await page.getByRole("radio", { name: /Team forming/ }).check();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.locator("#plan-files").setInputFiles([file("ingestion-service-PRD.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), file("directory.yaml", "application/yaml")]);
+  await expect(page.getByRole("combobox", { name: "Read as" }).nth(0)).toHaveValue("prd");
+  await expect(page.getByRole("combobox", { name: "Read as" }).nth(1)).toHaveValue("teams");
+  await expect(page.getByTestId("signals").getByRole("checkbox")).toHaveCount(6);
+  await expect(page.getByText("10 teams · 21 people")).toBeVisible();
+  await page.getByRole("button", { name: "Confirm and connect apps" }).click();
+
+  // Jira is still connected on the server from the first test; otherwise connect as before.
+  const state = page.getByTestId("app-jira").getByTestId("app-state");
+  if (!/Connected/.test(await state.textContent() ?? "")) {
+    await page.getByRole("button", { name: "Connect Jira" }).click();
+    await page.getByRole("textbox", { name: "Site" }).fill(jira.url);
+    await page.getByLabel("Atlassian account email").fill("me@example.com");
+    await page.getByLabel("API token").fill("secret");
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+  }
+  await expect(state).toHaveText(/Connected · read-only/);
+  await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Covered by directory.yaml from your files");
+  await page.getByRole("button", { name: "Use INGEST-142" }).click();
+  await expect(page.getByText("Found in Jira", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("needed-teams")).toContainText("3 of 9 have a Jira project");
+  await page.getByRole("button", { name: "Check my team and approvals" }).click();
+  await expect(page.getByRole("heading", { name: "Who's missing, and what hasn't started" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("covered-count")).toHaveText("3 of 9");
+  await expect(page.getByTestId("coverage-Privacy")).toContainText("Ken Adeyemi · privacy counsel");
+  await expect(page.getByTestId("approval-QA sign-off")).toContainText("INGEST-170");
+  await expect(page.getByTestId("next-actions")).toContainText("Ken Adeyemi (Privacy)");
+});
