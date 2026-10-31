@@ -39,7 +39,9 @@ npm run report -- runs/PROJ-123/2026-10-30.json   # one self-contained HTML file
 
 **In Devin (or any agent):** the `release-review` skill in `.agents/skills/` is the only one to
 invoke. It runs doctor, then the review with its two checkpoints, then the report, and says what to
-post in chat. Put `JIRA_SITE`, `JIRA_EMAIL` and `JIRA_API_TOKEN` in the workspace's secrets; attachments
+post in chat. The agent reads the plan files itself and adds the items the rules miss through
+`--agent-items` (each must quote the file or it is dropped), so the document reading runs on the
+agent's own model and credits, with no model API key in the repo; the findings stay rule-based. Put `JIRA_SITE`, `JIRA_EMAIL` and `JIRA_API_TOKEN` in the workspace's secrets; attachments
 go under `in/<epic>/`. Nothing in the flow asks for a token in chat.
 
 ```
@@ -175,7 +177,9 @@ npm run starter -- --stage building --files fixtures/ingest-142/docs/ingestion-s
 npm run starter -- --stage building --files <prd> <directory> --epic PROJ-123 --source rest   # real Jira, read-only
 ```
 
-`--exclude g2,g5` leaves out the signals the person unticked. The wording is company-specific: copy
+`--exclude g2,g5` leaves out the signals the person unticked. `--agent-signals <file>` adds sentences
+the agent found by reading the PRD, each with a quote and the rule ids it is an instance of; the rules
+still decide what each implies, and a quote not in the file or an unknown rule id is dropped with a warning. The wording is company-specific: copy
 `signals.yaml`, edit it, and pass `--rules <file>`. The sample PRD (`ingestion-service-PRD.md`, also
 exported as `.docx` by `fixtures/build_docx.py`) and directory (`directory.yaml`) are placeholders;
 `eval/score_starter.py` scores both stages against `eval/answer-key.starter.ingest-142.json`.

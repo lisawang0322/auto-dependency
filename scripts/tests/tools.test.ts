@@ -102,3 +102,29 @@ describe("review checkpoints (--stop-after / --resume)", () => {
     expect(existsSync(join(tmp, "INGEST-142/2026-11-13.json"))).toBe(true);
   });
 });
+
+describe("agent-written plan items (--agent-items)", () => {
+  it("adds items that quote the file, drops the rest with a warning, and keeps the rules' items", async () => {
+    const runsRoot = mkdtempSync(join(tmpdir(), "rrr-agent-"));
+    try {
+      const base = { files: FILES, epicKey: "INGEST-142", source: { kind: "fixture" as const, dir: SNAP }, label: "2026-11-13", runsRoot, stopAfter: "plan" as const };
+      const rules = await runReview(base);
+      if (rules.stopped !== "plan") throw new Error("expected to stop after plan");
+      const out = await runReview({ ...base, agentItems: [
+        { text: "Load test at 2× the batch importer's peak", kind: "dependency", owner_team: "SRE", due_text: "the week before launch",
+          source: { file: "Ingestion-service-POR-v3.md", locator: "§5", quote: "Peak load at launch is 2× the batch importer's peak." } },
+        { text: "Legal sign-off", kind: "approval", owner_team: "Legal", source: { file: "Ingestion-service-POR-v3.md", locator: "§4", quote: "Legal will sign off by Nov 1." } },
+        { text: "Security review (again)", kind: "approval", owner_team: "Security", source: { file: "Ingestion-service-POR-v3.md", locator: "§4", quote: "Security will have the security review approved by Nov 14." } },
+      ] });
+      if (out.stopped !== "plan") throw new Error("expected to stop after plan");
+      expect(out.plan.items).toHaveLength(rules.plan.items.length + 1);
+      const added = out.plan.items.find((i) => i.text === "Load test at 2× the batch importer's peak")!;
+      expect(added).toMatchObject({ kind: "dependency", owner_team: "SRE", due_text: "the week before launch", due_is_inferred: true, source: { file: "Ingestion-service-POR-v3.md", locator: "§5" } });
+      expect(added.due).toBeTruthy();
+      expect(out.plan.warnings.filter((w) => w.startsWith("Dropped agent item"))).toEqual([
+        'Dropped agent item "Legal sign-off": its quote was not found in Ingestion-service-POR-v3.md.',
+      ]);
+      expect(JSON.parse(readFileSync(out.file, "utf8")).items).toHaveLength(out.plan.items.length);
+    } finally { rmSync(runsRoot, { recursive: true, force: true }); }
+  });
+});

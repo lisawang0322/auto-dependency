@@ -8,10 +8,13 @@
  *   npm run starter -- --stage building --files <prd> <directory> --epic PROJ-123 --source rest
  *
  * Options: --exclude g1,g2 (signals the person unticked)  --rules <signals.yaml>  --directory <file>...
+ *          --agent-signals signals.json (sentences the agent found by reading the PRD, each with its rule ids; see SKILL.md)
  *          --label YYYY-MM-DD  --runs-dir runs  --cache-dir <dir>
  * Writes runs/<epic or project>/<label>.<stage>.json and prints its path. Jira is only read.
  */
+import { readFileSync } from "node:fs";
 import { parseArgs } from "../../release-reader/scripts/lib/cli.js";
+import type { AgentSignal } from "./lib/signals.js";
 import { credsFromEnv } from "../../release-reader/scripts/lib/jira-rest.js";
 import { runStarter, todayLabel, type SourceSpec } from "../../../scripts/lib/pipeline.js";
 
@@ -20,10 +23,12 @@ async function main() {
   const stage = args.opts.stage;
   const files = args.lists.files ?? [];
   if ((stage !== "starting" && stage !== "building") || !files.length) {
-    console.error("usage: starter.ts --stage starting|building --files <prd> [<directory>] [--epic KEY --source fixture --dir <snapshot> | --source rest] [--exclude g1,g2] [--rules <file>] [--label YYYY-MM-DD]");
+    console.error("usage: starter.ts --stage starting|building --files <prd> [<directory>] [--epic KEY --source fixture --dir <snapshot> | --source rest] [--exclude g1,g2] [--agent-signals signals.json] [--rules <file>] [--label YYYY-MM-DD]");
     process.exit(2);
   }
   const label = args.opts.label ?? todayLabel();
+  let agentSignals: AgentSignal[] | undefined;
+  if (args.opts["agent-signals"]) agentSignals = JSON.parse(readFileSync(args.opts["agent-signals"], "utf8"));
   let source: SourceSpec | undefined;
   if (stage === "building") {
     if (!args.opts.epic) { console.error("--stage building needs --epic KEY"); process.exit(2); }
@@ -37,7 +42,7 @@ async function main() {
   }
   const out = await runStarter({
     stage, files, directoryFiles: args.lists.directory ?? [], rulesPath: args.opts.rules,
-    excludeSignals: (args.opts.exclude ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    agentSignals, excludeSignals: (args.opts.exclude ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     epicKey: args.opts.epic ?? null, source, label, runsRoot: args.opts["runs-dir"] ?? "runs",
     onStage: (s, d) => console.error(`${s.padEnd(9)} ${d}`),
   });

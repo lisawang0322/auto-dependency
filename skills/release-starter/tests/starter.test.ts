@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadFile } from "../../release-reader/scripts/lib/files.js";
 import { loadRules } from "../scripts/lib/config.js";
-import { readSignals, projectName } from "../scripts/lib/signals.js";
+import { readSignals, projectName, addAgentSignals } from "../scripts/lib/signals.js";
 import { loadDirectory, contactFor, teamOfPerson } from "../scripts/lib/directory.js";
 import { suggest } from "../scripts/lib/starter.js";
 import { runStarter } from "../../../scripts/lib/pipeline.js";
@@ -139,5 +139,45 @@ describe("building (R18) on the sample Jira snapshot", () => {
     expect(by["Data Platform"].state).toBe("covered");
     expect(by["Privacy"].contact).toBeNull();
     expect(st.next_actions.find((a) => a.team === "Privacy")!.who).toBe("Privacy");
+  });
+});
+
+describe("agent-read signals (--agent-signals)", () => {
+  const PRD = "ingestion-service-PRD.md";
+  it("adds a quoted sentence under a known rule, with that rule's teams; drops bad quotes and unknown rules", async () => {
+    const prd = await loadFile(`${DOCS}/${PRD}`);
+    const found = readSignals([prd], rules);
+    const { signals, warnings } = addAgentSignals([prd], rules, found, [
+      { quote: "Aggregates are kept indefinitely.", file: PRD, rule_ids: ["customer_data"] },
+      { quote: "Stores raw customer event data for 90 days so failed events can be replayed.", file: PRD, rule_ids: ["customer_data", "no_such_rule"] },
+      { quote: "Legal wants a DPIA before beta.", file: PRD, rule_ids: ["customer_data"] },
+      { quote: "No billing changes.", file: PRD, rule_ids: ["billing"] },
+      { quote: "No billing changes.", file: "other.md", rule_ids: ["customer_data"] },
+    ]);
+    expect(signals).toHaveLength(found.length + 1);
+    const added = signals[signals.length - 1];
+    expect(added).toMatchObject({ id: `g${found.length + 1}`, file: PRD, locator: "§3 Data", rule_ids: ["customer_data"], teams: ["Privacy", "Legal"], approvals: ["Privacy review", "Legal review"] });
+    expect(signals[3].rule_ids).toEqual(["customer_data"]); // the duplicate of an existing signal added nothing
+    expect(warnings).toHaveLength(5);
+    expect(warnings[0]).toMatch(/^Agent signal "Stores raw customer event data.*: unknown rule id no_such_rule ignored/);
+    expect(warnings[1]).toBe(`Dropped agent signal "Legal wants a DPIA before beta.": its quote was not found in ${PRD}.`);
+    expect(warnings[2]).toMatch(/unknown rule id billing ignored/);
+    expect(warnings[3]).toBe('Dropped agent signal "No billing changes.": no known rule id.');
+    expect(warnings[4]).toBe('Dropped agent signal "No billing changes.": file other.md is not one of the inputs.');
+    expect(readSignals([prd], rules)).toEqual(found); // the rule-detected list is untouched
+  });
+
+  it("flows through runStarter into the saved run, and --exclude can untick it like any signal", async () => {
+    const runsRoot = mkdtempSync(join(tmpdir(), "rrr-starter-agent-"));
+    try {
+      const agentSignals = [{ quote: "Aggregates are kept indefinitely.", file: PRD, rule_ids: ["customer_data"] }];
+      const out = await runStarter({ stage: "starting", files: [`${DOCS}/${PRD}`, `${DOCS}/directory.yaml`], runsRoot, label: "2026-11-13", agentSignals });
+      const mine = out.starter.signals.find((s) => s.quote === "Aggregates are kept indefinitely.")!;
+      expect(mine.rule_ids).toEqual(["customer_data"]);
+      expect(out.starter.warnings.filter((w) => /agent signal/i.test(w))).toEqual([]);
+      const unticked = await runStarter({ stage: "starting", files: [`${DOCS}/${PRD}`, `${DOCS}/directory.yaml`], runsRoot, label: "2026-11-14", agentSignals, excludeSignals: [mine.id] });
+      expect(unticked.starter.excluded_signals).toEqual([mine.id]);
+      expect(unticked.starter.teams.map((t) => t.team)).toEqual(out.starter.teams.map((t) => t.team)); // Privacy and Legal were already implied by §3
+    } finally { rmSync(runsRoot, { recursive: true, force: true }); }
   });
 });

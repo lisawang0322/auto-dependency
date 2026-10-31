@@ -74,8 +74,9 @@ only) gives the warning `slide N has no extractable text`; there is no OCR.
   anything only said there. A Drive connector would supply the export later; it is not built.
 - **Mixed inputs** work: a deck plus a CSV checklist plus a YAML team list.
 
-**When the POR is prose the helper cannot parse** (run it first; if `items` is short or
-`warnings` say sentences were skipped), read the document yourself and write `items.json`:
+**Then read the document yourself.** Run the helper first; it reads only the structured parts
+(the sections and tables above) and misses plan items written as prose, on slides with other headings,
+or in speaker notes. Read every file start to finish and write the items it missed into `items.json`:
 
 ```json
 [{ "text": "Security review approved", "kind": "approval", "owner_team": "Security",

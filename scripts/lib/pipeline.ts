@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join, resolve } from "node:path";
 import { PlanDraft, ReleaseTarget, Release, Findings, Status, Run, ReadAs, type Team } from "@rrr/schemas";
 import { loadFile } from "../../skills/release-reader/scripts/lib/files.js";
-import { extractPlan } from "../../skills/release-reader/scripts/lib/plan-extract.js";
+import { type AgentItem, extractPlan } from "../../skills/release-reader/scripts/lib/plan-extract.js";
 import { FixtureSource, type JiraSource } from "../../skills/release-reader/scripts/lib/jira-source.js";
 import { JiraRest, runRestLoop, type RestCreds } from "../../skills/release-reader/scripts/lib/jira-rest.js";
 import { resolveRelease } from "../../skills/release-reader/scripts/lib/resolve.js";
@@ -37,10 +37,10 @@ export async function withSource<T>(spec: SourceSpec, step: (src: JiraSource) =>
 
 // ---------- stages ----------
 
-export async function stageA(opts: { files: string[]; readAs?: Record<string, ReadAs[]>; launchDate?: string | null }): Promise<PlanDraft> {
+export async function stageA(opts: { files: string[]; readAs?: Record<string, ReadAs[]>; launchDate?: string | null; agentItems?: AgentItem[] }): Promise<PlanDraft> {
   const files = [];
   for (const p of opts.files) files.push(await loadFile(p));
-  return extractPlan({ files, readAs: opts.readAs, launchDate: opts.launchDate ?? null });
+  return extractPlan({ files, readAs: opts.readAs, launchDate: opts.launchDate ?? null, agentItems: opts.agentItems });
 }
 
 export async function stageB(opts: { plan: PlanDraft; epicKey: string | null; source: SourceSpec; noSearch?: string[] }): Promise<ReleaseTarget> {
@@ -110,6 +110,8 @@ export interface ReviewInput {
   resume?: boolean;
   readAs?: Record<string, ReadAs[]>;
   launchDate?: string | null;
+  /** Items the agent extracted by reading the plan files itself (release-reader/SKILL.md); each must quote its file or it is dropped. */
+  agentItems?: AgentItem[];
   epicKey: string | null;
   source: SourceSpec;
   label?: string;
@@ -150,7 +152,7 @@ export async function runReview(input: ReviewInput): Promise<ReviewResult> {
   let plan = reuse("plan-draft.json", PlanDraft);
   if (plan) say("plan", `reused confirmed ${stageFile(runsRoot, keyForFiles, label, "plan-draft.json")}: ${plan.items.length} plan items`);
   else {
-    plan = await stageA({ files: input.files, readAs: input.readAs, launchDate: input.launchDate });
+    plan = await stageA({ files: input.files, readAs: input.readAs, launchDate: input.launchDate, agentItems: input.agentItems });
     say("plan", `${plan.items.length} plan items, ${plan.teams.length} teams, ${plan.warnings.length} warnings`);
   }
   if (input.stopAfter === "plan") return { stopped: "plan", file: keep("plan-draft.json", plan), plan };
@@ -194,7 +196,7 @@ import { Starter, type Signal, type PlanFile } from "@rrr/schemas";
 import { type LoadedFile } from "../../skills/release-reader/scripts/lib/files.js";
 import { classifyFile } from "../../skills/release-reader/scripts/lib/plan-extract.js";
 import { loadRules, DEFAULT_RULES, type SignalRules } from "../../skills/release-starter/scripts/lib/config.js";
-import { readSignals, projectName } from "../../skills/release-starter/scripts/lib/signals.js";
+import { addAgentSignals, type AgentSignal, readSignals, projectName } from "../../skills/release-starter/scripts/lib/signals.js";
 import { loadDirectory, findTeam, type DirectoryEntry } from "../../skills/release-starter/scripts/lib/directory.js";
 import { suggest } from "../../skills/release-starter/scripts/lib/starter.js";
 import { coverage, readApprovalTickets } from "../../skills/release-starter/scripts/lib/coverage.js";
@@ -209,6 +211,8 @@ export interface StarterInput {
   directoryFiles?: string[];
   rulesPath?: string;
   excludeSignals?: string[];
+  /** Sentences the agent found by reading the PRD itself, each with the rule ids it is an instance of (release-starter/SKILL.md). */
+  agentSignals?: AgentSignal[];
   /** Building only. */
   epicKey?: string | null;
   source?: SourceSpec;
@@ -258,11 +262,12 @@ export function loadStarter(runsRoot: string, key: string, stage: "starting" | "
 }
 
 /** Signals and what they imply, without Jira: shared by both stages and by the GUI's plan step. */
-export function starterSignals(inputs: StarterInputs, rules: SignalRules, excludeSignals: string[] = []) {
-  const signals = readSignals(inputs.docs, rules);
+export function starterSignals(inputs: StarterInputs, rules: SignalRules, excludeSignals: string[] = [], agentSignals: AgentSignal[] = []) {
+  const merged = addAgentSignals(inputs.docs, rules, readSignals(inputs.docs, rules), agentSignals);
+  const signals = merged.signals;
   const s = suggest({ signals, rules, directory: inputs.directory, excludeSignals });
   const files = inputs.files.map((f) => f.read_as.includes("plan_items") ? { ...f, notes: `${signals.filter((g) => g.file === f.name).length} signals about teams and approvals` } : f);
-  return { signals, files, ...s };
+  return { signals, files, agent_added: merged.added, warnings: merged.warnings, ...s };
 }
 
 /** The plan Stage B needs at the early stages: Stage A's plan with the needed teams added (directory projects as hints).
@@ -291,11 +296,12 @@ export async function runStarter(input: StarterInput): Promise<{ starter: Starte
   const inputs = await readStarterInputs(input.files, input.directoryFiles);
   if (!inputs.docs.length) throw new Error("No PRD or plan file: every file was read as a team list or directory.");
   const exclude = input.excludeSignals ?? [];
-  const sig = starterSignals(inputs, rules, exclude);
-  say("signals", `${sig.signals.length} signals in ${inputs.docs.map((d) => d.name).join(", ")}${exclude.length ? ` (${exclude.length} unticked)` : ""}`);
+  const agent = input.agentSignals ?? [];
+  const sig = starterSignals(inputs, rules, exclude, agent);
+  say("signals", `${sig.signals.length} signals in ${inputs.docs.map((d) => d.name).join(", ")}${agent.length ? ` (${sig.agent_added} of ${agent.length} read by the agent added)` : ""}${exclude.length ? ` (${exclude.length} unticked)` : ""}`);
   say("suggest", `${sig.teams.length} teams, ${sig.approvals.length} approvals`);
   say("people", inputs.directory.length ? `${sig.teams.filter((t) => t.contact).length} of ${sig.teams.length} teams have a contact in the directory` : "no directory: teams without names");
-  const warnings = [...inputs.warnings];
+  const warnings = [...inputs.warnings, ...sig.warnings];
   const base = {
     schema_version: 1 as const, stage: input.stage, project: inputs.project, label, analyzed_at: input.analyzedAt ?? new Date().toISOString(),
     files: sig.files, directory_given: inputs.directory.length > 0, epic: null as string | null, snapshot_label: null as string | null,

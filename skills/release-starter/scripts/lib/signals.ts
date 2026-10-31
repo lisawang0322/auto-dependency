@@ -4,7 +4,7 @@
  */
 import type { Signal } from "@rrr/schemas";
 import type { LoadedFile } from "../../../release-reader/scripts/lib/files.js";
-import { splitSections, candidateSentences } from "../../../release-reader/scripts/lib/plan-extract.js";
+import { splitSections, candidateSentences, containsQuote } from "../../../release-reader/scripts/lib/plan-extract.js";
 import type { SignalRules, Rule } from "./config.js";
 
 interface Compiled { rule: Rule; res: RegExp[] }
@@ -69,4 +69,49 @@ export function readSignals(files: LoadedFile[], rules: SignalRules): Signal[] {
     }
   }
   return out;
+}
+
+/** A signal the agent found by reading the PRD itself: the sentence, the file, and which rules it is an instance of.
+ *  The rules still supply the teams and approvals; the agent only says which sentences count. */
+export interface AgentSignal { quote: string; file: string; locator?: string | null; rule_ids: string[] }
+
+const normQuote = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/** Where a quote sits in a file: the first section whose body contains it. */
+function locatorOf(f: LoadedFile, quote: string): string {
+  return sectionsOf(f).find((sec) => containsQuote(sec.body, quote))?.locator ?? f.name;
+}
+
+/** Merge the agent's signals into the rule-detected ones. A signal is dropped (with a warning) when its quote is not
+ *  in the named file word for word or none of its rule ids exist; a quote that is already a signal only gains rule ids. */
+export function addAgentSignals(files: LoadedFile[], rules: SignalRules, signals: Signal[], agent: AgentSignal[]): { signals: Signal[]; added: number; warnings: string[] } {
+  const warnings: string[] = [];
+  let added = 0;
+  const out: Signal[] = signals.map((s) => ({ ...s, rule_ids: [...s.rule_ids], teams: [...s.teams], approvals: [...s.approvals] }));
+  const byId = new Map(rules.rules.map((r) => [r.id, r]));
+  for (const a of agent) {
+    const label = JSON.stringify((a.quote ?? "").slice(0, 60));
+    const f = files.find((x) => x.name === a.file);
+    if (!f) { warnings.push(`Dropped agent signal ${label}: file ${a.file} is not one of the inputs.`); continue; }
+    if (!a.quote || !containsQuote(f.text, a.quote)) { warnings.push(`Dropped agent signal ${label}: its quote was not found in ${f.name}.`); continue; }
+    const ids = (a.rule_ids ?? []).filter((id) => byId.has(id));
+    const unknown = (a.rule_ids ?? []).filter((id) => !byId.has(id));
+    if (unknown.length) warnings.push(`Agent signal ${label}: unknown rule id ${unknown.join(", ")} ignored (see templates/signals.yaml).`);
+    if (!ids.length) { warnings.push(`Dropped agent signal ${label}: no known rule id.`); continue; }
+    const key = normQuote(a.quote);
+    let s = out.find((x) => normQuote(x.quote) === key);
+    if (!s) {
+      s = { id: `g${out.length + 1}`, quote: a.quote.trim(), file: f.name, locator: a.locator || locatorOf(f, a.quote), rule_ids: [], teams: [], approvals: [] };
+      out.push(s);
+      added++;
+    }
+    for (const id of ids) {
+      if (s.rule_ids.includes(id)) continue;
+      s.rule_ids.push(id);
+      const r = byId.get(id)!;
+      for (const t of r.teams) if (!s.teams.includes(t.team)) s.teams.push(t.team);
+      for (const ap of r.approvals ?? []) if (!s.approvals.includes(ap.name)) s.approvals.push(ap.name);
+    }
+  }
+  return { signals: out, added, warnings };
 }
