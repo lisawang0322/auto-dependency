@@ -104,6 +104,10 @@ export type Stage = "plan" | "target" | "release" | "findings" | "status" | "sav
 
 export interface ReviewInput {
   files: string[];
+  /** Stop after this stage, leaving its file under runs/<epic>/<label>/ for the person to confirm or edit. */
+  stopAfter?: "plan" | "target" | null;
+  /** Reuse confirmed stage files found under runs/<epic>/<label>/ instead of recomputing them. */
+  resume?: boolean;
   readAs?: Record<string, ReadAs[]>;
   launchDate?: string | null;
   epicKey: string | null;
@@ -117,14 +121,48 @@ export interface ReviewInput {
   onStage?: (stage: Stage, detail: string) => void;
 }
 
-export async function runReview(input: ReviewInput): Promise<{ runFile: string; run: Run; label: string; findings: Findings; status: Status }> {
+export type ReviewResult =
+  | { stopped: "plan"; file: string; plan: PlanDraft }
+  | { stopped: "target"; file: string; plan: PlanDraft; target: ReleaseTarget }
+  | { stopped: null; runFile: string; run: Run; label: string; findings: Findings; status: Status };
+
+/** Where a stage file lives while the person confirms it. The epic is only known after Stage B, so Stage A's file sits under the key the person gave. */
+export function stageFile(runsRoot: string, epic: string, label: string, name: "plan-draft.json" | "release-target.json"): string {
+  return join(runDir(runsRoot, epic), label, name);
+}
+
+export async function runReview(input: ReviewInput): Promise<ReviewResult> {
   const label = input.label ?? todayLabel();
   const runsRoot = input.runsRoot ?? "runs";
   const say = input.onStage ?? (() => {});
-  const plan = await stageA({ files: input.files, readAs: input.readAs, launchDate: input.launchDate });
-  say("plan", `${plan.items.length} plan items, ${plan.teams.length} teams, ${plan.warnings.length} warnings`);
-  const target = await stageB({ plan, epicKey: input.epicKey, source: input.source, noSearch: input.noSearch });
-  say("target", `epic ${target.epic.key}, ${target.projects.filter((p) => p.match !== "unresolved").length}/${target.projects.length} teams resolved`);
+  const keyForFiles = (input.epicKey ?? "unknown-epic").toUpperCase();
+  const keep = (name: "plan-draft.json" | "release-target.json", data: unknown) => {
+    const f = stageFile(runsRoot, keyForFiles, label, name);
+    mkdirSync(join(f, ".."), { recursive: true });
+    writeFileSync(f, JSON.stringify(data, null, 2) + "\n");
+    return resolve(f);
+  };
+  const reuse = <T>(name: "plan-draft.json" | "release-target.json", schema: { parse(x: unknown): T }): T | null => {
+    const f = stageFile(runsRoot, keyForFiles, label, name);
+    return input.resume && existsSync(f) ? schema.parse(JSON.parse(readFileSync(f, "utf8"))) : null;
+  };
+
+  let plan = reuse("plan-draft.json", PlanDraft);
+  if (plan) say("plan", `reused confirmed ${stageFile(runsRoot, keyForFiles, label, "plan-draft.json")}: ${plan.items.length} plan items`);
+  else {
+    plan = await stageA({ files: input.files, readAs: input.readAs, launchDate: input.launchDate });
+    say("plan", `${plan.items.length} plan items, ${plan.teams.length} teams, ${plan.warnings.length} warnings`);
+  }
+  if (input.stopAfter === "plan") return { stopped: "plan", file: keep("plan-draft.json", plan), plan };
+
+  let target = reuse("release-target.json", ReleaseTarget);
+  if (target) say("target", `reused confirmed ${stageFile(runsRoot, keyForFiles, label, "release-target.json")}: epic ${target.epic.key}`);
+  else {
+    target = await stageB({ plan, epicKey: input.epicKey, source: input.source, noSearch: input.noSearch });
+    say("target", `epic ${target.epic.key}, ${target.projects.filter((p) => p.match !== "unresolved").length}/${target.projects.length} teams resolved`);
+  }
+  if (input.stopAfter === "target") return { stopped: "target", file: keep("release-target.json", target), plan, target };
+
   const release = await stageC({ plan, target, source: input.source, label, readAt: input.readAt });
   say("release", `${release.stories.length} stories, ${release.related.length} related, ${release.search_candidates.length} search candidates`);
   const findings = analyzeStep({ plan, target, release, goNoGo: input.goNoGo, analyzedAt: input.analyzedAt });
@@ -134,7 +172,7 @@ export async function runReview(input: ReviewInput): Promise<{ runFile: string; 
   say("status", status.teams.map((t) => `${t.team}: ${t.status}`).join(", ") + (prev ? ` (compared with ${prev.label})` : " (first run)"));
   const saved = saveRun(runsRoot, target.epic.key, label, { plan, target, release, findings, status });
   say("saved", saved.runFile);
-  return { ...saved, label, findings, status };
+  return { stopped: null, ...saved, label, findings, status };
 }
 
 /** Keep the unresolved-team overrides the person made in the GUI (project choice or "don't search"). */

@@ -33,6 +33,7 @@ for (const snap of ["2026-11-10", "2026-11-13"]) {
   for (const t of run.teams) for (const it of t.items) if (it.finding_id && !fids.has(it.finding_id)) throw new Error(`${snap} ${t.team}: unknown finding ${it.finding_id}`);
   mkdirSync(`runs/${EPIC}/${snap}`, { recursive: true });
   writeFileSync(`runs/${EPIC}/${snap}/status.json`, JSON.stringify(status, null, 2) + "\n");
+  writeFileSync(`runs/${EPIC}/${snap}/findings.json`, JSON.stringify(findings, null, 2) + "\n");
   writeFileSync(`runs/${EPIC}/${snap}.json`, JSON.stringify(run, null, 2) + "\n");
   console.log(`runs/${EPIC}/${snap}.json: ${run.findings.length} findings, ${run.linkage_gaps.length} linkage gaps, ${run.teams.map((t) => `${t.team} ${t.status}`).join(", ")}`);
   previous = { release, teams: status.teams, snapshot_label: snap };

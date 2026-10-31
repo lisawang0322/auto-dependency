@@ -26,7 +26,9 @@
     "status": "tsx skills/release-status/scripts/status.ts",
     "review": "tsx scripts/review.ts",
     "server": "tsx server/index.ts",
-    "start": "npm run gui:build && tsx server/index.ts"
+    "start": "npm run gui:build && tsx server/index.ts",
+    "doctor": "tsx scripts/doctor.ts",
+    "report": "tsx scripts/report.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

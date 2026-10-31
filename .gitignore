@@ -8,3 +8,4 @@ skills/release-reader/.mcp-cache/
 out/
 .venv/
 .mcp-cache/
+in/
