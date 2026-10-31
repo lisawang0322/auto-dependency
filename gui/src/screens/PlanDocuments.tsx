@@ -6,7 +6,24 @@ import { fmtDate } from "../model/dates";
 /** Step 2 (PRD R1–R3, R14): add plan files in any format, see what was read from them, fix dates, confirm. */
 
 /** The agent (Devin) that can read the uploads: whether the company set it up, the person's answer, and what it did. */
-export interface AgentPanel { info: AgentInfo; consent: AgentConsent; setConsent: (c: AgentConsent) => void; stage: AgentReadStage | null; read: AgentRead | null; retry: () => void }
+export interface AgentPanel { info: AgentInfo; consent: AgentConsent; setConsent: (c: AgentConsent) => void; mode: string | null; setMode: (m: string | null) => void; stage: AgentReadStage | null; read: AgentRead | null; /** Start (or repeat) the agent's reading of the current files. */ read_now: () => void }
+
+/** The Devin tier picker, shown only when the company lets people choose. */
+export function ModeSelect({ agent, id }: { agent: Pick<AgentPanel, "info" | "mode" | "setMode">; id: string }) {
+  const modes = agent.info.modes ?? [];
+  if (modes.length < 2) return null;
+  const value = agent.mode && modes.includes(agent.mode) ? agent.mode : "";
+  return (
+    <div className="stack-sm" style={{ gap: 2 }}>
+      <label htmlFor={id} className="label">Reading mode</label>
+      <select id={id} className="input" style={{ width: "auto", minWidth: 220, height: 40 }} value={value} onChange={(e) => agent.setMode(e.target.value || null)}>
+        <option value="">Company default{agent.info.default_mode ? ` (${agent.info.default_mode})` : ""}</option>
+        {modes.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
+      <span className="small muted">Devin's agent tier for this reading; heavier tiers cost more of the ACU cap.</span>
+    </div>
+  );
+}
 
 interface Props {
   stage: Stage;
@@ -64,7 +81,9 @@ export function PlanDocuments(p: Props) {
   const reading = agent.stage !== null;
   const read = agent.read;
   const agentOn = agent.info.available && agent.consent === "yes";
+  const docs = planFiles.filter((f) => f.via !== "directory");
   const unchecked = rows.filter((r) => r.source.quote_verified === false).length;
+  const modeLabel = agent.mode ?? agent.info.default_mode;
   const READ_STEPS: [string, string][] = [
     ["Uploading", `Sending your documents to ${agent.info.name}.`],
     ["Reading", `${agent.info.name} opens each file, in whatever format it is, and writes down what it commits to.`],
@@ -91,10 +110,29 @@ export function PlanDocuments(p: Props) {
       {agent.info.available && agent.consent === "unknown" && (
         <section className="notice stack-sm" role="region" aria-label={`${agent.info.name} can read your files`} data-testid="agent-consent" style={{ gap: 10, padding: "14px 16px" }}>
           <span style={{ fontWeight: 600 }}>{agent.info.name} can read your files</span>
-          <span>Your company set up {agent.info.name} for this tool. If you allow it, {agent.info.name} opens each plan file you add, in any format, and writes down what it commits to. Every item is checked against the file before you see it, and you confirm the plan either way. The reading runs in your company's {agent.info.name} account.</span>
+          <span>Your company set up {agent.info.name} for this tool. If you allow it, a "Read with {agent.info.name}" button appears here: when you click it, {agent.info.name} opens each plan file, in any format, and writes down what it commits to. Nothing is sent until you click. Every item is checked against the file before you see it, and you confirm the plan either way. The reading runs in your company's {agent.info.name} account.</span>
+          <ModeSelect agent={agent} id="agent-mode-consent" />
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             <button type="button" className="btn primary" onClick={() => agent.setConsent("yes")}>Let {agent.info.name} read my files</button>
             <button type="button" className="btn" onClick={() => agent.setConsent("no")}>Not now</button>
+          </div>
+        </section>
+      )}
+      {agentOn && !reading && hasPlan && p.plan && (
+        <section className="card" data-testid="agent-panel" style={{ gap: 10 }}>
+          <div className="between" style={{ gap: 12, alignItems: "flex-start" }}>
+            <div className="stack-sm" style={{ gap: 4 }}>
+              <span style={{ fontWeight: 600 }}>{read ? `${agent.info.name} has read your files` : `Ready for ${agent.info.name} to read`}</span>
+              <span className="sm muted">
+                {read
+                  ? "Change a file or how it is read, and the reading above no longer applies; read again to refresh it."
+                  : docs.length ? `Check "Read as" on each file first. Then ${agent.info.name} opens ${docs.map((f) => f.name).join(", ")}${modeLabel ? ` in ${modeLabel} mode` : ""} and writes down what ${docs.length === 1 ? "it" : "they"} commit${docs.length === 1 ? "s" : ""} to. Nothing is sent until you click.` : "Add a plan document first; checklists and team lists are read by the rules."}
+              </span>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 10 }}>
+              <ModeSelect agent={agent} id="agent-mode-plan" />
+              <button type="button" className={"btn" + (read ? "" : " primary")} disabled={!docs.length} onClick={agent.read_now} data-testid="agent-read">{read ? `Read again with ${agent.info.name}` : `Read with ${agent.info.name}`}</button>
+            </div>
           </div>
         </section>
       )}
@@ -183,13 +221,13 @@ export function PlanDocuments(p: Props) {
       {!reading && read && read.status === "failed" && (
         <div className="notice-grey between" role="alert" data-testid="agent-result" style={{ gap: 12 }}>
           <span>{agent.info.name} could not read your files: {read.error} Showing what the rules found on their own.</span>
-          <button type="button" className="btn" style={{ minHeight: 36 }} onClick={agent.retry}>Try again</button>
+          <button type="button" className="btn" style={{ minHeight: 36 }} onClick={agent.read_now}>Try again</button>
         </div>
       )}
       {!reading && read && read.status === "done" && (
         <div className="notice stack-sm" data-testid="agent-result" style={{ gap: 4 }}>
           <span>
-            <strong style={{ fontWeight: 600 }}>{agent.info.name} read {launching ? `${read.items_read} plan item${read.items_read === 1 ? "" : "s"}` : `${read.signals_read} signal${read.signals_read === 1 ? "" : "s"}`}</strong>
+            <strong style={{ fontWeight: 600 }}>{agent.info.name}{read.mode ? ` (${read.mode})` : ""} read {launching ? `${read.items_read} plan item${read.items_read === 1 ? "" : "s"}` : `${read.signals_read} signal${read.signals_read === 1 ? "" : "s"}`}</strong>
             {read.files_read.length > 0 && <> from {read.files_read.map((f) => `${f.name}${f.how ? ` (${f.how})` : ""}`).join(", ")}</>}
             {read.cached ? " · from an earlier reading of the same file" : ""}
             {read.session_url && <> · <a href={read.session_url} target="_blank" rel="noreferrer">open the {agent.info.name} session</a></>}
@@ -266,7 +304,7 @@ export function PlanDocuments(p: Props) {
             </table>
           </div>
           <span className="sm muted">
-            {[`Plan items: ${planCount}`, hasChecklist ? `Launch checks: ${checkApplied} of ${checkTotal ?? "?"} apply` : "No launch checks", hasOrg ? (viaDirectory ? "Owners: from your directory" : "Owners: from your files") : "Owners: inferred from Jira", ...(read?.status === "done" ? [`Read by ${agent.info.name}: ${read.items_read}`] : agentOn ? [] : agent.info.available ? [`${agent.info.name} not used`] : [])].join(" · ")}
+            {[`Plan items: ${planCount}`, hasChecklist ? `Launch checks: ${checkApplied} of ${checkTotal ?? "?"} apply` : "No launch checks", hasOrg ? (viaDirectory ? "Owners: from your directory" : "Owners: from your files") : "Owners: inferred from Jira", ...(read?.status === "done" ? [`Read by ${agent.info.name}: ${read.items_read}`] : agentOn ? [`${agent.info.name} has not read these files yet`] : agent.info.available ? [`${agent.info.name} not used`] : [])].join(" · ")}
           </span>
           {p.plan.warnings.length > 0 && <div className="notice-grey">{p.plan.warnings.join(" ")}</div>}
         </section>

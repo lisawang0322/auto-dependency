@@ -93,8 +93,14 @@ export class Auth {
   private async discover(): Promise<Discovery> {
     if (this.discovery) return this.discovery;
     const cfg = this.cfg!;
-    const res = await this.f(`${cfg.issuer.replace(/\/+$/, "")}/.well-known/openid-configuration`);
-    if (!res.ok) throw new AuthError(502, `The identity provider's discovery document could not be read (${res.status}).`);
+    const url = `${cfg.issuer.replace(/\/+$/, "")}/.well-known/openid-configuration`;
+    const res = await this.f(url);
+    if (!res.ok) {
+      // Say what the provider said: Entra's AADSTS90002 "tenant not found", for one, names a mistyped OIDC_ISSUER at once.
+      let detail = "";
+      try { const body = await res.json(); detail = String(body?.error_description ?? body?.error ?? "").split(" Trace ID")[0]; } catch { /* not JSON */ }
+      throw new AuthError(502, `The identity provider's discovery document could not be read (${res.status} from ${url})${detail ? `: ${detail}` : ""}. Check OIDC_ISSUER; for Entra it is https://login.microsoftonline.com/<tenant id>/v2.0.`);
+    }
     const d = (await res.json()) as Discovery;
     if (!d.authorization_endpoint || !d.token_endpoint || !d.jwks_uri) throw new AuthError(502, "The identity provider's discovery document is incomplete.");
     this.discovery = d;
@@ -160,7 +166,8 @@ export class Auth {
     } catch (e) {
       return fail(e instanceof AuthError ? e.status : 502, (e as Error).message);
     }
-    const email = (claims.email ?? claims.preferred_username ?? null) as string | null;
+    // v2 tokens carry email / preferred_username; Entra v1 tokens (an issuer without /v2.0) carry upn / unique_name instead.
+    const email = (claims.email ?? claims.preferred_username ?? claims.upn ?? claims.unique_name ?? null) as string | null;
     if (this.cfg.allowedEmailDomains?.length) {
       const domain = email?.split("@")[1]?.toLowerCase();
       if (!domain || !this.cfg.allowedEmailDomains.includes(domain)) return fail(403, `${email ?? "this account"} is not in an allowed domain.`);

@@ -28,10 +28,11 @@ async function boot() {
   const jira = live ? new LiveJiraConnection(health!.jira) : new StubJiraConnection(fast ? 50 : 1200);
   const store = live ? new ServerDecisionStore() : new LocalDecisionStore();
   const initialConsent = live ? (health!.settings?.agent_consent ?? "unknown") : loadLocalConsent();
+  const initialMode = live ? (health!.settings?.agent_mode ?? null) : null;
   const user = live ? (health!.auth?.user ?? null) : null;
   root.render(
     <React.StrictMode>
-      <App backend={backend} jira={jira} store={store} user={user} initialConsent={initialConsent} onSignOut={live && health!.auth?.mode === "oidc" ? signOut : undefined} />
+      <App backend={backend} jira={jira} store={store} user={user} initialConsent={initialConsent} initialMode={initialMode} onSignOut={live && health!.auth?.mode === "oidc" ? signOut : undefined} />
     </React.StrictMode>,
   );
 }

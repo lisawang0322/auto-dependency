@@ -29,7 +29,7 @@ test.beforeAll(async () => {
   idp = await startFakeIdp();
   // Sign-in is on: the browser reaches the server through Vite's proxy on 5173, so that is the app URL the provider sends people back to.
   srv = await startServer({ port: 8787, quiet: true, creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), agentCacheRoot: join(tmp, "agent"), sampleDocs: DOCS, guiDist: join(tmp, "nodist"), storePath: ":memory:",
-    devin: { apiKey: "cog_test", baseUrl: devin.url, pollMs: 100, timeoutMs: 20_000 },
+    devin: { apiKey: "cog_test", baseUrl: devin.url, pollMs: 100, timeoutMs: 20_000, defaultMode: "normal", modes: ["lite", "normal"] },
     auth: { mode: "oidc", issuer: idp.url, clientId: "app-client-id", clientSecret: "app-secret", appUrl: "http://localhost:5173", sessionSecret: "e2e-secret" } });
 });
 test.afterAll(async () => { await srv?.close(); await jira?.close(); await devin?.close(); await idp?.close(); rmSync(tmp, { recursive: true, force: true }); });
@@ -148,13 +148,22 @@ test("Devin reads the uploads once the person allows it, and the connect step sh
 
   // The offer, before any file is added. Allowing it is remembered for the session.
   await expect(page.getByTestId("agent-consent")).toContainText("Devin can read your files");
+  await page.locator("#agent-mode-consent").selectOption("lite");
   await page.getByRole("button", { name: "Let Devin read my files" }).click();
   await expect(page.getByTestId("agent-consent")).toHaveCount(0);
 
   const before = devin.sessions.length;
   await page.locator("#plan-files").setInputFiles([file("Ingestion-service-POR-v3.md", "text/markdown"), file("launch-checklist.csv", "text/csv")]);
+  // Upload alone reads with the rules only; nothing goes to Devin until the person clicks.
+  await expect(page.getByRole("heading", { name: "Plan we read" })).toBeVisible();
+  await expect(page.locator(".plan-table tbody tr")).toHaveCount(7);
+  await expect(page.getByText("Devin has not read these files yet")).toBeVisible();
+  expect(devin.sessions.length).toBe(before);
+  await expect(page.getByTestId("agent-panel")).toContainText("Ready for Devin to read");
+  await page.getByTestId("agent-read").click();
   await expect(page.getByTestId("agent-reading")).toContainText("Devin is reading your files");
-  await expect(page.getByTestId("agent-result")).toContainText("Devin read 4 plan items from Ingestion-service-POR-v3.md (text)", { timeout: 20_000 });
+  await expect(page.getByTestId("agent-result")).toContainText("Devin (lite) read 4 plan items from Ingestion-service-POR-v3.md (text)", { timeout: 20_000 });
+  expect(devin.sessions[devin.sessions.length - 1].devin_mode).toBe("lite");
   await expect(page.getByTestId("agent-result").getByRole("link", { name: /open the Devin session/ })).toHaveAttribute("href", /app\.devin\.ai\/sessions\//);
   // The rules' 7 plus the one only Devin found; the document went to Devin once, the csv did not go at all.
   await expect(page.locator(".plan-table tbody tr")).toHaveCount(8);
@@ -162,13 +171,19 @@ test("Devin reads the uploads once the person allows it, and the connect step sh
   expect(devin.sessions.length).toBe(before + 1);
   expect(devin.uploads.map((u) => u.name)).toEqual(["Ingestion-service-POR-v3.md"]);
 
-  // Changing how a file is read re-runs the rules but reuses the reading: no second session.
+  // Changing how a file is read drops the reading (rules only again) and offers to read again; the repeat is served from the cache.
   await page.locator("select[id^=kind-]").first().selectOption("prd");
+  await expect(page.getByTestId("agent-result")).toHaveCount(0);
+  await expect(page.locator(".plan-table tbody tr")).toHaveCount(7);
+  await expect(page.getByTestId("agent-read")).toHaveText("Read with Devin");
+  expect(devin.sessions.length).toBe(before + 1);
+  await page.getByTestId("agent-read").click();
   await expect(page.getByTestId("agent-result")).toContainText("from an earlier reading of the same file", { timeout: 20_000 });
+  await expect(page.locator(".plan-table tbody tr")).toHaveCount(8);
   expect(devin.sessions.length).toBe(before + 1);
 
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
-  await expect(page.getByTestId("app-devin").getByTestId("app-state")).toHaveText("Connected · set up by your company · reads your plan files");
+  await expect(page.getByTestId("app-devin").getByTestId("app-state")).toHaveText("Connected · set up by your company · reads your plan files in lite mode");
   await page.getByRole("button", { name: "Disconnect Devin" }).click();
   await expect(page.getByTestId("app-devin").getByTestId("app-state")).toHaveText("Not connected");
 });
@@ -186,6 +201,7 @@ test("the answer about Devin is kept on the server across reloads, and signing o
   await expect(page.getByTestId("agent-consent")).toHaveCount(0); // remembered server-side, not asked again
   await page.getByRole("button", { name: "Use sample files" }).click();
   await expect(page.getByText("Devin not used")).toBeVisible();
+  await expect(page.getByTestId("agent-panel")).toHaveCount(0);
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("heading", { name: "Sign in with your company account" })).toBeVisible();
   const res = await page.request.get("/api/settings");

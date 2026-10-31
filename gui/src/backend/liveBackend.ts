@@ -53,6 +53,8 @@ export class LiveBackend implements ReviewBackend {
   /** Launch date and go/no-go the person set on the Connect step, applied on run. */
   launchDate: string | null = null;
   constructor(health?: Health | null) { this.agent = health?.agent ?? { available: false, name: "Devin" }; }
+  /** The tier the person chose, from the health probe; the panel keeps it current after a change. */
+  initialMode(health?: Health | null): string | null { return health?.settings?.agent_mode ?? null; }
 
   async saveSettings(patch: Partial<Settings>): Promise<void> { await api("PUT", "/api/settings", patch); }
 

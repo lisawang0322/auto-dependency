@@ -9,7 +9,8 @@
 import { createServer, type Server } from "node:http";
 import { Readable } from "node:stream";
 
-export interface FakeDevinSession { id: string; prompt: string; title: string | null; max_acu_limit: number | null; polls: number; attachments: { name: string; text: string }[]; messages: string[] }
+export interface FakeDevinSession { id: string; prompt: string; title: string | null; max_acu_limit: number | null; polls: number; attachments: { name: string; text: string }[]; messages: string[]; api: "v1" | "v3"; output_schema: unknown; devin_mode: string | null }
+const ORG = "org-fake";
 export interface FakeDevinOptions {
   apiKey?: string;
   workingPolls?: number;
@@ -27,6 +28,17 @@ export async function startFakeDevin(opts: FakeDevinOptions = {}): Promise<FakeD
   const calls: string[] = [];
   let base = "";
   const json = (res: any, status: number, body: unknown) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)); };
+  const saveUpload = async (req: import("node:http").IncomingMessage) => {
+    const webReq = new Request("http://x/", { method: "POST", headers: req.headers as Record<string, string>, body: Readable.toWeb(req) as any, duplex: "half" } as any);
+    const form = await webReq.formData();
+    const file = form.get("file");
+    if (!(file instanceof Blob)) return null;
+    const name = (file as File).name ?? "file";
+    const text = Buffer.from(await file.arrayBuffer()).toString("utf8");
+    const u = { name, text, url: `${base}/files/${uploads.length + 1}/${encodeURIComponent(name)}` };
+    uploads.push(u);
+    return u;
+  };
 
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
@@ -37,17 +49,41 @@ export async function startFakeDevin(opts: FakeDevinOptions = {}): Promise<FakeD
       if (!u) { res.writeHead(404); return res.end(); }
       res.writeHead(200, { "Content-Type": "application/octet-stream" }); return res.end(u.text);
     }
-    if (req.headers.authorization !== `Bearer ${apiKey}`) return json(res, 401, { detail: "Unauthorized" });
+    if (req.headers.authorization !== `Bearer ${apiKey}`) return json(res, 403, { detail: "Unauthorized" });
     try {
+      // ---- v3 (organisation-scoped) ----
+      if (p === "/v3/self" && req.method === "GET") return json(res, 200, { principal_type: "service_user", user_name: "Readiness Review bot", org_id: ORG, devin_sessions_org_id: ORG });
+      let v3 = p.match(/^\/v3\/organizations\/([^/]+)\/(attachments|sessions)(?:\/([^/]+))?$/);
+      if (v3 && v3[1] !== ORG) return json(res, 404, { title: "Not Found", detail: "unknown organization" });
+      if (v3 && v3[2] === "attachments" && req.method === "POST") {
+        const u = await saveUpload(req);
+        if (!u) return json(res, 400, { detail: "no file" });
+        return json(res, 200, { attachment_id: `att-${uploads.length}`, name: u.name, url: u.url });
+      }
+      if (v3 && v3[2] === "sessions" && !v3[3] && req.method === "POST") {
+        let body = ""; for await (const c of req) body += c;
+        const b = JSON.parse(body || "{}");
+        if (typeof b.prompt !== "string" || !b.prompt) return json(res, 422, { detail: "prompt required" });
+        const attachments = (Array.isArray(b.attachment_urls) ? b.attachment_urls : []).map((url: string) => uploads.find((u) => u.url === url)).filter((u: any): u is typeof uploads[number] => !!u).map((u: any) => ({ name: u.name, text: u.text }));
+        const s: FakeDevinSession = { id: `devin-${sessions.length + 1}`, prompt: b.prompt, title: b.title ?? null, max_acu_limit: b.max_acu_limit ?? null, polls: 0, attachments, messages: [], api: "v3", output_schema: b.structured_output_schema ?? null, devin_mode: b.devin_mode ?? null };
+        sessions.push(s);
+        return json(res, 200, { session_id: s.id, url: `https://app.devin.ai/sessions/${s.id}`, status: "new", tags: b.tags ?? [], org_id: ORG, created_at: 0, updated_at: 0, acus_consumed: 0, pull_requests: [] });
+      }
+      if (v3 && v3[2] === "sessions" && v3[3] && req.method === "GET") {
+        const s = sessions.find((x) => x.id === v3![3]);
+        if (!s) return json(res, 404, { title: "Not Found" });
+        s.polls++;
+        const base_ = { session_id: s.id, title: s.title, url: `https://app.devin.ai/sessions/${s.id}`, org_id: ORG, tags: [], created_at: 0, updated_at: 0, acus_consumed: 0.3, pull_requests: [] };
+        if (s.polls <= workingPolls) return json(res, 200, { ...base_, status: "running", status_detail: "working", structured_output: null });
+        if (opts.endWith) return json(res, 200, { ...base_, status: opts.endWith === "blocked" ? "suspended" : opts.endWith === "expired" ? "error" : "exit", status_detail: opts.endWith === "blocked" ? "waiting for user input" : null, structured_output: null });
+        const out = opts.answer ? opts.answer(s) : null;
+        if (out === null || out === undefined) return json(res, 200, { ...base_, status: "running", status_detail: "working", structured_output: null });
+        return json(res, 200, { ...base_, status: "exit", status_detail: null, structured_output: out });
+      }
+      // ---- v1 (legacy keys) ----
       if (p === "/v1/attachments" && req.method === "POST") {
-        const webReq = new Request("http://x/", { method: "POST", headers: req.headers as Record<string, string>, body: Readable.toWeb(req) as any, duplex: "half" } as any);
-        const form = await webReq.formData();
-        const file = form.get("file");
-        if (!(file instanceof Blob)) return json(res, 400, { detail: "no file" });
-        const name = (file as File).name ?? "file";
-        const text = Buffer.from(await file.arrayBuffer()).toString("utf8");
-        const u = { name, text, url: `${base}/files/${uploads.length + 1}/${encodeURIComponent(name)}` };
-        uploads.push(u);
+        const u = await saveUpload(req);
+        if (!u) return json(res, 400, { detail: "no file" });
         res.writeHead(200, { "Content-Type": "text/plain" }); return res.end(u.url);
       }
       let body = "";
@@ -56,7 +92,7 @@ export async function startFakeDevin(opts: FakeDevinOptions = {}): Promise<FakeD
         const b = JSON.parse(body || "{}");
         if (typeof b.prompt !== "string" || !b.prompt) return json(res, 400, { detail: "prompt required" });
         const attachments = [...b.prompt.matchAll(/ATTACHMENT:"([^"]+)"/g)].map((m) => uploads.find((u) => u.url === m[1])).filter((u): u is typeof uploads[number] => !!u).map((u) => ({ name: u.name, text: u.text }));
-        const s: FakeDevinSession = { id: `devin-${sessions.length + 1}`, prompt: b.prompt, title: b.title ?? null, max_acu_limit: b.max_acu_limit ?? null, polls: 0, attachments, messages: [] };
+        const s: FakeDevinSession = { id: `devin-${sessions.length + 1}`, prompt: b.prompt, title: b.title ?? null, max_acu_limit: b.max_acu_limit ?? null, polls: 0, attachments, messages: [], api: "v1", output_schema: null, devin_mode: null };
         sessions.push(s);
         return json(res, 200, { session_id: s.id, url: `https://app.devin.ai/sessions/${s.id}`, is_new_session: true });
       }

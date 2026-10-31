@@ -14,7 +14,7 @@ import { EarlyResults } from "./screens/EarlyResults";
 /** The four steps of the prototype: get started → your plan → connect apps → next steps (running sits between 3 and 4). */
 export type Screen = "start" | "plan" | "apps" | "running" | "results";
 
-export interface AppProps { backend: ReviewBackend; jira: JiraConnection; store: DecisionStore; user?: UserInfo | null; initialConsent?: AgentConsent; onSignOut?: () => void }
+export interface AppProps { backend: ReviewBackend; jira: JiraConnection; store: DecisionStore; user?: UserInfo | null; initialConsent?: AgentConsent; initialMode?: string | null; onSignOut?: () => void }
 
 export function guessKind(name: string, files: UploadedFile[]): FileKind {
   const n = name.toLowerCase();
@@ -26,7 +26,7 @@ export function guessKind(name: string, files: UploadedFile[]): FileKind {
   return "other";
 }
 
-export function App({ backend, jira, store, user = null, initialConsent = "unknown", onSignOut }: AppProps) {
+export function App({ backend, jira, store, user = null, initialConsent = "unknown", initialMode = null, onSignOut }: AppProps) {
   const [screen, setScreen] = useState<Screen>("start");
   const [stage, setStageChoice] = useState<Stage | null>(null);
   const [files, setFiles] = useState<UploadedFile[]>([]);
@@ -52,9 +52,11 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
   // The agent (Devin) reading uploads: asked once, remembered; progress while it reads; what it read.
   const [agentConsent, setAgentConsentState] = useState<AgentConsent>(initialConsent);
   const setAgentConsent = useCallback((c: AgentConsent) => { setAgentConsentState(c); void backend.saveSettings({ agent_consent: c }).catch(() => {}); }, [backend]);
+  // The Devin tier that reads the files: null means the company default. Changing it re-reads (a different tier may read differently).
+  const [agentMode, setAgentModeState] = useState<string | null>(initialMode);
+  const setAgentMode = useCallback((m: string | null) => { setAgentModeState(m); void backend.saveSettings({ agent_mode: m }).catch(() => {}); }, [backend]);
   const [agentStage, setAgentStage] = useState<AgentReadStage | null>(null);
   const [agentRead, setAgentRead] = useState<AgentRead | null>(null);
-  const [readNonce, setReadNonce] = useState(0);
   const seq = useRef(0);
 
   const hasPlanFile = files.some((f) => PLAN_KINDS.includes(f.kind));
@@ -83,11 +85,29 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
     setTarget(null);
     setChoices({});
     setStarter(null);
+    // The rules read for free on every change; the agent (which spends credits) only reads on "Read with Devin" below,
+    // so the person can first fix what each file is read as. A change here makes any earlier agent reading stale.
     setAgentRead(null);
-    if (!hasPlanFile || !stage) { setPlan(null); setSignals([]); setProject(null); setPlanError(null); setAgentStage(null); return; }
-    const useAgent = agentConsent === "yes" && backend.agent.available;
-    setAgentStage(useAgent ? 0 : null);
-    backend.extractPlan(files, stage, { agent: useAgent, onProgress: (s) => { if (my === seq.current) setAgentStage(s); } }).then((r) => {
+    setAgentStage(null);
+    if (!hasPlanFile || !stage) { setPlan(null); setSignals([]); setProject(null); setPlanError(null); return; }
+    backend.extractPlan(files, stage, { agent: false }).then((r) => {
+      if (my !== seq.current) return;
+      setPlan(r.plan);
+      setSignals(r.signals);
+      setProject(r.project);
+      setPlanError(null);
+      if (r.plan.launch_date) setLaunch(r.plan.launch_date);
+    }).catch((e) => { if (my === seq.current) { setPlan(null); setSignals([]); setPlanError(String(e.message ?? e)); } });
+  }, [files, backend, hasPlanFile, uploadKey, stage]);
+
+  /** The deliberate step: the agent opens the plan documents, with the kinds and mode as they stand now. */
+  const readWithAgent = useCallback(() => {
+    if (!hasPlanFile || !stage || agentConsent !== "yes" || !backend.agent.available) return;
+    const my = ++seq.current;
+    setAgentRead(null);
+    setAgentStage(0);
+    setConfirmed(false);
+    backend.extractPlan(files, stage, { agent: true, onProgress: (s) => { if (my === seq.current) setAgentStage(s); } }).then((r) => {
       if (my !== seq.current) return;
       setPlan(r.plan);
       setSignals(r.signals);
@@ -96,8 +116,8 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
       setAgentRead(r.agent ?? null);
       setAgentStage(null);
       if (r.plan.launch_date) setLaunch(r.plan.launch_date);
-    }).catch((e) => { if (my === seq.current) { setPlan(null); setSignals([]); setAgentStage(null); setPlanError(String(e.message ?? e)); } });
-  }, [files, backend, hasPlanFile, uploadKey, stage, agentConsent, readNonce]);
+    }).catch((e) => { if (my === seq.current) { setAgentStage(null); setPlanError(String(e.message ?? e)); } });
+  }, [backend, files, stage, hasPlanFile, agentConsent]);
 
   const epicVal = epic.trim();
   const epicOk = /^[A-Z][A-Z0-9]+-\d+$/.test(epicVal);
@@ -232,7 +252,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
             onLoadSample={() => setFiles((cur) => [...sampleFilesFor(stage), ...cur.filter((f) => f.via === "directory")])}
             onSetDate={(id, v) => setPlanDates((d) => ({ ...d, [id]: v }))}
             onToggleSignal={(id) => { setSignalsOff((s) => ({ ...s, [id]: !s[id] })); setConfirmed(false); }}
-            agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, stage: agentStage, read: agentRead, retry: () => setReadNonce((n) => n + 1) }}
+            agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, mode: agentMode, setMode: setAgentMode, stage: agentStage, read: agentRead, read_now: readWithAgent }}
             onBack={() => setScreen("start")}
             onConfirm={() => { setPlanConfirmed(true); setScreen("apps"); }}
           />
@@ -242,7 +262,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
             stage={stage}
             jira={jira} jiraState={jiraState} setJiraState={(s) => { setJiraState(s); if (s === "off") setConfirmed(false); }}
             directory={{ connected: !!directoryFile, name: directoryFile?.name ?? null, fromFiles: uploadedTeamList?.name ?? null }}
-            agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent }}
+            agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, mode: agentMode, setMode: setAgentMode }}
             onConnectDirectory={connectDirectory} onDisconnectDirectory={disconnectDirectory}
             plan={plan} files={files} epic={epic} setEpic={(v) => { setEpic(v.toUpperCase()); setConfirmed(false); }} epicOk={epicOk}
             target={target} targetError={targetError} latestRun={runs.length ? runsById[runs[runs.length - 1].id] ?? null : null} runs={runs}

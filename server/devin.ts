@@ -8,9 +8,13 @@
  * Billing is the Devin account's (ACUs), capped per session with max_acu_limit. The key is a company
  * service-user key held by the server (DEVIN_API_KEY); the browser never sees it.
  *
- * Devin's External API is marked alpha by Devin; the surface used here is v1:
- *   POST /v1/attachments (multipart, returns a URL), POST /v1/sessions, GET /v1/sessions/{id},
- *   POST /v1/sessions/{id}/message. Attachments are referenced in the prompt as ATTACHMENT:"<url>".
+ * Two API generations, chosen by the key's prefix:
+ *   cog_… (service-user keys and personal access tokens) → v3, organisation-scoped: GET /v3/self for the org id,
+ *     POST /v3/organizations/{org}/attachments (JSON {url}), POST /v3/organizations/{org}/sessions with
+ *     attachment_urls and a structured_output_schema Devin enforces, GET …/sessions/{id} (status new|claimed|
+ *     running|exit|error|suspended|resuming, structured_output).
+ *   apk_… (legacy keys) → v1: POST /v1/attachments (plain-text URL), POST /v1/sessions with ATTACHMENT:"<url>"
+ *     in the prompt, GET /v1/sessions/{id} (status_enum working|blocked|finished|expired…).
  */
 import { readFileSync, existsSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
@@ -23,9 +27,19 @@ import type { AgentSignal } from "../skills/release-starter/scripts/lib/signals.
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 
+/** Devin's agent tiers (v3 devin_mode). The company can narrow the list with DEVIN_MODES and pick a default with DEVIN_MODE. */
+export const DEVIN_MODES = ["lite", "normal", "fast", "fusion", "ultra", "swe-2-medium", "swe-2-high", "swe-2-max"] as const;
+export type DevinMode = (typeof DEVIN_MODES)[number];
+
 export interface DevinOptions {
   apiKey: string;
   baseUrl?: string;
+  /** v3 only; found through GET /v3/self when not given. */
+  orgId?: string;
+  /** The tier used when the person has not chosen one; Devin's organisation default when unset. */
+  defaultMode?: DevinMode | null;
+  /** The tiers people may choose from (default: all). */
+  modes?: DevinMode[];
   /** Cap per reading session, in ACUs. */
   maxAcu?: number;
   /** Give up waiting for the session after this long. */
@@ -35,7 +49,9 @@ export interface DevinOptions {
 }
 
 export interface DevinSession { session_id: string; url: string }
-export interface DevinSessionState { status: string; status_enum: string | null; structured_output: unknown; url?: string }
+/** One shape for both generations: where the session is, and the output if any. */
+export interface DevinSessionState { phase: "working" | "waiting" | "done" | "failed"; detail: string; structured_output: unknown; url?: string }
+export type DevinApi = "v1" | "v3";
 
 export class DevinError extends Error {}
 
@@ -45,45 +61,80 @@ export class DevinClient {
   readonly maxAcu: number;
   readonly timeoutMs: number;
   readonly pollMs: number;
+  readonly api: DevinApi;
+  readonly defaultMode: DevinMode | null;
+  readonly modes: DevinMode[];
+  private orgId: string | null;
   private readonly f: typeof fetch;
   constructor(private readonly opts: DevinOptions) {
     this.baseUrl = (opts.baseUrl ?? "https://api.devin.ai").replace(/\/+$/, "");
     this.maxAcu = opts.maxAcu ?? 2;
     this.timeoutMs = opts.timeoutMs ?? 10 * 60_000;
     this.pollMs = opts.pollMs ?? 5_000;
+    this.api = opts.apiKey.startsWith("cog_") ? "v3" : "v1";
+    this.orgId = opts.orgId ?? null;
+    this.modes = opts.modes?.length ? opts.modes : [...DEVIN_MODES];
+    this.defaultMode = opts.defaultMode && this.modes.includes(opts.defaultMode) ? opts.defaultMode : null;
     this.f = opts.fetchImpl ?? fetch;
+  }
+  /** The organisation the key's sessions belong to (v3), from GET /v3/self. */
+  async org(): Promise<string> {
+    if (this.orgId) return this.orgId;
+    const res = await this.check(await this.f(`${this.baseUrl}/v3/self`, { headers: this.headers() }), "self");
+    const me = await res.json();
+    const org = me?.devin_sessions_org_id ?? me?.org_id;
+    if (!org) throw new DevinError("Devin did not say which organisation this key belongs to; set DEVIN_ORG_ID.");
+    this.orgId = String(org);
+    return this.orgId;
+  }
+  /** Who the key is, for the health line (v3); null on v1. */
+  async whoami(): Promise<{ user_name: string | null; org_id: string | null } | null> {
+    if (this.api !== "v3") return null;
+    try { const res = await this.f(`${this.baseUrl}/v3/self`, { headers: this.headers() }); if (!res.ok) return null; const me = await res.json(); return { user_name: me?.user_name ?? null, org_id: me?.devin_sessions_org_id ?? me?.org_id ?? null }; } catch { return null; }
   }
   private headers(extra: Record<string, string> = {}) { return { Authorization: `Bearer ${this.opts.apiKey}`, ...extra }; }
   private async check(res: Response, what: string): Promise<Response> {
     if (res.ok) return res;
     const text = await res.text().catch(() => "");
-    if (res.status === 401 || res.status === 403) throw new DevinError(`Devin rejected the service key (${res.status}) on ${what}.`);
-    throw new DevinError(`Devin ${what} failed: ${res.status} ${text.slice(0, 200)}`.trim());
+    let detail = "";
+    try { const j = JSON.parse(text); detail = String(j?.detail ?? j?.title ?? j?.error ?? ""); } catch { detail = text.slice(0, 200); }
+    if (res.status === 401 || res.status === 403) throw new DevinError(`Devin refused the key on ${what} (${res.status}${detail ? `: ${detail}` : ""}).`);
+    throw new DevinError(`Devin ${what} failed: ${res.status}${detail ? ` ${detail}` : ""}`.trim());
   }
   async uploadAttachment(name: string, data: Buffer): Promise<string> {
     const form = new FormData();
     form.append("file", new Blob([new Uint8Array(data)]), name);
-    const res = await this.check(await this.f(`${this.baseUrl}/v1/attachments`, { method: "POST", headers: this.headers(), body: form }), "attachment upload");
-    const url = (await res.text()).trim().replace(/^"|"$/g, "");
+    const path = this.api === "v3" ? `/v3/organizations/${encodeURIComponent(await this.org())}/attachments` : "/v1/attachments";
+    const res = await this.check(await this.f(`${this.baseUrl}${path}`, { method: "POST", headers: this.headers(), body: form }), "attachment upload");
+    const url = this.api === "v3" ? String((await res.json())?.url ?? "") : (await res.text()).trim().replace(/^"|"$/g, "");
     if (!/^https?:\/\//.test(url)) throw new DevinError(`Devin attachment upload returned no URL for ${name}.`);
     return url;
   }
-  async createSession(body: { prompt: string; title?: string; tags?: string[]; unlisted?: boolean }): Promise<DevinSession> {
-    const res = await this.check(await this.f(`${this.baseUrl}/v1/sessions`, {
-      method: "POST", headers: this.headers({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ ...body, max_acu_limit: this.maxAcu }),
-    }), "session create");
+  /** v3 passes the attachments and an output schema as fields; v1 only has the prompt. */
+  async createSession(body: { prompt: string; title?: string; tags?: string[]; attachmentUrls?: string[]; outputSchema?: object; createAsUserId?: string | null; mode?: DevinMode | null }): Promise<DevinSession> {
+    const path = this.api === "v3" ? `/v3/organizations/${encodeURIComponent(await this.org())}/sessions` : "/v1/sessions";
+    const mode = body.mode ?? this.defaultMode;
+    const payload = this.api === "v3"
+      ? { prompt: body.prompt, title: body.title, tags: body.tags, attachment_urls: body.attachmentUrls ?? [], max_acu_limit: this.maxAcu, structured_output_schema: body.outputSchema, structured_output_required: !!body.outputSchema, ...(mode ? { devin_mode: mode } : {}), ...(body.createAsUserId ? { create_as_user_id: body.createAsUserId } : {}) }
+      : { prompt: body.prompt, title: body.title, tags: body.tags, unlisted: true, max_acu_limit: this.maxAcu };
+    const res = await this.check(await this.f(`${this.baseUrl}${path}`, { method: "POST", headers: this.headers({ "Content-Type": "application/json" }), body: JSON.stringify(payload) }), "session create");
     const data = await res.json();
     if (!data?.session_id) throw new DevinError("Devin session create returned no session_id.");
     return { session_id: String(data.session_id), url: String(data.url ?? "") };
   }
   async getSession(id: string): Promise<DevinSessionState> {
-    const res = await this.check(await this.f(`${this.baseUrl}/v1/sessions/${encodeURIComponent(id)}`, { headers: this.headers() }), "session read");
+    const path = this.api === "v3" ? `/v3/organizations/${encodeURIComponent(await this.org())}/sessions/${encodeURIComponent(id)}` : `/v1/sessions/${encodeURIComponent(id)}`;
+    const res = await this.check(await this.f(`${this.baseUrl}${path}`, { headers: this.headers() }), "session read");
     const data = await res.json();
-    return { status: String(data?.status ?? ""), status_enum: data?.status_enum ?? null, structured_output: data?.structured_output ?? null, url: data?.url };
-  }
-  async sendMessage(id: string, message: string): Promise<void> {
-    await this.check(await this.f(`${this.baseUrl}/v1/sessions/${encodeURIComponent(id)}/message`, { method: "POST", headers: this.headers({ "Content-Type": "application/json" }), body: JSON.stringify({ message }) }), "session message");
+    const out = data?.structured_output ?? null;
+    if (this.api === "v3") {
+      const st = String(data?.status ?? ""), detail = String(data?.status_detail ?? "");
+      const phase: DevinSessionState["phase"] = st === "exit" ? "done" : st === "error" ? "failed" : st === "suspended" || /waiting/i.test(detail) ? "waiting" : "working";
+      return { phase, detail: detail || st, structured_output: out, url: data?.url };
+    }
+    const e = String(data?.status_enum ?? "");
+    const phase: DevinSessionState["phase"] = e === "finished" ? "done" : e === "expired" ? "failed" : e === "blocked" ? "waiting" : "working";
+    return { phase, detail: e || String(data?.status ?? ""), structured_output: out, url: data?.url };
   }
 }
 
@@ -115,6 +166,8 @@ export function signalRuleLines(rules: { rules: { id: string; teams: { team: str
 
 export interface ReadingRequest {
   files: { name: string; url: string }[];
+  /** v1 references attachments inside the prompt; v3 passes them as a field and the prompt just names them. */
+  inlineAttachments?: boolean;
   /** "launching" asks for plan items; "starting" / "building" ask for signals as well. */
   stage: "launching" | "starting" | "building";
   rules: string;
@@ -129,7 +182,7 @@ export function readingPrompt(req: ReadingRequest): string {
     `Read the attached plan files and write down what they commit to. Do not write code, open a pull request, commit, or ask me questions: if something is unclear, decide and note it in the output.`,
     ``,
     `Files (open each one with your own tools, in whatever format it is: a .pptx or Google Slides export, a PDF, a Word file, a Keynote or Pages export, a spreadsheet, markdown; read every slide with its speaker notes and tables, every section of a doc; if you cannot open a format directly, convert it and say how in files_read):`,
-    ...req.files.map((f) => `- ${f.name}: ATTACHMENT:"${f.url}"`),
+    ...req.files.map((f) => (req.inlineAttachments === false ? `- ${f.name} (attached)` : `- ${f.name}: ATTACHMENT:"${f.url}"`)),
     ``,
     `What to extract. ${early ? "Plan items and signals." : "Plan items."}`,
     ``,
@@ -144,7 +197,7 @@ export function readingPrompt(req: ReadingRequest): string {
     );
   }
   lines.push(
-    `Result. Set the session's structured output to exactly this JSON object and nothing else; it is the only thing I read:`,
+    `Result. Provide this JSON object as the session's structured output (nothing else is read):`,
     `{"done": true,`,
     ` "items": [{"text": "<short label>", "kind": "deliverable|dependency|approval|checklist", "owner_team": "<team or null>", "due_text": "<the document's words or null>", "source": {"file": "<file name exactly as above>", "locator": "<§4 | slide 9 | slide 9 (notes) | page 3>", "quote": "<one sentence or row, verbatim>"}}],`,
     early ? ` "signals": [{"quote": "<sentence, verbatim>", "file": "<file name>", "locator": "<§3 Data | slide 4>", "rule_ids": ["<rule id>"]}],` : ` "signals": [],`,
@@ -154,6 +207,24 @@ export function readingPrompt(req: ReadingRequest): string {
   );
   return lines.join("\n");
 }
+
+/** The output shape, as a JSON Schema (draft 7) Devin v3 validates against before the session ends. */
+export const OUTPUT_SCHEMA = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  type: "object",
+  required: ["done", "items", "files_read"],
+  properties: {
+    done: { type: "boolean" },
+    items: { type: "array", items: { type: "object", required: ["text", "kind", "source"], properties: {
+      text: { type: "string" }, kind: { type: "string", enum: ["deliverable", "dependency", "approval", "checklist"] },
+      owner_team: { type: ["string", "null"] }, due_text: { type: ["string", "null"] },
+      source: { type: "object", required: ["file", "quote"], properties: { file: { type: "string" }, locator: { type: "string" }, quote: { type: "string" } } },
+    } } },
+    signals: { type: "array", items: { type: "object", required: ["quote", "file", "rule_ids"], properties: { quote: { type: "string" }, file: { type: "string" }, locator: { type: ["string", "null"] }, rule_ids: { type: "array", items: { type: "string" } } } } },
+    files_read: { type: "array", items: { type: "object", required: ["name"], properties: { name: { type: "string" }, how: { type: "string" } } } },
+    unreadable: { type: "array", items: { type: "object", required: ["name"], properties: { name: { type: "string" }, reason: { type: "string" } } } },
+  },
+} as const;
 
 // ---------- the result ----------
 
@@ -212,36 +283,37 @@ export interface ReadingOutcome extends ReadingResult {
   status: ReadingStatus;
   session_url: string | null;
   session_id: string | null;
+  /** The tier the session ran in (v3), or null when Devin's default was used. */
+  mode: DevinMode | null;
   error: string | null;
 }
 
-const TERMINAL = new Set(["finished", "expired", "blocked"]);
-
 /** Upload the files, run one Devin session, wait for its structured output. Never throws: a failure is an outcome with status "failed". */
-export async function readWithDevin(client: DevinClient, req: { paths: string[]; stage: ReadingRequest["stage"]; rules: string; signalRules?: string; user?: string | null; onLog?: (line: string) => void }): Promise<ReadingOutcome> {
+export async function readWithDevin(client: DevinClient, req: { paths: string[]; stage: ReadingRequest["stage"]; rules: string; signalRules?: string; user?: string | null; mode?: DevinMode | null; onLog?: (line: string) => void }): Promise<ReadingOutcome> {
   const log = req.onLog ?? (() => {});
   const names = req.paths.map((p) => basename(p));
-  const fail = (error: string, session: DevinSession | null = null): ReadingOutcome => ({ status: "failed", error, session_url: session?.url ?? null, session_id: session?.session_id ?? null, items: [], signals: [], files_read: [], unreadable: [], warnings: [] });
+  const mode = client.api === "v3" ? (req.mode ?? client.defaultMode) : null;
+  const fail = (error: string, session: DevinSession | null = null): ReadingOutcome => ({ status: "failed", error, session_url: session?.url ?? null, session_id: session?.session_id ?? null, mode, items: [], signals: [], files_read: [], unreadable: [], warnings: [] });
   let session: DevinSession | null = null;
   try {
     const files: { name: string; url: string }[] = [];
     for (const p of req.paths) { files.push({ name: basename(p), url: await client.uploadAttachment(basename(p), readFileSync(p)) }); log(`uploaded ${basename(p)}`); }
-    const prompt = readingPrompt({ files, stage: req.stage, rules: req.rules, signalRules: req.signalRules, user: req.user });
-    session = await client.createSession({ prompt, title: `Readiness Review: read ${names.join(", ")}${req.user ? ` for ${req.user}` : ""}`, tags: ["readiness-review"], unlisted: true });
-    log(`Devin session ${session.session_id} ${session.url}`);
+    const v3 = client.api === "v3";
+    const prompt = readingPrompt({ files, stage: req.stage, rules: req.rules, signalRules: req.signalRules, user: req.user, inlineAttachments: !v3 });
+    session = await client.createSession({ prompt, title: `Readiness Review: read ${names.join(", ")}${req.user ? ` for ${req.user}` : ""}`, tags: ["readiness-review"], attachmentUrls: files.map((f) => f.url), outputSchema: v3 ? OUTPUT_SCHEMA : undefined, mode });
+    log(`Devin session ${session.session_id} ${session.url}${mode ? ` (${mode})` : ""}`);
     const deadline = Date.now() + client.timeoutMs;
     for (;;) {
       const st = await client.getSession(session.session_id);
       const output = st.structured_output;
-      const ready = !!output && typeof output === "object" && ((output as any).done === true || Array.isArray((output as any).items) && (st.status_enum ? TERMINAL.has(st.status_enum) : false));
+      const ready = !!output && typeof output === "object" && ((output as any).done === true || (Array.isArray((output as any).items) && (st.phase === "done" || st.phase === "waiting")));
       if (ready) {
         const parsed = parseReading(output, names);
         log(`Devin read ${parsed.items.length} items, ${parsed.signals.length} signals (${parsed.files_read.map((f) => f.name).join(", ") || "no files listed"})`);
-        return { ...parsed, status: "done", error: null, session_url: session.url || st.url || null, session_id: session.session_id };
+        return { ...parsed, status: "done", error: null, session_url: session.url || st.url || null, session_id: session.session_id, mode };
       }
-      if (st.status_enum && TERMINAL.has(st.status_enum)) {
-        return fail(st.status_enum === "blocked" ? `Devin stopped and is waiting for input at ${session.url}; no result was written.` : `Devin session ${st.status_enum} without a result.`, session);
-      }
+      if (st.phase === "done" || st.phase === "failed") return fail(`Devin session ended (${st.detail}) without a result.`, session);
+      if (st.phase === "waiting") return fail(`Devin stopped and is waiting (${st.detail}) at ${session.url}; no result was written.`, session);
       if (Date.now() > deadline) return fail(`Devin did not finish within ${Math.round(client.timeoutMs / 60_000)} minutes (${session.url}).`, session);
       await new Promise((r) => setTimeout(r, client.pollMs));
     }
@@ -250,11 +322,19 @@ export async function readWithDevin(client: DevinClient, req: { paths: string[];
   }
 }
 
-/** Options from the environment: DEVIN_API_KEY (required to enable), DEVIN_API_BASE, DEVIN_MAX_ACU, DEVIN_READ_TIMEOUT_MIN. */
-export function devinFromEnv(env = process.env): DevinOptions | null {
+/** Options from the environment: DEVIN_API_KEY (required to enable), DEVIN_ORG_ID (v3, optional), DEVIN_API_BASE, DEVIN_MAX_ACU,
+ *  DEVIN_READ_TIMEOUT_MIN, DEVIN_MODE (default tier), DEVIN_MODES (comma list of tiers people may pick). Unknown tiers are ignored with a warning. */
+export function devinFromEnv(env = process.env, warn: (s: string) => void = (s) => console.error(s)): DevinOptions | null {
   if (!env.DEVIN_API_KEY) return null;
+  const isMode = (m: string): m is DevinMode => (DEVIN_MODES as readonly string[]).includes(m);
+  const listed = (env.DEVIN_MODES ?? "").split(",").map((m) => m.trim()).filter(Boolean);
+  for (const m of listed) if (!isMode(m)) warn(`DEVIN_MODES: "${m}" is not a Devin mode (${DEVIN_MODES.join(", ")}); ignored.`);
+  const modes = listed.filter(isMode);
+  const def = env.DEVIN_MODE?.trim();
+  if (def && !isMode(def)) warn(`DEVIN_MODE: "${def}" is not a Devin mode (${DEVIN_MODES.join(", ")}); ignored.`);
   return {
-    apiKey: env.DEVIN_API_KEY, baseUrl: env.DEVIN_API_BASE,
+    apiKey: env.DEVIN_API_KEY, baseUrl: env.DEVIN_API_BASE, orgId: env.DEVIN_ORG_ID,
+    defaultMode: def && isMode(def) ? def : null, modes: modes.length ? modes : undefined,
     maxAcu: env.DEVIN_MAX_ACU ? Number(env.DEVIN_MAX_ACU) : undefined,
     timeoutMs: env.DEVIN_READ_TIMEOUT_MIN ? Number(env.DEVIN_READ_TIMEOUT_MIN) * 60_000 : undefined,
   };

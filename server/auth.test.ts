@@ -66,11 +66,11 @@ describe("sign-in with the company identity provider (OIDC)", () => {
     expect(idp.calls).toContain("POST /token");
     const h1 = (await c.json("GET", "/api/health")).data;
     expect(h1.auth.user).toMatchObject({ name: "Lisa Wang", email: "lisa@example.com", org: "tenant-abc" });
-    expect(h1.settings).toEqual({ agent_consent: "unknown" });
+    expect(h1.settings).toEqual({ agent_consent: "unknown", agent_mode: null });
     expect(h1.runs_root).toMatch(/orgs\/tenant-abc$/);
 
     // Settings and decisions live on the server, per user.
-    expect((await c.json("PUT", "/api/settings", { agent_consent: "yes" })).data).toEqual({ agent_consent: "yes" });
+    expect((await c.json("PUT", "/api/settings", { agent_consent: "yes" })).data).toEqual({ agent_consent: "yes", agent_mode: null });
     expect((await c.json("PUT", "/api/settings", { agent_consent: "maybe" })).status).toBe(400);
     const key = encodeURIComponent("INGEST-142/2026-11-13");
     expect((await c.json("GET", `/api/decisions/${key}`)).data).toEqual({ decisions: {}, log: [], actionsDone: {} });
@@ -105,7 +105,7 @@ describe("sign-in with the company identity provider (OIDC)", () => {
     // Signing in again finds the same user, with their settings, in a new session.
     const d = client(srv.url);
     await d.follow("/auth/login");
-    expect((await d.json("GET", "/api/settings")).data).toEqual({ agent_consent: "yes" });
+    expect((await d.json("GET", "/api/settings")).data).toEqual({ agent_consent: "yes", agent_mode: null });
     expect(d.jar.get("rrr_session")).not.toBe(c.jar.get("rrr_session"));
   });
 
@@ -135,9 +135,9 @@ describe("AUTH=none keeps one local user", () => {
       const c = client(srv.url);
       const h = (await c.json("GET", "/api/health")).data;
       expect(h.auth).toEqual({ mode: "none", user: { id: "local", name: "You", email: null, org: "local" }, login_url: null });
-      expect(h.settings).toEqual({ agent_consent: "unknown" });
+      expect(h.settings).toEqual({ agent_consent: "unknown", agent_mode: null });
       await c.json("PUT", "/api/settings", { agent_consent: "no" });
-      expect((await c.json("GET", "/api/health")).data.settings).toEqual({ agent_consent: "no" });
+      expect((await c.json("GET", "/api/health")).data.settings).toEqual({ agent_consent: "no", agent_mode: null });
       expect((await c.req("/auth/login")).status).toBe(404);
     } finally { await srv.close(); }
   });

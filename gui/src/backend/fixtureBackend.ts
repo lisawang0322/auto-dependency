@@ -57,7 +57,7 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export class FixtureBackend implements ReviewBackend {
   readonly mode = "sample" as const;
   /** The demo shows the agent path too: a simulated Devin reading, with no session behind it. */
-  readonly agent: AgentInfo = { available: true, name: "Devin" };
+  readonly agent: AgentInfo = { available: true, name: "Devin", modes: [], default_mode: null };
   constructor(private delayMs = 300) {}
 
   async saveSettings(patch: Partial<Settings>): Promise<void> {

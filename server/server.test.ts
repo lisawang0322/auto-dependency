@@ -135,7 +135,7 @@ describe("Devin reads the uploads (agent: \"devin\")", () => {
       return out;
     } });
     srv = await startServer({ port: 0, quiet: true, storePath: ":memory:", creds: { site: jira.url, email: "me@example.com", token: "secret" }, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), agentCacheRoot: join(tmp, "agent"),
-      devin: { apiKey: "cog_test", baseUrl: devin.url, pollMs: 10, timeoutMs: 5_000, maxAcu: 1 } });
+      devin: { apiKey: "cog_test", baseUrl: devin.url, pollMs: 10, timeoutMs: 5_000, maxAcu: 1, defaultMode: "normal", modes: ["lite", "normal", "ultra"] } });
   });
   afterAll(async () => { await srv.close(); await jira.close(); await devin.close(); rmSync(tmp, { recursive: true, force: true }); });
   const api = async (method: string, path: string, body?: unknown) => {
@@ -151,14 +151,16 @@ describe("Devin reads the uploads (agent: \"devin\")", () => {
   ];
 
   it("advertises the agent and runs the reading as a job: Devin's items pass the quote check, bad ones are dropped", async () => {
-    expect((await api("GET", "/api/health")).data.agent).toMatchObject({ available: true, name: "Devin", max_acu: 1 });
+    expect((await api("GET", "/api/health")).data.agent).toMatchObject({ available: true, name: "Devin", max_acu: 1, api: "v3", modes: ["lite", "normal", "ultra"], default_mode: "normal" });
+    expect((await api("GET", "/api/health")).data.settings).toEqual({ agent_consent: "unknown", agent_mode: "normal" });
     const r = await api("POST", "/api/plan", { files, agent: "devin" });
     expect(r.status).toBe(202);
     const job = await poll(r.data.job);
     expect(job.error).toBeUndefined();
     expect(job.stage).toBe(3);
     const { plan, agent } = job.result;
-    expect(agent).toMatchObject({ name: "Devin", status: "done", cached: false, items_read: 5, signals_read: 0, session_url: "https://app.devin.ai/sessions/devin-1", error: null });
+    expect(agent).toMatchObject({ name: "Devin", status: "done", cached: false, items_read: 5, signals_read: 0, session_url: "https://app.devin.ai/sessions/devin-1", error: null, mode: "normal" });
+    expect(devin.sessions[0].devin_mode).toBe("normal");
     expect(agent.files_read).toEqual([{ name: "Ingestion-service-POR-v3.md", how: "text" }]);
     expect(agent.warnings).toEqual(["Devin item 6 was dropped: Invalid enum value. Expected 'deliverable' | 'dependency' | 'approval' | 'checklist', received 'wish'."]);
     // The rules' 7 items plus the one Devin added; Devin's duplicates of the rules' items are kept once.
@@ -171,9 +173,15 @@ describe("Devin reads the uploads (agent: \"devin\")", () => {
     expect(devin.uploads.map((u) => u.name)).toEqual(["Ingestion-service-POR-v3.md"]);
     expect(devin.sessions).toHaveLength(1);
     expect(devin.sessions[0].max_acu_limit).toBe(1);
-    expect(devin.sessions[0].prompt).toContain('ATTACHMENT:"');
+    // A cog_ key means the v3 API: attachments and the output schema travel as fields, not inside the prompt.
+    expect(devin.sessions[0].api).toBe("v3");
+    expect(devin.sessions[0].prompt).not.toContain('ATTACHMENT:"');
+    expect(devin.sessions[0].prompt).toContain("- Ingestion-service-POR-v3.md (attached)");
     expect(devin.sessions[0].prompt).toContain("A plan item is");
+    expect(devin.sessions[0].attachments.map((a) => a.name)).toEqual(["Ingestion-service-POR-v3.md"]);
+    expect((devin.sessions[0].output_schema as any)?.required).toEqual(["done", "items", "files_read"]);
     expect(devin.sessions[0].title).toBe("Readiness Review: read Ingestion-service-POR-v3.md");
+    expect((await api("GET", "/api/health")).data.agent.api).toBe("v3");
   });
 
   it("reuses the cached reading when the same document comes back, even read as something else", async () => {
@@ -183,6 +191,22 @@ describe("Devin reads the uploads (agent: \"devin\")", () => {
     expect(job.result.agent).toMatchObject({ status: "done", cached: true, items_read: 5 });
     expect(devin.sessions).toHaveLength(1);
     expect(job.result.plan.items.some((i: any) => i.text.startsWith("Load test at 2×"))).toBe(true);
+  });
+
+  it("a chosen reading mode is saved per person, sent on the session, and read again on a change of tier", async () => {
+    expect((await api("PUT", "/api/settings", { agent_mode: "sideways" })).status).toBe(400);
+    expect((await api("PUT", "/api/settings", { agent_mode: "lite" })).data).toEqual({ agent_consent: "unknown", agent_mode: "lite" });
+    const before = devin.sessions.length;
+    const r = await api("POST", "/api/plan", { files, agent: "devin" });
+    const job = await poll(r.data.job);
+    expect(job.result.agent).toMatchObject({ status: "done", cached: false, mode: "lite" });
+    expect(devin.sessions).toHaveLength(before + 1);
+    expect(devin.sessions[before].devin_mode).toBe("lite");
+    // Back to the default: that reading is cached from the first test, so no new session.
+    expect((await api("PUT", "/api/settings", { agent_mode: null })).data.agent_mode).toBe("normal");
+    const again = await poll((await api("POST", "/api/plan", { files, agent: "devin" })).data.job);
+    expect(again.result.agent).toMatchObject({ status: "done", cached: true, mode: "normal" });
+    expect(devin.sessions).toHaveLength(before + 1);
   });
 
   it("without agent: \"devin\" the route is synchronous and rules-only", async () => {
@@ -203,6 +227,25 @@ describe("Devin reads the uploads (agent: \"devin\")", () => {
   });
 });
 
+describe("Devin with a legacy key (v1 API)", () => {
+  it("references attachments inside the prompt and reads status_enum", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "rrr-server-devin-v1-"));
+    const devin = await startFakeDevin({ apiKey: "apk_user_test", answer: naiveReader });
+    const srv = await startServer({ port: 0, quiet: true, storePath: ":memory:", creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), agentCacheRoot: join(tmp, "agent"), devin: { apiKey: "apk_user_test", baseUrl: devin.url, pollMs: 10, timeoutMs: 5_000 } });
+    try {
+      expect((await (await fetch(srv.url + "/api/health")).json()).agent.api).toBe("v1");
+      const res = await fetch(srv.url + "/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files: [{ name: "Ingestion-service-POR-v3.md", kind: "plan", sample: true }], agent: "devin" }) });
+      const { job } = await res.json();
+      let j: any;
+      for (let i = 0; i < 200; i++) { j = await (await fetch(srv.url + `/api/jobs/${job}`)).json(); if (j.done) break; await new Promise((r) => setTimeout(r, 20)); }
+      expect(j.result.agent).toMatchObject({ status: "done", items_read: 3 });
+      expect(devin.sessions[0].api).toBe("v1");
+      expect(devin.sessions[0].prompt).toContain('ATTACHMENT:"');
+      expect(devin.calls).toContain("POST /v1/attachments");
+    } finally { await srv.close(); await devin.close(); rmSync(tmp, { recursive: true, force: true }); }
+  });
+});
+
 describe("Devin fails or is absent", () => {
   it("falls back to the rules with the error in the result when the session ends without output", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "rrr-server-devin-fail-"));
@@ -215,7 +258,7 @@ describe("Devin fails or is absent", () => {
       let j: any;
       for (let i = 0; i < 200; i++) { j = await (await fetch(srv.url + `/api/jobs/${job}`)).json(); if (j.done) break; await new Promise((r) => setTimeout(r, 20)); }
       expect(j.error).toBeUndefined();
-      expect(j.result.agent).toMatchObject({ status: "failed", cached: false, items_read: 0, error: "Devin session expired without a result." });
+      expect(j.result.agent).toMatchObject({ status: "failed", cached: false, items_read: 0, error: "Devin session ended (error) without a result." });
       expect(j.result.plan.items).toHaveLength(7);
       // A failed reading is not cached: the next request tries again.
       const again = await fetch(srv.url + "/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files: [{ name: "Ingestion-service-POR-v3.md", kind: "plan", sample: true }], agent: "devin" }) });
@@ -228,7 +271,7 @@ describe("Devin fails or is absent", () => {
   it("refuses agent: \"devin\" when no key is configured, and says so on /api/health", async () => {
     const srv = await startServer({ port: 0, quiet: true, storePath: ":memory:", creds: null, devin: null });
     try {
-      expect((await (await fetch(srv.url + "/api/health")).json()).agent).toEqual({ available: false, name: "Devin", max_acu: null });
+      expect((await (await fetch(srv.url + "/api/health")).json()).agent).toEqual({ available: false, name: "Devin", max_acu: null, api: null, modes: [], default_mode: null });
       const res = await fetch(srv.url + "/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files: [{ name: "Ingestion-service-POR-v3.md", kind: "plan", sample: true }], agent: "devin" }) });
       expect(res.status).toBe(400);
       expect((await res.json()).error).toMatch(/DEVIN_API_KEY/);

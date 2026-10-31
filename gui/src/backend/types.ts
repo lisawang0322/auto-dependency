@@ -32,7 +32,7 @@ export interface RunSummary {
 export type ProgressStage = 0 | 1 | 2 | 3; // 0 reader running … 3 done
 
 /** The agent that can read uploads on the person's behalf (Devin, set up by the company on the server). */
-export interface AgentInfo { available: boolean; name: string }
+export interface AgentInfo { available: boolean; name: string; /** Devin tiers the person may pick (v3); empty when there is no choice. */ modes?: string[]; default_mode?: string | null }
 /** Whether the person let the agent read their files; asked once, kept in localStorage. */
 export type AgentConsent = "unknown" | "yes" | "no";
 /** 0 uploading · 1 the agent is reading · 2 checking quotes · 3 done */
@@ -43,6 +43,7 @@ export interface AgentRead {
   status: "done" | "failed";
   cached: boolean;
   session_url: string | null;
+  mode?: string | null;
   items_read: number;
   signals_read: number;
   files_read: { name: string; how: string }[];
@@ -113,6 +114,6 @@ export interface DecisionStore {
 }
 
 /** Per-user settings kept by the server in live mode (and by the browser in sample mode). */
-export interface Settings { agent_consent: AgentConsent }
+export interface Settings { agent_consent: AgentConsent; /** The chosen Devin tier, or null for the company default. */ agent_mode?: string | null }
 /** The signed-in person (live mode with sign-in), or null. */
 export interface UserInfo { id: string; name: string; email: string | null; org: string }

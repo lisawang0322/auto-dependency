@@ -3,6 +3,7 @@ import type { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
 import type { JiraConnection, JiraState, UploadedFile, RunSummary, JiraCredentials, Stage, AgentInfo, AgentConsent } from "../backend/types";
 import { fmtDate } from "../model/dates";
 import { allTeamsResolved, isResolved, type TeamChoice } from "../model/review";
+import { ModeSelect } from "./PlanDocuments";
 
 /**
  * Step 3 (PRD R15): a gallery of the apps a company's teams use, grouped by kind. Apps the company allows
@@ -38,7 +39,7 @@ export function appBadge(id: AppId, stage: Stage): "Required" | "Recommended" | 
 }
 
 export interface DirectoryState { connected: boolean; name: string | null; fromFiles: string | null }
-export interface AgentState { info: AgentInfo; consent: AgentConsent; setConsent: (c: AgentConsent) => void }
+export interface AgentState { info: AgentInfo; consent: AgentConsent; setConsent: (c: AgentConsent) => void; mode: string | null; setMode: (m: string | null) => void }
 
 interface Props {
   stage: Stage;
@@ -123,7 +124,7 @@ export function ConnectApps(p: Props) {
     if (a.id === "devin" && !a.allowed) return { state: "Not set up by your company — ask your admin for a Devin service key", cls: "muted", btn: "Unavailable", blocked: true, onCls: false, act: () => {} };
     if (!a.allowed) return { state: "Not enabled by your company", cls: "muted", btn: "Unavailable", blocked: true, onCls: false, act: () => {} };
     if (a.id === "devin") {
-      if (p.agent.consent === "yes") return { state: "Connected · set up by your company · reads your plan files", cls: "ok", btn: "Disconnect", blocked: false, onCls: true, act: () => p.agent.setConsent("no") };
+      if (p.agent.consent === "yes") return { state: `Connected · set up by your company · reads your plan files${p.agent.mode ? ` in ${p.agent.mode} mode` : ""}`, cls: "ok", btn: "Disconnect", blocked: false, onCls: true, act: () => p.agent.setConsent("no") };
       return { state: "Not connected", cls: "muted", btn: "Connect", blocked: false, onCls: false, act: () => openConsent("devin") };
     }
     if (!a.works) return { state: "Shown for the design · not built yet", cls: "muted", btn: "Unavailable", blocked: true, onCls: false, act: () => {} };
@@ -194,6 +195,7 @@ export function ConnectApps(p: Props) {
           <h2 id="agent-title">Readiness Review wants {consentDef.name} to read your plan files</h2>
           <p className="sm muted" style={{ margin: 0 }}>No key or sign-in is needed from you: your company's {consentDef.name} account does the reading, and the server holds the key. You confirm every item before it is used.</p>
           <Scopes can={consentDef.scopes} cannot={["Change your files", "See your Jira connection or token", "Create, edit or comment on anything in Jira", "Keep working once the reading is done"]} />
+          <ModeSelect agent={p.agent} id="agent-mode-connect" />
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             <button type="button" className="btn primary" onClick={() => { p.agent.setConsent("yes"); setConsentFor(null); }}>Accept</button>
             <button type="button" className="btn" onClick={closeConsent}>Cancel</button>

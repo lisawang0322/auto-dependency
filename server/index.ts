@@ -39,7 +39,7 @@ import { stageA, stageB, stageC, analyzeStep, statusStep, previousRun, saveRun, 
 import { loadRules } from "../skills/release-starter/scripts/lib/config.js";
 import type { AgentItem } from "../skills/release-reader/scripts/lib/plan-extract.js";
 import type { AgentSignal } from "../skills/release-starter/scripts/lib/signals.js";
-import { DevinClient, devinFromEnv, readWithDevin, itemRules, signalRuleLines, type DevinOptions, type ReadingOutcome } from "./devin.js";
+import { DevinClient, devinFromEnv, readWithDevin, itemRules, signalRuleLines, type DevinOptions, type ReadingOutcome, type DevinMode } from "./devin.js";
 import { createHash } from "node:crypto";
 import { Store, type User } from "./store.js";
 import { Auth, authFromEnv, LOCAL_USER, type AuthConfig } from "./auth.js";
@@ -71,6 +71,8 @@ export interface AgentRead {
   /** True when every document had a cached reading and no session was started. */
   cached: boolean;
   session_url: string | null;
+  /** The Devin tier that read the documents (v3), or null for Devin's default. */
+  mode: string | null;
   items_read: number;
   signals_read: number;
   files_read: { name: string; how: string }[];
@@ -80,7 +82,7 @@ export interface AgentRead {
 }
 
 /** One document's cached reading. */
-interface CachedRead { name: string; items: AgentItem[]; signals: AgentSignal[]; file_read: { name: string; how: string } | null; unreadable: { name: string; reason: string } | null; warnings: string[]; session_url: string | null }
+interface CachedRead { name: string; items: AgentItem[]; signals: AgentSignal[]; file_read: { name: string; how: string } | null; unreadable: { name: string; reason: string } | null; warnings: string[]; session_url: string | null; mode?: string | null }
 
 interface Job { stage: 0 | 1 | 2 | 3; done: boolean; run_id?: string; error?: string; log: string[]; result?: unknown }
 
@@ -136,9 +138,15 @@ export function createApp(opts: ServerOptions = {}) {
     if (fresh) rmSync(cacheDir, { recursive: true, force: true });
     return { kind: "rest", creds: c.creds, cacheDir, log: (l) => log("  jira: " + l) };
   }
-  function settingsOf(u: User) { return { agent_consent: store.setting<string>(u.id, "agent_consent") ?? "unknown" }; }
+  function settingsOf(u: User) { return { agent_consent: store.setting<string>(u.id, "agent_consent") ?? "unknown", agent_mode: devin?.api === "v3" ? modeFor(u) : null }; }
 
-  function agentInfo() { return { available: !!devin, name: "Devin" as const, max_acu: devin?.maxAcu ?? null }; }
+  function agentInfo() { return { available: !!devin, name: "Devin" as const, max_acu: devin?.maxAcu ?? null, api: devin?.api ?? null, modes: devin?.api === "v3" ? devin.modes : [], default_mode: devin?.api === "v3" ? devin.defaultMode : null }; }
+  /** The tier this person chose, if it is still allowed; otherwise the company default. */
+  function modeFor(u: User): DevinMode | null {
+    if (!devin || devin.api !== "v3") return null;
+    const chosen = store.setting<string>(u.id, "agent_mode");
+    return chosen && (devin.modes as string[]).includes(chosen) ? (chosen as DevinMode) : devin.defaultMode;
+  }
 
   // ---------- Devin reads the documents ----------
 
@@ -160,22 +168,24 @@ export function createApp(opts: ServerOptions = {}) {
   /** Devin reads the plan documents among the uploads (cached per file by content). Never throws. */
   async function readDocuments(u: User, paths: string[], files: any[], stage: "launching" | "starting" | "building", say: (l: string) => void): Promise<{ items: AgentItem[]; signals: AgentSignal[]; agent: AgentRead }> {
     const root = rootsFor(u).agentCacheRoot;
+    const mode = modeFor(u);
     const docs = paths.filter((p) => DOC_KINDS.has(String(files.find((f) => basename(String(f.name ?? "")).replace(/[^\w.\- ()]+/g, "_") === basename(p))?.kind)));
     const reads: CachedRead[] = [];
     const toRead: { path: string; key: string }[] = [];
-    for (const p of docs) { const key = cacheKey(p); const c = cachedRead(root, key); if (c) reads.push(c); else toRead.push({ path: p, key }); }
+    // A reading is cached per document and per tier: a different tier may read differently, so it reads again.
+    for (const p of docs) { const key = cacheKey(p) + (mode ? `.${mode}` : ""); const c = cachedRead(root, key); if (c) reads.push(c); else toRead.push({ path: p, key }); }
     let outcome: ReadingOutcome | null = null;
     if (toRead.length) {
       say(`Devin: reading ${toRead.map((t) => basename(t.path)).join(", ")}${reads.length ? ` (${reads.length} cached)` : ""}`);
       const early = stage !== "launching";
-      outcome = await readWithDevin(devin!, { paths: toRead.map((t) => t.path), stage, rules: itemRules(), signalRules: early ? signalRuleLines(loadRules()) : undefined, user: u.id === LOCAL_USER.id ? null : u.name, onLog: (l) => say(`Devin: ${l}`) });
+      outcome = await readWithDevin(devin!, { paths: toRead.map((t) => t.path), stage, rules: itemRules(), signalRules: early ? signalRuleLines(loadRules()) : undefined, user: u.id === LOCAL_USER.id ? null : u.name, mode, onLog: (l) => say(`Devin: ${l}`) });
       if (outcome.status === "done") {
         for (const t of toRead) {
           const name = basename(t.path);
           const c: CachedRead = {
             name, items: outcome.items.filter((i) => i.source.file === name), signals: outcome.signals.filter((g) => g.file === name),
             file_read: outcome.files_read.find((f) => f.name === name) ?? null, unreadable: outcome.unreadable.find((u) => u.name === name) ?? null,
-            warnings: outcome.warnings, session_url: outcome.session_url,
+            warnings: outcome.warnings, session_url: outcome.session_url, mode: outcome.mode,
           };
           storeRead(root, t.key, c); reads.push(c);
         }
@@ -184,6 +194,7 @@ export function createApp(opts: ServerOptions = {}) {
     const items = reads.flatMap((r) => r.items), signals = reads.flatMap((r) => r.signals);
     const agent: AgentRead = {
       name: "Devin", status: outcome ? outcome.status : "done", cached: !outcome, session_url: outcome?.session_url ?? reads.find((r) => r.session_url)?.session_url ?? null,
+      mode: outcome?.mode ?? reads.find((r) => r.mode)?.mode ?? mode,
       items_read: items.length, signals_read: signals.length,
       files_read: reads.map((r) => r.file_read).filter((x): x is { name: string; how: string } => !!x),
       unreadable: reads.map((r) => r.unreadable).filter((x): x is { name: string; reason: string } => !!x),
@@ -253,6 +264,12 @@ export function createApp(opts: ServerOptions = {}) {
         const v = String(body.agent_consent);
         if (!["unknown", "yes", "no"].includes(v)) throw new HttpError(400, "agent_consent must be unknown, yes or no.");
         store.setSetting(u.id, "agent_consent", v);
+      }
+      if (body?.agent_mode !== undefined) {
+        if (!devin || devin.api !== "v3") throw new HttpError(400, "Reading modes need Devin's v3 API (a cog_ key).");
+        const v = body.agent_mode === null ? null : String(body.agent_mode);
+        if (v !== null && !(devin.modes as string[]).includes(v)) throw new HttpError(400, `agent_mode must be one of ${devin.modes.join(", ")}.`);
+        store.setSetting(u.id, "agent_mode", v);
       }
       return settingsOf(u);
     },
@@ -459,7 +476,7 @@ export function createApp(opts: ServerOptions = {}) {
     }
   }
 
-  return { handle, routes, jiraInfo, agentInfo, auth, store, close: () => store.close() };
+  return { handle, routes, jiraInfo, agentInfo, auth, store, close: () => store.close(), devinWhoami: () => (devin ? devin.whoami() : Promise.resolve(null)) };
 }
 
 function safeSeg(s: string): string { return s.replace(/[^\w.-]+/g, "_").slice(0, 80) || "org"; }
@@ -487,13 +504,17 @@ const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(i
 if (isMain) {
   // Secrets live in an untracked .env (see .gitignore): OIDC_*, JIRA_*, DEVIN_*, SESSION_SECRET. Values already in the environment win.
   if (existsSync(".env")) { try { process.loadEnvFile(".env"); } catch (e) { console.error(`.env not loaded: ${(e as Error).message}`); } }
-  startServer().then((s) => {
+  startServer().then(async (s) => {
+    const devinWhoami = s.app.devinWhoami;
     const j = s.app.jiraInfo();
     console.error(`Release Readiness Review server on ${s.url}`);
     console.error(j.fixture ? `  Jira: demo mode, reading ${j.site}` : j.connected ? `  Jira: ${j.site} (from environment)` : "  Jira: not connected; the GUI's Connect step asks for a site, email and API token");
     const a = s.app.agentInfo();
     console.error(s.app.auth.mode === "oidc" ? "  Sign-in: with your identity provider (OIDC_ISSUER)" : "  Sign-in: off (AUTH=none); set OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET and APP_URL to require it");
-    console.error(a.available ? `  Devin: reads uploaded plan documents (DEVIN_API_KEY set; up to ${a.max_acu} ACU per reading)` : "  Devin: not set up (no DEVIN_API_KEY); uploads are read by the rules only");
+    if (a.available) {
+      const who = await devinWhoami();
+      console.error(`  Devin: reads uploaded plan documents (${a.api} API; up to ${a.max_acu} ACU per reading${who?.user_name ? `; key belongs to ${who.user_name}` : ""}${who?.org_id ? `, organisation ${who.org_id}` : ""}${a.api === "v3" ? `; mode ${a.default_mode ?? "Devin's default"}, people may pick ${a.modes.join(", ")}` : ""})`);
+    } else console.error("  Devin: not set up (no DEVIN_API_KEY); uploads are read by the rules only");
     console.error(existsSync(resolve("gui/dist/index.html")) ? `  GUI: ${s.url}` : "  GUI: not built; run `npm run gui:dev` and open http://localhost:5173 (it proxies /api here)");
   }).catch((e) => { console.error(e.message ?? e); process.exit(1); });
 }
