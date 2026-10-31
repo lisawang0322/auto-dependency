@@ -40,8 +40,8 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await page.locator("#plan-files").setInputFiles([POR, CHECKS]);
   await expect(page.getByRole("combobox", { name: "Read as" }).nth(0)).toHaveValue("plan");
   await expect(page.getByRole("combobox", { name: "Read as" }).nth(1)).toHaveValue("checks");
-  await expect(page.getByText("4 plan items · 1 approval · 2 dependencies")).toBeVisible();
-  await expect(page.getByText("9 checks · 3 apply to this release")).toBeVisible();
+  await expect(page.getByText("4 commitments found · 4 teams named · epic INGEST-142")).toBeVisible();
+  await expect(page.getByText("3 of 9 checks apply to this release")).toBeVisible();
   await expect(page.getByText("Not found — you'll get team names, not people.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Plan we read" })).toBeVisible();
   const rows = page.locator(".plan-table tbody tr");
@@ -103,12 +103,12 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await actions.getByRole("checkbox").first().check();
   await expect(page.getByTestId("actions-count")).toHaveText("3 open · 1 done");
 
-  await expect(page.getByText("1 weak finding hidden")).toBeVisible();
+  await expect(page.getByText("1 comment-only finding hidden")).toBeVisible();
   await expect(page.getByText(/claimed in a comment only/)).toHaveCount(0);
-  await page.getByRole("button", { name: "Show weak" }).click();
+  await page.getByRole("button", { name: "Show comment-only" }).click();
   await expect(page.getByTestId("team-INGEST").getByText(/claimed in a comment only/)).toBeVisible();
   await expect(actions.getByRole("checkbox")).toHaveCount(5);
-  await page.getByRole("button", { name: "Hide weak" }).click();
+  await page.getByRole("button", { name: "Hide comment-only" }).click();
 
   // Keep the security finding: it stays in the actions, marked kept; the detail shows its suggested next action.
   await page.getByRole("button", { name: /Approval still open: Security review approved/ }).click();
@@ -144,8 +144,8 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
 
   // The SRE finding shows its linkage gap; the other gap is listed separately.
   await page.getByRole("button", { name: /SRE-412 is due 2026-11-22, after launch/ }).click();
-  await expect(page.getByText(/Linkage gap: INGEST-142 isn't linked to SRE-412/)).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Other linkage gaps" })).toBeVisible();
+  await expect(page.getByText(/Not linked: INGEST-142 isn't linked to SRE-412/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Related tickets not linked to the epic" })).toBeVisible();
   await expect(page.getByText("Raise ingestion cluster quota")).toBeVisible();
 
   // Earlier run is read-only and keeps its own status; the actions stay those of the latest run.

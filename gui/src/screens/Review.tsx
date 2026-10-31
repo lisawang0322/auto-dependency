@@ -16,7 +16,13 @@ interface Props {
 }
 
 const STATUS_LABEL: Record<TeamStatus, string> = { on_track: "On track", at_risk: "At risk", late: "Late" };
-const TYPE_LABEL: Record<Finding["gap_type"], string> = { process: "Process", cross_team_date: "Cross-team date", commitment: "Commitment" };
+/** Plain words for the analyzer's categories (PRD R5, R7); the technical names stay in the data and the detail's tooltip. */
+const TYPE_LABEL: Record<Finding["gap_type"], string> = { process: "Approval or gate", cross_team_date: "Date after launch", commitment: "Promise, no ticket" };
+const TYPE_TECH: Record<Finding["gap_type"], string> = { process: "process gap", cross_team_date: "cross-team date gap", commitment: "commitment gap" };
+const STRENGTH_LABEL: Record<Finding["strength"], string> = { strong: "Confirmed in Jira", moderate: "Inferred match", weak: "Comment only" };
+const STRENGTH_TECH: Record<Finding["strength"], string> = { strong: "strong: plan or checklist item matched to a linked ticket", moderate: "moderate: owner or match inferred", weak: "weak: comment text only" };
+/** Status-skill notes, in plain words. */
+function plainNote(n: string): string { return n.replace(/linkage gap/gi, "not linked to the epic").replace(/Weak evidence/g, "Comment only"); }
 const EMPTY: RunDecisions = { decisions: {}, log: [], actionsDone: {} };
 
 export function Review(p: Props) {
@@ -156,8 +162,8 @@ export function Review(p: Props) {
           <div className="small">{lateTeams > 0 ? `${lateTeams} team${lateTeams > 1 ? "s" : ""} with a date after launch` : release === "Green" ? "No open gaps" : "Open gaps, no late dates"}</div>
         </div>
         <div className="tile"><div className="small muted">Teams at risk or late</div><div className="big">{riskCount} of {viewTeams.length}</div></div>
-        <div className="tile"><div className="small muted">Open findings</div><div className="big" data-testid="open-findings">{openCount}</div><div className="small muted">Weak not counted</div></div>
-        <div className="tile"><div className="small muted">Kept · dismissed</div><div className="big">{decs.filter((d) => d.kind === "kept").length} · {decs.filter((d) => d.kind === "dismissed").length}</div></div>
+        <div className="tile"><div className="small muted">Open findings</div><div className="big" data-testid="open-findings">{openCount}</div><div className="small muted">Comment-only findings not counted</div></div>
+        <div className="tile"><div className="small muted">Your calls</div><div className="big">{decs.filter((d) => d.kind === "kept").length} · {decs.filter((d) => d.kind === "dismissed").length}</div><div className="small muted">kept · dismissed</div></div>
       </div>
 
       <div className="row">
@@ -172,7 +178,7 @@ export function Review(p: Props) {
                   </button>
                 ))}
               </div>
-              <button type="button" className="btn dashed" aria-pressed={showWeak} onClick={() => setShowWeak((w) => !w)}>{showWeak ? "Hide weak" : "Show weak"}</button>
+              <button type="button" className="btn dashed" aria-pressed={showWeak} onClick={() => setShowWeak((w) => !w)}>{showWeak ? "Hide comment-only" : "Show comment-only"}</button>
             </div>
           </div>
           {rows.length === 0 && <div className="card sm muted">No teams match this filter.</div>}
@@ -192,8 +198,8 @@ export function Review(p: Props) {
             <div className="stack" style={{ gap: 16 }}>
               <div className="stack-sm" style={{ gap: 8 }}>
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }} className="small">
-                  <span className={"pill " + selected.strength} style={{ padding: "2px 8px" }}>{selected.strength[0].toUpperCase() + selected.strength.slice(1)} evidence</span>
-                  <span className="pill type" style={{ padding: "2px 8px" }}>{TYPE_LABEL[selected.gap_type]}</span>
+                  <span className={"pill " + selected.strength} style={{ padding: "2px 8px" }} title={STRENGTH_TECH[selected.strength]}>{STRENGTH_LABEL[selected.strength]}</span>
+                  <span className="pill type" style={{ padding: "2px 8px" }} title={TYPE_TECH[selected.gap_type]}>{TYPE_LABEL[selected.gap_type]}</span>
                 </div>
                 <h2 style={{ fontSize: 22, lineHeight: 1.25 }}>{selected.title}</h2>
                 <span className="muted">Owner: {selected.owner} <span className="small">{selected.owner_source === "team_list" && p.ownerSource !== "inferred" ? (p.ownerSource === "directory" ? "(from your directory)" : "(from your team list)") : "(inferred from Jira assignee)"}</span></span>
@@ -220,7 +226,7 @@ export function Review(p: Props) {
               </div>
               <div className="sm text2">{selected.why}</div>
               {selected.linkage && (
-                <div className="notice">Linkage gap: <span className="mono">{selected.linkage.from}</span> isn't linked to <span className="mono">{selected.linkage.to}</span>. Suggested link: <strong style={{ fontWeight: 500 }}>{selected.linkage.suggested_type}</strong></div>
+                <div className="notice">Not linked: <span className="mono">{selected.linkage.from}</span> isn't linked to <span className="mono">{selected.linkage.to}</span> in Jira. Suggested link: <strong style={{ fontWeight: 500 }}>{selected.linkage.suggested_type}</strong></div>
               )}
               <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: 16, gap: 12 }}>
                 <h3>Your call</h3>
@@ -249,8 +255,8 @@ export function Review(p: Props) {
       </div>
 
       <section className="stack" style={{ gap: 10 }}>
-        <h2>Other linkage gaps</h2>
-        <p className="sm muted">Related tickets not linked to the epic, with no finding behind them. Not counted toward the 10-finding cap.</p>
+        <h2>Related tickets not linked to the epic</h2>
+        <p className="sm muted">Worth linking so they show up with the release. None of these is a gap on its own, so they don't count toward the findings above.</p>
         {otherGaps.length === 0 && <div className="card sm muted">None in this run.</div>}
         {otherGaps.map((g) => (
           <div key={g.id} className="card" style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10, padding: "14px 16px" }}>
@@ -272,7 +278,7 @@ export function Review(p: Props) {
                 <span style={{ fontWeight: 500 }}>{fmtDate(u.date)}</span>
                 <span className="mono muted u-key">{u.key}</span>
                 <span>{u.item}</span>
-                <span className={u.cls === "launch" ? "sm" : "flag " + u.cls} style={u.cls === "launch" ? { fontWeight: 500 } : undefined}>{u.flag}</span>
+                <span className={u.cls === "launch" ? "sm" : "flag " + u.cls} style={u.cls === "launch" ? { fontWeight: 500 } : undefined}>{plainNote(u.flag)}</span>
               </div>
             ))}
           </div>
@@ -348,10 +354,10 @@ function TeamCard(p: {
                     <span className="small" style={{ whiteSpace: "nowrap", fontSize: 12, color: d ? "var(--muted)" : "var(--amber-text)", fontWeight: d ? 400 : 500 }}>{!d ? "Open" : d.kind === "kept" ? "Kept" : "Dismissed"}</span>
                   </span>
                   <span style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, fontSize: 12 }}>
-                    <span className={"pill " + f.strength}>{f.strength[0].toUpperCase() + f.strength.slice(1)}</span>
-                    <span className="pill type">{TYPE_LABEL[f.gap_type]}</span>
+                    <span className={"pill " + f.strength} title={STRENGTH_TECH[f.strength]}>{STRENGTH_LABEL[f.strength]}</span>
+                    <span className="pill type" title={TYPE_TECH[f.gap_type]}>{TYPE_LABEL[f.gap_type]}</span>
                     <span className="muted"><span className="mono" style={{ fontSize: 12 }}>{i.ticket ?? "—"}</span> · plan {fmtDate(i.plan_due_effective)} · Jira {fmtDate(i.jira_due)}</span>
-                    {f.linkage && <span style={{ color: "var(--accent)" }}>· Linkage gap</span>}
+                    {f.linkage && <span style={{ color: "var(--accent)" }}>· not linked to the epic</span>}
                   </span>
                 </button>
               );
@@ -362,11 +368,11 @@ function TeamCard(p: {
                   <span>{i.text}</span>
                   <span className="muted" style={{ fontSize: 12 }}><span className="mono" style={{ fontSize: 12 }}>{i.ticket ?? "—"}</span> · {i.ticket_status} · plan {fmtDate(i.plan_due_effective)} · Jira {fmtDate(i.jira_due)}</span>
                 </span>
-                <span className={"flag " + i.effective}>{i.note_effective}</span>
+                <span className={"flag " + i.effective}>{plainNote(i.note_effective)}</span>
               </div>
             );
           })}
-          {hiddenWeak > 0 && <span className="small muted" style={{ padding: "0 4px" }}>{hiddenWeak} weak finding{hiddenWeak > 1 ? "s" : ""} hidden</span>}
+          {hiddenWeak > 0 && <span className="small muted" style={{ padding: "0 4px" }}>{hiddenWeak} comment-only finding{hiddenWeak > 1 ? "s" : ""} hidden</span>}
         </div>
       )}
     </div>

@@ -53,6 +53,22 @@ export const PLAN_INTRO: Record<Stage, string> = {
   launching: "Add your plan of record — doc or slides — plus your launch checklist if your company has one.",
 };
 
+/** What a file gave us, in plain words. The reader's own note (a log-like count line) stays in the tooltip. */
+export function fileSummary(entry: { read_as: string[]; notes: string }): string {
+  const n = entry.notes;
+  if (!n) return "";
+  if (entry.read_as.includes("launch_checks")) { const m = n.match(/(\d+) checks · (\d+) apply/); return m ? `${m[2]} of ${m[1]} checks apply to this release` : n; }
+  if (entry.read_as.includes("teams_and_owners")) { const m = n.match(/(\d+) teams.*?(\d+) (?:owners|people)/); return m ? `${m[1]} teams, ${m[2]} people` : n; }
+  if (entry.read_as.includes("plan_items")) {
+    const sig = n.match(/(\d+) signals/);
+    if (sig) return `${sig[1]} line${sig[1] === "1" ? "" : "s"} point to a team or an approval`;
+    const items = n.match(/(\d+) plan items/), slides = n.match(/(\d+) slides/), teams = n.match(/names (\d+) teams/), epic = n.match(/epic ([A-Z][A-Z0-9]+-\d+)/), agent = n.match(/(\d+) items? read by the agent/);
+    if (!items) return n;
+    return [`${items[1]} commitment${items[1] === "1" ? "" : "s"} found${slides ? ` on ${slides[1]} slides` : ""}`, teams ? `${teams[1]} teams named` : null, epic ? `epic ${epic[1]}` : null, agent ? `${agent[1]} from the agent` : null].filter(Boolean).join(" · ");
+  }
+  return n;
+}
+
 export function sourceShort(plan: PlanDraft, file: string): string {
   const f = plan.files.find((x) => x.name === file);
   return f?.read_as.includes("launch_checks") ? "Launch checklist" : f?.read_as.includes("plan_items") ? "POR" : file;
@@ -132,7 +148,7 @@ export function PlanDocuments(p: Props) {
                     <div className="meta">
                       <span className="name">{f.name}</span>
                       <span className="small muted">{f.size}{f.via === "directory" ? " · via Employee directory" : ""}</span>
-                      <span className={"sm " + (used ? "ok" : "muted")}>{f.kind === "other" ? "Nothing used from this file" : entry ? entry.notes : hasPlan ? (reading ? `${agent.info.name} is reading…` : "Reading…") : "Waiting for a plan file"}</span>
+                      <span className={"sm " + (used ? "ok" : "muted")} title={entry?.notes}>{f.kind === "other" ? "Nothing used from this file" : entry ? fileSummary(entry) : hasPlan ? (reading ? `${agent.info.name} is reading…` : "Reading…") : "Waiting for a plan file"}</span>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 8 }}>
                       <div className="stack-sm" style={{ gap: 2 }}>

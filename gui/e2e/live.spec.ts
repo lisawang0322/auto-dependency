@@ -116,7 +116,7 @@ test("building stage over the API: PRD + directory upload, the real epic, covera
   await expect(page.getByRole("combobox", { name: "Read as" }).nth(0)).toHaveValue("prd");
   await expect(page.getByRole("combobox", { name: "Read as" }).nth(1)).toHaveValue("teams");
   await expect(page.getByTestId("signals").getByRole("checkbox")).toHaveCount(6);
-  await expect(page.getByText("10 teams · 21 people")).toBeVisible();
+  await expect(page.getByText("10 teams, 21 people")).toBeVisible();
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
 
   // Jira is still connected on the server from the first test; otherwise connect as before.

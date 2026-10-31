@@ -24,7 +24,7 @@ test("just starting: PRD signals → who to involve, then a directory adds names
   // Step 2: the sample PRD and the signals read from it; untick the customer-data sentence.
   await page.getByRole("button", { name: "Use sample files" }).click();
   await expect(page.getByRole("combobox", { name: "Read as" })).toHaveValue("prd");
-  await expect(page.getByText("6 signals about teams and approvals")).toBeVisible();
+  await expect(page.getByText("6 lines point to a team or an approval")).toBeVisible();
   await expect(page.getByRole("heading", { name: "What we read in your PRD" })).toBeVisible();
   const signals = page.getByTestId("signals");
   await expect(signals.getByRole("checkbox")).toHaveCount(6);
