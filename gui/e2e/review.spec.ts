@@ -71,7 +71,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await expect(page.getByText("Connect Jira to continue")).toBeVisible();
   await connectJira(page);
   await expect(page.getByRole("heading", { name: "Which work in Jira is this?" })).toBeVisible();
-  await page.getByRole("button", { name: "Use INGEST-142" }).click();
+  // The plan names one epic, so the field is filled in already.
   await expect(page.locator("#epic-key")).toHaveValue("INGEST-142");
   await expect(page.getByText("Found in Jira (sample data)")).toBeVisible();
   await expect(page.getByText("25 stories · 41 comments · links into DATA, SEC, SRE")).toBeVisible();
@@ -174,7 +174,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
   await connectJira(page);
   await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Covered by team-list.yaml from your files");
-  await page.getByRole("button", { name: "Use INGEST-142" }).click();
+  // The plan names one epic, so the field is filled in already.
   await expect(page.getByText("From your team list").first()).toBeVisible();
   await page.getByRole("button", { name: "Run readiness review" }).click();
   await expect(page.getByRole("heading", { name: /7 days out/ })).toBeVisible({ timeout: 15_000 });
@@ -192,7 +192,7 @@ test("connecting the employee directory stands in for a team list, and disconnec
   await expect(page.getByText("Owners: inferred from Jira")).toBeVisible();
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
   await connectJira(page);
-  await page.getByRole("button", { name: "Use INGEST-142" }).click();
+  // The plan names one epic, so the field is filled in already.
   await expect(page.getByText("Unresolved — pick one")).toBeVisible();
 
   await page.getByRole("button", { name: "Connect Employee directory" }).click();

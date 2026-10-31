@@ -36,6 +36,9 @@ interface Props {
   signals: Signal[];
   signalsOff: Record<string, boolean>;
   onToggleSignal: (id: string) => void;
+  /** One line about something the app did on its own (a stage change kept the files; sample files replaced yours). */
+  notice: string | null;
+  onDismissNotice: () => void;
   onAddFiles: (list: FileList | File[] | null) => void;
   onSetKind: (id: string, kind: FileKind) => void;
   onRemove: (id: string) => void;
@@ -103,6 +106,8 @@ export function PlanDocuments(p: Props) {
   const docs = planFiles.filter((f) => f.via !== "directory");
   const unchecked = rows.filter((r) => r.source.quote_verified === false).length;
   const modeLabel = agent.mode ?? agent.info.default_mode;
+  /** What the agent writes down depends on the stage: commitments from a plan of record, signals from a PRD. */
+  const readsFor = launching ? "writes down what it commits to" : "writes down the sentences that point to a team or an approval";
   const READ_STEPS: [string, string][] = [
     ["Uploading", `Sending your documents to ${agent.info.name}.`],
     ["Reading", `${agent.info.name} opens each file, in whatever format it is, and writes down what it commits to.`],
@@ -126,6 +131,12 @@ export function PlanDocuments(p: Props) {
         <button type="button" className="btn" onClick={p.onLoadSample}>Use sample files</button>
       </div>
 
+      {p.notice && (
+        <div className="notice-grey between" role="status" data-testid="plan-notice" style={{ gap: 12 }}>
+          <span>{p.notice}</span>
+          <button type="button" className="btn" style={{ minHeight: 32, padding: "0 10px" }} aria-label="Dismiss this note" onClick={p.onDismissNotice}>OK</button>
+        </div>
+      )}
       <div className="row">
         <section className="card" style={{ flex: "1.4 1 440px", gap: 16 }}>
           <div
@@ -149,7 +160,7 @@ export function PlanDocuments(p: Props) {
                     <div className="meta">
                       <span className="name">{f.name}</span>
                       <span className="small muted">{f.size}{f.via === "directory" ? " · via Employee directory" : ""}</span>
-                      <span className={"sm " + (used ? "ok" : "muted")} title={entry?.notes}>{f.kind === "other" ? "Nothing used from this file" : entry ? fileSummary(entry) : hasPlan ? (reading ? `${agent.info.name} is reading…` : "Reading…") : "Waiting for a plan file"}</span>
+                      <span className={"sm " + (used ? "ok" : "muted")} title={entry?.notes}>{f.kind === "other" ? "Nothing used from this file" : !launching && f.kind === "checks" ? "Launch checks are used when preparing to launch" : entry ? fileSummary(entry) : hasPlan ? (reading ? `${agent.info.name} is reading…` : "Reading…") : "Waiting for a plan file"}</span>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 8 }}>
                       <div className="stack-sm" style={{ gap: 2 }}>
@@ -191,7 +202,7 @@ export function PlanDocuments(p: Props) {
 
       {agent.info.available && agent.consent === "unknown" && hasPlan && p.plan && (
         <section className="notice stack-sm" role="region" aria-label={`${agent.info.name} can read your files`} data-testid="agent-consent" style={{ gap: 10, padding: "14px 16px" }}>
-          <span><strong style={{ fontWeight: 600 }}>{agent.info.name} can read these files.</strong> Set up by your company. It opens each plan document and writes down what it commits to; nothing is sent until you click, and every item is checked against the file.</span>
+          <span><strong style={{ fontWeight: 600 }}>{agent.info.name} can read these files.</strong> Set up by your company. It opens each plan document and {readsFor}; nothing is sent until you click, and every line is checked against the file.</span>
           <details className="small"><summary style={{ cursor: "pointer" }}>How this works</summary><span className="muted">A "Read with {agent.info.name}" button appears below your files. When you click it, {agent.info.name} opens each plan document in whatever format it is, in your company's {agent.info.name} account, and returns the plan items with a quote for each. Items whose quote is not in the file are dropped; the rest appear in the table for you to confirm. Checklists and team lists are read by the rules, not sent.</span></details>
           <ModeSelect agent={agent} id="agent-mode-consent" />
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -225,7 +236,7 @@ export function PlanDocuments(p: Props) {
               <div className="stack-sm" style={{ gap: 4 }}>
                 <span style={{ fontWeight: 600 }}>Ready for {agent.info.name} to read</span>
                 <span className="sm muted">
-                  {docs.length ? `Check "Read as" on each file first. Then ${agent.info.name} opens ${docs.map((f) => f.name).join(", ")}${modeLabel ? ` in ${modeLabel} mode` : ""} and writes down what ${docs.length === 1 ? "it" : "they"} commit${docs.length === 1 ? "s" : ""} to. Nothing is sent until you click.` : "Add a plan document first; checklists and team lists are read by the rules."}
+                  {docs.length ? `Check "Read as" on each file first. Then ${agent.info.name} opens ${docs.map((f) => f.name).join(", ")}${modeLabel ? ` in ${modeLabel} mode` : ""} and ${readsFor}. Nothing is sent until you click.` : "Add a plan document first; checklists and team lists are read by the rules."}
                 </span>
               </div>
             )}

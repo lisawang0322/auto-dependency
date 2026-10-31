@@ -122,6 +122,14 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
   const epicVal = epic.trim();
   const epicOk = /^[A-Z][A-Z0-9]+-\d+$/.test(epicVal);
 
+  // One epic named in the plan is the answer to "which work is this?": fill it in rather than ask for a click.
+  useEffect(() => {
+    if (plan && !epic.trim() && plan.epic_keys_mentioned.length === 1) setEpic(plan.epic_keys_mentioned[0]);
+  }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A one-line note on the plan step for things the app did on its own: a stage change kept the files, sample files replaced yours.
+  const [planNotice, setPlanNotice] = useState<string | null>(null);
+
   // Stage B: resolve once connected and the epic key is valid (not needed when just starting).
   useEffect(() => {
     if (!plan || !needsJira || jiraState !== "on" || !epicOk) { setTarget(null); setTargetError(null); return; }
@@ -241,15 +249,16 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
       </header>
       <main className="wrap page">
         {screen === "start" && (
-          <GetStarted stage={stage} onPick={(s) => { setStageChoice(s); }} onContinue={() => { if (stage) setScreen("plan"); }} />
+          <GetStarted stage={stage} onPick={(s) => { if (stage && s !== stage && files.some((f) => f.via !== "directory")) setPlanNotice(`Stage changed to ${STAGE_SHORT[s]}. Your files are kept; check each file's "Read as" for this stage.`); setStageChoice(s); }} onContinue={() => { if (stage) setScreen("plan"); }} />
         )}
         {screen === "plan" && stage && (
           <PlanDocuments
             stage={stage} files={files} plan={plan} planError={planError} planDates={planDates} signals={signals} signalsOff={signalsOff}
-            onAddFiles={addFiles}
-            onSetKind={(id, kind) => setFiles((cur) => cur.map((f) => (f.id === id ? { ...f, kind } : f)))}
-            onRemove={(id) => setFiles((cur) => cur.filter((f) => f.id !== id))}
-            onLoadSample={() => setFiles((cur) => [...sampleFilesFor(stage), ...cur.filter((f) => f.via === "directory")])}
+            notice={planNotice} onDismissNotice={() => setPlanNotice(null)}
+            onAddFiles={(list) => { setPlanNotice(null); addFiles(list); }}
+            onSetKind={(id, kind) => { setPlanNotice(null); setFiles((cur) => cur.map((f) => (f.id === id ? { ...f, kind } : f))); }}
+            onRemove={(id) => { setPlanNotice(null); setFiles((cur) => cur.filter((f) => f.id !== id)); }}
+            onLoadSample={() => setFiles((cur) => { const replaced = cur.filter((f) => f.via !== "directory").length; setPlanNotice(replaced ? `Replaced ${replaced} file${replaced === 1 ? "" : "s"} with the sample set.` : null); return [...sampleFilesFor(stage), ...cur.filter((f) => f.via === "directory")]; })}
             onSetDate={(id, v) => setPlanDates((d) => ({ ...d, [id]: v }))}
             onToggleSignal={(id) => { setSignalsOff((s) => ({ ...s, [id]: !s[id] })); setConfirmed(false); }}
             agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, mode: agentMode, setMode: setAgentMode, stage: agentStage, read: agentRead, read_now: readWithAgent }}

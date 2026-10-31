@@ -86,7 +86,7 @@ test("building: PRD + Jira → which needed teams are missing and which approval
   const run = page.getByRole("button", { name: "Check my team and approvals" });
   await expect(run).toBeDisabled();
   await connectJira(page);
-  await page.getByRole("button", { name: "Use INGEST-142" }).click();
+  // The plan names one epic, so the field is filled in already.
   await expect(page.getByText("Found in Jira (sample data)")).toBeVisible();
   await expect(page.getByTestId("needed-teams")).toContainText("3 of 9 have a Jira project");
   await expect(page.getByTestId("needed-teams")).toContainText("Privacy → assignee only");

@@ -74,7 +74,7 @@ export function Review(p: Props) {
     const decisions = { ...dec.decisions, [f.id]: { kind, reason: r, at: new Date().toISOString() } };
     persist({ ...dec, decisions, log: [{ time: clock(), text }, ...dec.log] });
     setReason("");
-    setSel(shownIds.find((id) => id !== f.id && !decisions[id]) ?? f.id);
+    setSel(f.id); // stay here: the detail now reads "Kept" or "Dismissed — reason" with Reopen, so the decision is visible
   };
   const reopen = (f: Finding) => {
     const decisions = { ...dec.decisions };

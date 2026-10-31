@@ -133,7 +133,10 @@ export function ConnectApps(p: Props) {
   };
   const acceptDirectory = () => { p.onConnectDirectory(live ? dirFile : null); setConsentFor(null); };
 
-  const helpers = apps.filter((a) => a.id === "directory" || a.id === "devin");
+  // What leads depends on the stage: Jira when work is tracked there, the directory when a project is just starting.
+  const primaryId: AppId = p.stage === "starting" ? "directory" : "jira";
+  const primary = apps.find((a) => a.id === primaryId)!;
+  const helpers = apps.filter((a) => (a.id === "jira" || a.id === "directory" || a.id === "devin") && a.id !== primaryId);
   const others = apps.filter((a) => a.id !== "jira" && a.id !== "directory" && a.id !== "devin");
 
   const cardState = (a: AppDef): { state: string; cls: string; btn: string; blocked: boolean; onCls: boolean; act: () => void } => {
@@ -181,18 +184,8 @@ export function ConnectApps(p: Props) {
     );
   };
 
-  const runText = needsJira
-    ? (!on ? "Connect Jira to continue — it's how we see who is doing the work." : !p.epicOk ? "Pick the epic for this work to continue." : !p.target ? (p.targetError ?? "Looking up the epic…") : !building && !resolved ? "Pick a Jira project for each team, or mark it \"don't search\", to continue." : (dirOn ? `Ready to read ${epicVal} and compare it with your ${building ? "plan" : "confirmed plan"}.` : `Ready. Connecting your directory adds names to every suggestion.`))
-    : (dirOn ? "Ready." : "You can continue now. Connecting your directory turns team suggestions into names.");
-
-  return (
-    <div className="stack">
-      <div className="stack-sm">
-        <span className="small muted">Step 3 · connect your apps</span>
-        <h1>Connect the tools your teams use</h1>
-        <p className="lead" style={{ maxWidth: 720 }}>{needsJira ? "Jira is required for your stage: it is how we see who is doing the work." : "Nothing is required at your stage; a directory turns team names into people."} Every connection is read-only.</p>
-      </div>
-
+  const dialogs = (
+    <>
       {consentDef?.id === "jira" && oauth && (
         <div className="consent accent" role="dialog" aria-labelledby="atl-title">
           <span className="eyebrow">Jira · Sign in with Atlassian</span>
@@ -277,10 +270,26 @@ export function ConnectApps(p: Props) {
         </div>
       )}
 
-      {/* The one connection the stage needs, first and full width; what it unlocks follows right under it. */}
+    </>
+  );
+
+  const runText = needsJira
+    ? (!on ? "Connect Jira to continue — it's how we see who is doing the work." : !p.epicOk ? "Pick the epic for this work to continue." : !p.target ? (p.targetError ?? "Looking up the epic…") : !building && !resolved ? "Pick a Jira project for each team, or mark it \"don't search\", to continue." : (dirOn ? `Ready to read ${epicVal} and compare it with your ${building ? "plan" : "confirmed plan"}.` : `Ready. Connecting your directory adds names to every suggestion.`))
+    : (dirOn ? "Ready." : "You can continue now. Connecting your directory turns team suggestions into names.");
+
+  return (
+    <div className="stack">
+      <div className="stack-sm">
+        <span className="small muted">Step 3 · connect your apps</span>
+        <h1>Connect the tools your teams use</h1>
+        <p className="lead" style={{ maxWidth: 720 }}>{needsJira ? "Jira is required for your stage: it is how we see who is doing the work." : "Nothing is required at your stage; a directory turns team names into people."} Every connection is read-only.</p>
+      </div>
+
+      {/* The connection the stage needs most, first and full width; what it unlocks follows right under it, and its consent opens beneath it. */}
       <section className="stack" style={{ gap: 10 }}>
-        <h2 style={{ fontSize: 16 }}>Where the work is tracked</h2>
-        <div className="app-grid">{renderCard(apps.find((a) => a.id === "jira")!, true)}</div>
+        <h2 style={{ fontSize: 16 }}>{primaryId === "jira" ? "Where the work is tracked" : "Who's who"}</h2>
+        {renderCard(primary, true)}
+        {consentFor === primaryId && dialogs}
       </section>
       {needsJira && on && (
         <section className="card">
@@ -393,6 +402,7 @@ export function ConnectApps(p: Props) {
       <section className="stack" style={{ gap: 10 }}>
         <h2 style={{ fontSize: 16 }}>Also helpful</h2>
         <div className="app-grid">{helpers.map((a) => renderCard(a))}</div>
+        {consentFor && consentFor !== primaryId && dialogs}
       </section>
 
       <details className="more card" style={{ padding: "14px 18px" }} data-testid="more-apps">

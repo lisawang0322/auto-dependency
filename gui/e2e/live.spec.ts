@@ -80,7 +80,7 @@ test("uploads real files, connects with a token and a directory export, reads Ji
   await page.getByRole("button", { name: "Accept" }).click();
   await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Connected · read-only · team-list.yaml");
 
-  await page.getByRole("button", { name: "Use INGEST-142" }).click();
+  // The plan names one epic, so the field is filled in already.
   await expect(page.getByText("Found in Jira", { exact: true })).toBeVisible();
   await expect(page.getByText("4 of 4 teams resolved")).toBeVisible();
   await expect(page.getByText("From your team list").first()).toBeVisible();
@@ -128,7 +128,7 @@ test("building stage over the API: PRD + directory upload, the real epic, covera
   }
   await expect(state).toHaveText(/Connected · read-only/);
   await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Covered by directory.yaml from your files");
-  await page.getByRole("button", { name: "Use INGEST-142" }).click();
+  // The plan names one epic, so the field is filled in already.
   await expect(page.getByText("Found in Jira", { exact: true })).toBeVisible();
   await expect(page.getByTestId("needed-teams")).toContainText("3 of 9 have a Jira project");
   await page.getByRole("button", { name: "Check my team and approvals" }).click();
