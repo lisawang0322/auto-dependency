@@ -114,3 +114,27 @@ td { padding: 12px 16px; border-bottom: 1px solid var(--line-soft); vertical-ali
 .list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .teams-table table { min-width: 720px; }
 .required { color: var(--late); font-weight: 500; font-size: 13px; }
+/* Step 1: stage picker */
+.stage-card { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: 8px; cursor: pointer; background: var(--paper); border: 1px solid #D5D5CE; margin: 1px; }
+.stage-card.picked { border: 2px solid var(--accent); margin: 0; }
+.stage-card.off { background: #F0F0EC; color: var(--muted); cursor: not-allowed; }
+.stage-card.off .text2 { color: var(--muted); }
+.stage-card input { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.chip-note { font-size: 12px; color: var(--text-2); background: var(--grey-bg); border-radius: 4px; padding: 1px 8px; white-space: nowrap; }
+.stage-chip { font-size: 13px; color: var(--text-2); background: var(--grey-bg); border-radius: 4px; padding: 2px 8px; }
+/* Step 3: app gallery */
+.app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.app-card { display: flex; flex-direction: column; gap: 12px; justify-content: space-between; padding: 14px; border-radius: 8px; background: var(--paper); border: 1px solid var(--line); min-width: 0; }
+.app-card.on { border-color: var(--green-line); }
+.app-card.off { background: #F0F0EC; border-color: var(--line); color: var(--disabled-text); }
+.app-mono { flex: none; width: 40px; height: 40px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 13px; font-weight: 500; background: var(--ink); color: #fff; }
+.app-mono.off { background: #D5D5CE; color: var(--muted); }
+.app-badge { font-size: 11px; font-weight: 600; border-radius: 4px; padding: 0 6px; }
+.app-badge.required { background: var(--ink); color: #fff; }
+.app-badge.recommended { background: var(--blue-bg); color: var(--blue-text); }
+.consent.accent { border-color: var(--accent); background: var(--paper); max-width: 620px; }
+/* Step 4: next actions */
+.action-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--line-soft); }
+.action-row input { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.action-row label { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; cursor: pointer; }
+.action-row .done { text-decoration: line-through; color: var(--muted); }

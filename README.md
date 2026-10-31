@@ -54,7 +54,7 @@ server/                  the local API server the GUI talks to (runs the pipelin
 fixtures/ingest-142/     sample plan files (md, pptx, pdf, csv, yaml), sample Jira snapshots, reader and analyzer outputs
 fixtures/build_pptx.py   rebuilds the sample deck and its PDF export
 runs/INGEST-142/         saved runs the GUI loads: { plan, target, release, findings, linkage_gaps, teams }
-gui/                     Vite + React + TypeScript web app (three steps: plan documents → connect Jira → review)
+gui/                     Vite + React + TypeScript web app (four steps: get started → your plan → connect apps → next steps)
 devin/                   RUN.md: the checklist for running the reader in Devin against a sandbox Jira; results/
 scripts/                 review.ts (the orchestrator CLI), doctor.ts, report.ts, lib/pipeline.ts (shared with the
                          server), build-runs.ts, seed_jira.py (the only Jira writer), compare_runs.py
@@ -197,12 +197,30 @@ appears as a linkage gap in every run, and the run-to-run differences. Exit code
 
 ```
 npm run gui:dev      # http://localhost:5173 (live mode when `npm run server` is running, sample data otherwise)
-npm run gui:test     # unit tests: status roll-up, weak filter, 10-finding cap, "all teams resolved" gate
-npm run gui:e2e      # Playwright: sample mode (desktop + phone) and live mode (real uploads → API server → fake Jira → review)
+npm run gui:test     # unit tests: status roll-up, weak filter, 10-finding cap, "all teams resolved" gate, next actions
+npm run gui:e2e      # Playwright: sample mode (desktop + phone) and live mode (real uploads → API server → fake Jira → next steps)
 npm run gui:build
 ```
 
 First e2e run: `npx playwright install chromium` inside `gui/`.
+
+The flow follows the stage-aware prototype (`docs/prototype.html`, the spec) and PRD R10, R14–R16:
+
+1. **Get started.** What the tool does, what counts as a plan, and the project's stage. Only
+   *Preparing to launch* runs this semester; *Just starting* (after the MVP) and *Team forming,
+   work underway* (designed only) are shown disabled with a note, per the PRD's scope.
+2. **Your plan.** Drop files in any format the reader can parse (slides, Word, Markdown, PDF, CSV,
+   YAML, JSON); each is read as a PRD or one-pager, plan of record, launch checklist, team list, or
+   not used. "What we'll look for" shows what was found; "Plan we read" is the editable plan table.
+3. **Connect apps.** A gallery grouped by kind (work tracking, docs and wikis, product planning,
+   people and org, chat). Apps the company has not enabled are greyed out. Jira connects for real
+   (API token in live mode, simulated consent in sample mode); the employee directory connects as a
+   team-list export (sample mode uses the sample team list); the rest are shown for the design and
+   say so. Then the release epic and the team → Jira project resolution.
+4. **Next steps.** Opens with *Your next actions*: one tickable row per shown finding that is open or
+   kept (what, who, by when, why from the analyzer's `next_action`). Below it the launch review:
+   status tiles, teams and findings with keep/dismiss, the finding detail with its suggested next
+   action, other linkage gaps, upcoming dates, what the review can't see, and the decision log.
 
 Two modes behind the interfaces in `gui/src/backend/types.ts`, chosen at startup by probing
 `/api/health` (`?backend=live|sample` overrides):
@@ -213,7 +231,8 @@ Two modes behind the interfaces in `gui/src/backend/types.ts`, chosen at startup
   date and your team → project choices are part of what is run.
 - **Sample** (`fixtureBackend.ts`, `stubJira.ts`): the fixture release with a simulated consent page,
   for the demo and the tests. `?fast=1` shortens its delays.
-- `DecisionStore` (`decisionStore.ts`): keep/dismiss decisions and the decision log, per run, in localStorage.
+- `DecisionStore` (`decisionStore.ts`): keep/dismiss decisions, the decision log and ticked-off next
+  actions, per run, in localStorage.
 
 ## What is real, and what is still sample
 
@@ -224,6 +243,11 @@ Still sample or deliberately simple:
 
 - **Sample mode's Jira** is the fixture snapshot behind a simulated consent page; it only knows
   INGEST-142.
+- **Connect apps.** Only Jira and the employee directory work. The directory is a team-list export
+  read the same way as an uploaded team list, not a live directory connector. Linear, Confluence,
+  Google Drive and Aha! are shown as the PRD asks but cannot be connected; Asana, SharePoint,
+  Productboard, the HR org chart and Slack are shown as not enabled by the company.
+- **Stages.** The stage picker is real, but only "Preparing to launch" has a path behind it.
 - **One run per epic per day.** Runs are labelled by date; a second run the same day replaces the
   first (and re-reads Jira).
 - **Credentials** are an API token held in the server process. There is no OAuth, no multi-user

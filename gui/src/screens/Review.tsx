@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Finding, PlanDraft, ReleaseTarget, Run, TeamStatus } from "@rrr/schemas";
-import type { DecisionStore, RunSummary, RunDecisions } from "../backend/types";
-import { fmtDate, daysBetween, clock } from "../model/dates";
-import { rollup, releaseStatus, visibleFindings, openFindingCount, type TeamView, type Effective } from "../model/review";
+import type { DecisionStore, RunSummary, RunDecisions, Stage } from "../backend/types";
+import { fmtDate, daysBetween, clock, prettyDates } from "../model/dates";
+import { rollup, releaseStatus, visibleFindings, openFindingCount, nextActions, type TeamView, type Effective } from "../model/review";
+import { STAGE_SHORT } from "./GetStarted";
 import { sourceLabel } from "./PlanDocuments";
 
+/** Where owner names came from: the connected directory, an uploaded team list, or Jira assignees. */
+export type OwnerSource = "directory" | "files" | "inferred";
+
 interface Props {
-  store: DecisionStore; runs: RunSummary[]; runsById: Record<string, Run>; latestId: string;
-  target: ReleaseTarget; launch: string; planIds: Set<string> | null; planDates: Record<string, string>; plan: PlanDraft; hasTeamList: boolean;
+  stage: Stage; store: DecisionStore; runs: RunSummary[]; runsById: Record<string, Run>; latestId: string;
+  target: ReleaseTarget; launch: string; planIds: Set<string> | null; planDates: Record<string, string>; plan: PlanDraft; ownerSource: OwnerSource;
+  onChangeStage: () => void; onAddFiles: () => void; onConnectApps: () => void;
 }
 
 const STATUS_LABEL: Record<TeamStatus, string> = { on_track: "On track", at_risk: "At risk", late: "Late" };
 const TYPE_LABEL: Record<Finding["gap_type"], string> = { process: "Process", cross_team_date: "Cross-team date", commitment: "Commitment" };
-const EMPTY: RunDecisions = { decisions: {}, log: [] };
+const EMPTY: RunDecisions = { decisions: {}, log: [], actionsDone: {} };
 
 export function Review(p: Props) {
   const [runId, setRunId] = useState(p.latestId);
@@ -54,16 +59,16 @@ export function Review(p: Props) {
   const decide = (f: Finding, kind: "kept" | "dismissed") => {
     const r = reason.trim();
     if (kind === "dismissed" && !r) return;
-    const text = kind === "kept" ? `Kept "${f.title}" — chase ${f.owner}` : `Dismissed "${f.title}" — ${r}`;
+    const text = kind === "kept" ? `Kept "${f.title}" — added to actions` : `Dismissed "${f.title}" — ${r}`;
     const decisions = { ...dec.decisions, [f.id]: { kind, reason: r, at: new Date().toISOString() } };
-    persist({ decisions, log: [{ time: clock(), text }, ...dec.log] });
+    persist({ ...dec, decisions, log: [{ time: clock(), text }, ...dec.log] });
     setReason("");
     setSel(shownIds.find((id) => id !== f.id && !decisions[id]) ?? f.id);
   };
   const reopen = (f: Finding) => {
     const decisions = { ...dec.decisions };
     delete decisions[f.id];
-    persist({ decisions, log: [{ time: clock(), text: `Reopened "${f.title}"` }, ...dec.log] });
+    persist({ ...dec, decisions, log: [{ time: clock(), text: `Reopened "${f.title}"` }, ...dec.log] });
   };
 
   const release = releaseStatus(viewTeams);
@@ -71,7 +76,17 @@ export function Review(p: Props) {
   const riskCount = viewTeams.filter((t) => t.status !== "on_track").length;
   const openCount = isLatest ? openFindingCount(liveFindings, dec.decisions) : viewTeams.reduce((n, t) => n + t.items.filter((i) => i.effective === "gap" || i.effective === "late").length, 0);
   const decs = Object.values(dec.decisions);
-  const owners = liveFindings.filter((f) => dec.decisions[f.id]?.kind === "kept").map((f) => ({ owner: f.owner, ask: f.ask ?? f.title }));
+  // R16: the next actions come from the latest run's shown findings that are open or kept; ticks are saved with that run.
+  const latestDec = saved[p.latestId] ?? EMPTY;
+  const latestLive = latest.findings.filter((f) => !p.planIds || p.planIds.has(f.plan_item_id));
+  const actions = nextActions(visibleFindings(latestLive, showWeak), latestDec.decisions);
+  const actionsDone = latestDec.actionsDone ?? {};
+  const openActions = actions.filter((a) => !actionsDone[a.id]).length;
+  const toggleAction = (id: string) => {
+    const next: RunDecisions = { ...latestDec, actionsDone: { ...actionsDone, [id]: !actionsDone[id] } };
+    setSaved((s) => ({ ...s, [p.latestId]: next }));
+    p.store.save(keyOf(p.latestId), next);
+  };
   const rows = viewTeams.filter((t) => filter === "all" || t.status === filter);
   const daysOut = daysBetween(run.release.snapshot_label, p.launch);
   const searchedProjects = run.release.projects_searched.map((s) => s.jira_project);
@@ -90,7 +105,7 @@ export function Review(p: Props) {
     <div className="stack" style={{ gap: 22 }}>
       <div className="between" style={{ alignItems: "flex-end", gap: 16 }}>
         <div className="stack-sm" style={{ gap: 4 }}>
-          <span className="small muted">Step 3 · review</span>
+          <span className="small muted">Step 4 · next steps · {STAGE_SHORT[p.stage]}</span>
           <h1>Launch {fmtDate(p.launch)} · {daysOut} days out</h1>
           <span className="muted">Viewing the {fmtDate(run.release.snapshot_label)}{isLatest ? " (latest)" : ""} run · read {epic}, its links one hop into {hopProjects.join(", ")}, and a search of each team's project</span>
         </div>
@@ -106,6 +121,27 @@ export function Review(p: Props) {
         </div>
       </div>
 
+      <section className="card" style={{ gap: 6, borderColor: "var(--accent)" }} data-testid="next-actions">
+        <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
+          <h2>Your next actions</h2>
+          <span className="small muted" data-testid="actions-count">{openActions} open · {actions.length - openActions} done</span>
+        </div>
+        {actions.length === 0 && <p className="sm muted">Nothing open. Re-run when the plan or the work changes.</p>}
+        {actions.map((a) => {
+          const done = !!actionsDone[a.id];
+          return (
+            <div key={a.id} className="action-row">
+              <input id={`act-${a.id}`} type="checkbox" checked={done} onChange={() => toggleAction(a.id)} />
+              <label htmlFor={`act-${a.id}`}>
+                <span className={done ? "done" : ""} style={done ? undefined : { fontWeight: 500 }}>{prettyDates(a.text)}</span>
+                <span className="small muted"><strong style={{ fontWeight: 500, color: "var(--text-2)" }}>{a.who}</strong> · {prettyDates(a.when)} · {prettyDates(a.why)}{a.kept ? " · kept" : ""}</span>
+              </label>
+            </div>
+          );
+        })}
+        {!isLatest && <p className="small muted">Actions come from the latest run ({fmtDate(p.latestId)}).</p>}
+      </section>
+
       {!isLatest && <div className="notice-grey">Earlier run, shown read-only. Switch to {fmtDate(p.latestId)} to keep or dismiss findings.</div>}
 
       <div className="tiles">
@@ -118,19 +154,6 @@ export function Review(p: Props) {
         <div className="tile"><div className="small muted">Open findings</div><div className="big" data-testid="open-findings">{openCount}</div><div className="small muted">Weak not counted</div></div>
         <div className="tile"><div className="small muted">Kept · dismissed</div><div className="big">{decs.filter((d) => d.kind === "kept").length} · {decs.filter((d) => d.kind === "dismissed").length}</div></div>
       </div>
-
-      {isLatest && (
-        <section className="card" style={{ gap: 10 }}>
-          <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
-            <h2>For Friday's go/no-go</h2>
-            <span className="small muted">Owners from the findings you keep</span>
-          </div>
-          {owners.length === 0 && <p className="sm muted">Nothing kept yet. Open a finding below and keep it to add its owner here.</p>}
-          {owners.map((o, i) => (
-            <div key={i} className="owner-row"><span style={{ fontWeight: 500 }}>{o.owner}</span><span>{o.ask}</span></div>
-          ))}
-        </section>
-      )}
 
       <div className="row">
         <section aria-label="Teams and findings" className="stack" style={{ flex: "1.3 1 520px", minWidth: 0, gap: 12 }}>
@@ -168,7 +191,12 @@ export function Review(p: Props) {
                   <span className="pill type" style={{ padding: "2px 8px" }}>{TYPE_LABEL[selected.gap_type]}</span>
                 </div>
                 <h2 style={{ fontSize: 22, lineHeight: 1.25 }}>{selected.title}</h2>
-                <span className="muted">Owner: {selected.owner} <span className="small">{selected.owner_source === "team_list" && p.hasTeamList ? "(from your team list)" : "(inferred from Jira assignee)"}</span></span>
+                <span className="muted">Owner: {selected.owner} <span className="small">{selected.owner_source === "team_list" && p.ownerSource !== "inferred" ? (p.ownerSource === "directory" ? "(from your directory)" : "(from your team list)") : "(inferred from Jira assignee)"}</span></span>
+              </div>
+              <div className="notice" style={{ display: "flex", flexDirection: "column", gap: 2 }} data-testid="suggested-action">
+                <span className="eyebrow" style={{ color: "var(--blue-text)" }}>Suggested next action</span>
+                <span>{prettyDates(selected.next_action?.action ?? selected.ask ?? selected.title)}</span>
+                {selected.next_action && <span className="small">{selected.next_action.who} · {prettyDates(selected.next_action.by_when)}</span>}
               </div>
               <div className="box">
                 <span className="eyebrow">Expected (plan)</span>
@@ -193,13 +221,13 @@ export function Review(p: Props) {
                 <h3>Your call</h3>
                 {selDec && (
                   <div className="decided">
-                    <span className="sm">{selDec.kind === "kept" ? "Kept — owner added to the go/no-go list" : `Dismissed — ${selDec.reason}`}</span>
+                    <span className="sm">{selDec.kind === "kept" ? "Kept — in your next actions" : `Dismissed — ${selDec.reason}`}</span>
                     <button type="button" className="btn" onClick={() => reopen(selected)}>Reopen</button>
                   </div>
                 )}
                 {!selDec && (
                   <div className="stack-sm" style={{ gap: 10 }}>
-                    <button type="button" className="btn primary" style={{ alignSelf: "flex-start" }} onClick={() => decide(selected, "kept")}>Keep — chase {selected.owner}</button>
+                    <button type="button" className="btn primary" style={{ alignSelf: "flex-start" }} onClick={() => decide(selected, "kept")}>Keep — add to my actions</button>
                     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 10 }}>
                       <div className="stack-sm" style={{ gap: 4, flex: "1 1 200px" }}>
                         <label htmlFor="dismiss-reason" className="label">Reason for dismissing (required, logged)</label>
@@ -248,8 +276,8 @@ export function Review(p: Props) {
           <h2>What this review can't see</h2>
           <div className="card sm text2" style={{ padding: "16px 18px" }}>
             <ul className="list" style={{ gap: 6 }}>
-              <li>Anything agreed only in meetings, Slack or email</li>
-              <li>Approvals tracked outside Jira</li>
+              <li>Anything agreed only in meetings, chat or email</li>
+              <li>Approvals tracked in apps that aren't connected</li>
               <li>Whether the technical work itself is adequate</li>
             </ul>
           </div>
@@ -264,6 +292,12 @@ export function Review(p: Props) {
           </div>
         </section>
       )}
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        <button type="button" className="btn" onClick={p.onChangeStage}>Change stage</button>
+        <button type="button" className="btn" onClick={p.onAddFiles}>Add more files</button>
+        <button type="button" className="btn" onClick={p.onConnectApps}>Connect more apps</button>
+      </div>
     </div>
   );
 }

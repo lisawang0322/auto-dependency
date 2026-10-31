@@ -1,9 +1,12 @@
 import { useState } from "react";
 import type { PlanDraft } from "@rrr/schemas";
-import type { UploadedFile, FileKind } from "../backend/types";
+import { PLAN_KINDS, type UploadedFile, type FileKind, type Stage } from "../backend/types";
 import { fmtDate } from "../model/dates";
 
+/** Step 2 (PRD R1–R3, R14): add plan files in any format, see what was read from them, fix dates, confirm. */
+
 interface Props {
+  stage: Stage;
   files: UploadedFile[];
   plan: PlanDraft | null;
   planError: string | null;
@@ -13,16 +16,17 @@ interface Props {
   onRemove: (id: string) => void;
   onLoadSample: () => void;
   onSetDate: (id: string, value: string) => void;
+  onBack: () => void;
   onConfirm: () => void;
 }
 
-const NEEDS: { kind: FileKind; label: string; required: boolean; desc: string; where: string; without: string }[] = [
-  { kind: "plan", label: "Plan items", required: true, desc: "Deliverables with owners and due dates, plus dependencies and approvals. This is what Jira is checked against.", where: "a plan of record, PRD, launch plan or project brief", without: "" },
-  { kind: "checks", label: "Launch checks", required: false, desc: "Standard items every launch must clear, like rollback, permissions reviews or load tests.", where: "a launch or readiness checklist", without: "standard launch items won’t be checked." },
-  { kind: "teams", label: "Teams and owners", required: false, desc: "Who owns what, and each team’s Jira project. Makes owners exact.", where: "an org chart, team roster or RACI", without: "owners are inferred from Jira assignees." },
-];
-
 const KIND_LABEL: Record<string, string> = { deliverable: "Deliverable", dependency: "Dependency", approval: "Approval", checklist: "Checklist" };
+
+export const PLAN_INTRO: Record<Stage, string> = {
+  starting: "A PRD or one-pager is enough to start. Add an org chart if you have one.",
+  building: "Add your plan, plus a team list or org chart if you have one.",
+  launching: "Add your plan of record — doc or slides — plus your launch checklist if your company has one.",
+};
 
 export function sourceShort(plan: PlanDraft, file: string): string {
   const f = plan.files.find((x) => x.name === file);
@@ -36,23 +40,31 @@ export function PlanDocuments(p: Props) {
   const [over, setOver] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const filesOf = (k: FileKind) => p.files.filter((f) => f.kind === k);
-  const hasPor = filesOf("plan").length > 0;
+  const planFiles = p.files.filter((f) => PLAN_KINDS.includes(f.kind));
+  const hasPlan = planFiles.length > 0;
   const hasChecklist = filesOf("checks").length > 0;
-  const hasOrg = filesOf("teams").length > 0;
-  const notReady = !hasPor || !p.plan;
-  const skipped = NEEDS.filter((n) => !n.required && !filesOf(n.kind).length).map((n) => n.label.toLowerCase());
+  const teamFiles = filesOf("teams");
+  const hasOrg = teamFiles.length > 0;
+  const viaDirectory = teamFiles.some((f) => f.via === "directory");
+  const notReady = !hasPlan || !p.plan;
   const rows = p.plan?.items ?? [];
   const planCount = rows.filter((r) => r.kind !== "checklist").length;
   const checkTotal = p.plan?.files.find((f) => f.read_as.includes("launch_checks"))?.notes.match(/(\d+) checks/)?.[1];
   const checkApplied = rows.filter((r) => r.kind === "checklist").length;
 
+  const needs: { label: string; required: boolean; desc: string; found: UploadedFile[]; without: string }[] = [
+    { label: "What you're building", required: true, desc: p.stage === "launching" ? "Dates, owners, dependencies and approvals — usually a POR deck or doc." : "Goals, users, data and scope — a PRD, one-pager or brief is enough.", found: planFiles, without: "" },
+    { label: "Launch checks", required: false, desc: "Approvals and gates your company expects before launch.", found: filesOf("checks"), without: p.stage === "launching" ? "standard launch items won't be checked." : "approvals come from common practice only." },
+    { label: "Teams and people", required: false, desc: "An org chart or team list — or connect your directory next.", found: teamFiles, without: "you'll get team names, not people." },
+  ];
+
   return (
     <div className="stack">
       <div className="between" style={{ alignItems: "flex-end", gap: 16 }}>
         <div className="stack-sm">
-          <span className="small muted">Step 1 · plan documents</span>
-          <h1>Upload the plan</h1>
-          <p className="lead">Add whatever describes how this release is supposed to go — one file or several. You'll confirm the plan read from them before Jira is checked.</p>
+          <span className="small muted">Step 2 · your plan</span>
+          <h1>Add what you have</h1>
+          <p className="lead">{PLAN_INTRO[p.stage]}</p>
         </div>
         <button type="button" className="btn" onClick={p.onLoadSample}>Use sample files</button>
       </div>
@@ -65,11 +77,11 @@ export function PlanDocuments(p: Props) {
             onDragLeave={() => setOver(false)}
             onDrop={(e) => { e.preventDefault(); setOver(false); p.onAddFiles(e.dataTransfer?.files ?? null); }}
           >
-            <span style={{ fontWeight: 500 }}>Drop files here</span>
-            <span className="small muted">Slides (PPTX or PDF), Word, Markdown, spreadsheets, CSV, YAML or JSON</span>
+            <span style={{ fontWeight: 500 }}>Drop any files here</span>
+            <span className="small muted">Docs, slides, spreadsheets, PDFs, CSV or YAML — any format</span>
             <label htmlFor="plan-files" className="btn dark" style={{ cursor: "pointer" }}>Choose files</label>
-            <input id="plan-files" className="sr-only" type="file" multiple accept=".pptx,.pdf,.docx,.md,.txt,.xlsx,.csv,.yaml,.yml,.json"
-              onChange={(e) => { p.onAddFiles(e.target.files); e.target.value = ""; }} />
+            <input id="plan-files" className="sr-only" type="file" multiple onChange={(e) => { p.onAddFiles(e.target.files); e.target.value = ""; }} />
+            <span className="small muted">Plan lives in Confluence, Google Drive or Aha!? Export it for now — those connectors are shown, not built.</span>
           </div>
           {p.files.length > 0 && (
             <div className="stack-sm" style={{ gap: 8 }}>
@@ -80,55 +92,52 @@ export function PlanDocuments(p: Props) {
                   <div key={f.id} className="file-row">
                     <div className="meta">
                       <span className="name">{f.name}</span>
-                      <span className="small muted">{f.size}</span>
-                      <span className={"sm " + (used ? "ok" : "muted")}>{f.kind === "other" ? "Nothing used from this file" : entry ? entry.notes : hasPor ? "Reading…" : "Waiting for a plan items file"}</span>
+                      <span className="small muted">{f.size}{f.via === "directory" ? " · via Employee directory" : ""}</span>
+                      <span className={"sm " + (used ? "ok" : "muted")}>{f.kind === "other" ? "Nothing used from this file" : entry ? entry.notes : hasPlan ? "Reading…" : "Waiting for a plan file"}</span>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 8 }}>
                       <div className="stack-sm" style={{ gap: 2 }}>
                         <label htmlFor={`kind-${f.id}`} className="label">Read as</label>
-                        <select id={`kind-${f.id}`} className="input" style={{ width: "auto", minWidth: 170, height: 44 }} value={f.kind} onChange={(e) => p.onSetKind(f.id, e.target.value as FileKind)}>
-                          <option value="plan">Plan items</option>
-                          <option value="checks">Launch checks</option>
-                          <option value="teams">Teams and owners</option>
+                        <select id={`kind-${f.id}`} className="input" style={{ width: "auto", minWidth: 190, height: 44 }} value={f.kind} disabled={f.via === "directory"} onChange={(e) => p.onSetKind(f.id, e.target.value as FileKind)}>
+                          <option value="prd">PRD or one-pager</option>
+                          <option value="plan">Plan of record</option>
+                          <option value="checks">Launch checklist</option>
+                          <option value="teams">Team list or org chart</option>
                           <option value="other">Not used</option>
                         </select>
                       </div>
-                      <button type="button" className="btn" aria-label={`Remove ${f.name}`} onClick={() => p.onRemove(f.id)}>Remove</button>
+                      {f.via !== "directory" && <button type="button" className="btn" aria-label={`Remove ${f.name}`} onClick={() => p.onRemove(f.id)}>Remove</button>}
                     </div>
                   </div>
                 );
               })}
             </div>
           )}
-          {p.planError && <div className="notice-grey">{p.planError}</div>}
+          {p.planError && <div className="notice-grey" role="alert">{p.planError}</div>}
         </section>
 
         <section className="card tight" style={{ flex: "1 1 320px", padding: 20 }}>
-          <h2 style={{ marginBottom: 6 }}>What the review needs</h2>
-          {NEEDS.map((n) => {
-            const found = filesOf(n.kind);
-            return (
-              <div key={n.kind} className="need">
-                <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
-                  <span style={{ fontWeight: 600 }}>{n.label}</span>
-                  <span className="small" style={{ whiteSpace: "nowrap", fontWeight: n.required ? 600 : 400, color: n.required ? "var(--ink)" : "var(--muted)", fontSize: 12 }}>{n.required ? "Required" : "Optional"}</span>
-                </div>
-                <span className="sm text2">{n.desc}</span>
-                <span className="small muted">Often found in: {n.where}</span>
-                <span className={"small " + (found.length ? "ok" : "warn")} style={{ overflowWrap: "anywhere" }}>
-                  {found.length ? `Found in ${found.map((f) => f.name).join(", ")}` : n.required ? "Not found yet" : `Not found — ${n.without}`}
-                </span>
+          <h2 style={{ marginBottom: 6 }}>What we'll look for</h2>
+          {needs.map((n) => (
+            <div key={n.label} className="need">
+              <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
+                <span style={{ fontWeight: 600 }}>{n.label}</span>
+                <span className="small" style={{ whiteSpace: "nowrap", fontWeight: n.required ? 600 : 400, color: n.required ? "var(--ink)" : "var(--muted)", fontSize: 12 }}>{n.required ? "Required" : "Optional"}</span>
               </div>
-            );
-          })}
+              <span className="sm text2">{n.desc}</span>
+              <span className={"small " + (n.found.length ? "ok" : "warn")} style={{ overflowWrap: "anywhere" }}>
+                {n.found.length ? `Found in ${n.found.map((f) => f.name).join(", ")}` : n.required ? "Not found yet" : `Not found — ${n.without}`}
+              </span>
+            </div>
+          ))}
         </section>
       </div>
 
-      {hasPor && p.plan && (
+      {hasPlan && p.plan && (
         <section className="stack" style={{ gap: 12 }}>
           <div className="stack-sm" style={{ gap: 4 }}>
-            <h2>Extracted plan</h2>
-            <p className="sm muted" style={{ maxWidth: 680 }}>From {filesOf("plan").concat(filesOf("checks")).map((f) => f.name).join(" and ")}. Fix anything that's wrong — every finding is checked against this list.</p>
+            <h2>Plan we read</h2>
+            <p className="sm muted" style={{ maxWidth: 680 }}>From {planFiles.concat(filesOf("checks")).map((f) => f.name).join(" and ")}. Fix anything that's wrong — everything is checked against this list.</p>
           </div>
           <div className="table-wrap plan-table">
             <table>
@@ -166,7 +175,7 @@ export function PlanDocuments(p: Props) {
             </table>
           </div>
           <span className="sm muted">
-            {[`Plan items: ${planCount}`, hasChecklist ? `Launch checks: ${checkApplied} of ${checkTotal ?? "?"} apply` : "No launch checks", hasOrg ? "Owners: from your files" : "Owners: inferred from Jira"].join(" · ")}
+            {[`Plan items: ${planCount}`, hasChecklist ? `Launch checks: ${checkApplied} of ${checkTotal ?? "?"} apply` : "No launch checks", hasOrg ? (viaDirectory ? "Owners: from your directory" : "Owners: from your files") : "Owners: inferred from Jira"].join(" · ")}
           </span>
           {p.plan.warnings.length > 0 && <div className="notice-grey">{p.plan.warnings.join(" ")}</div>}
         </section>
@@ -174,9 +183,12 @@ export function PlanDocuments(p: Props) {
 
       <div className="between" style={{ gap: 16 }}>
         <span className="sm muted" style={{ maxWidth: 640 }}>
-          {!hasPor ? "Add a file with plan items — deliverables, owners and dates — to continue." : skipped.length ? `No ${skipped.join(" or ")} found, so some checks run at reduced strength. You can add more files later and re-run.` : "Everything the review uses was found."}
+          {!hasPlan ? "Add something that describes what you're building to continue." : !p.plan ? (p.planError ? "Fix the file above, or read it as something else, to continue." : "Reading your files…") : "Looks good. Next, connect the apps your teams use."}
         </span>
-        <button type="button" className="btn primary" style={{ padding: "0 20px" }} disabled={notReady} onClick={p.onConfirm}>Confirm plan and connect Jira</button>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <button type="button" className="btn" onClick={p.onBack}>Back</button>
+          <button type="button" className="btn primary" style={{ padding: "0 20px" }} disabled={notReady} onClick={p.onConfirm}>Confirm and connect apps</button>
+        </div>
       </div>
     </div>
   );

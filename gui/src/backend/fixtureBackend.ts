@@ -24,10 +24,11 @@ const EPIC = TARGET.epic.key;
 const kb = (s: string) => `${Math.max(1, Math.round(new TextEncoder().encode(s).length / 1024))} KB`;
 
 /** The real sample files, with their real names and sizes. */
+export const SAMPLE_TEAM_LIST: UploadedFile = { id: "s3", name: "team-list.yaml", size: `${kb(teamsRaw)} · sample`, kind: "teams", sample: true };
 export const SAMPLE_FILES: UploadedFile[] = [
   { id: "s1", name: "Ingestion-service-POR-v3.md", size: `${kb(porRaw)} · sample`, kind: "plan", sample: true },
   { id: "s2", name: "launch-checklist.csv", size: `${kb(checksRaw)} · sample`, kind: "checks", sample: true },
-  { id: "s3", name: "team-list.yaml", size: `${kb(teamsRaw)} · sample`, kind: "teams", sample: true },
+  SAMPLE_TEAM_LIST,
 ];
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -39,10 +40,10 @@ export class FixtureBackend implements ReviewBackend {
   async extractPlan(files: UploadedFile[]): Promise<PlanDraft> {
     await wait(this.delayMs);
     const has = (k: UploadedFile["kind"]) => files.some((f) => f.kind === k);
-    if (!has("plan")) throw new Error("No file was read as plan items.");
+    if (!has("plan") && !has("prd")) throw new Error("No file was read as a plan.");
     const base = has("teams") ? PLAN : PLAN_NO_TEAMS;
     const items = base.items.filter((i) => i.kind !== "checklist" || has("checks"));
-    const kindOf = { plan: "plan_items", checks: "launch_checks", teams: "teams_and_owners" } as const;
+    const kindOf = { prd: "plan_items", plan: "plan_items", checks: "launch_checks", teams: "teams_and_owners" } as const;
     const fileEntries = files.map((f) => {
       const fx = base.files.find((b) => (f.kind !== "other" && b.read_as.includes(kindOf[f.kind])));
       return { name: f.name, read_as: f.kind === "other" ? [] : [kindOf[f.kind]], notes: fx ? fx.notes + (f.sample ? "" : " (prototype: read as the sample data)") : "Nothing used from this file" };

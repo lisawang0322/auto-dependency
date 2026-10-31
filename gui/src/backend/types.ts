@@ -5,7 +5,12 @@
  */
 import type { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
 
-export type FileKind = "plan" | "checks" | "teams" | "other";
+/** What a file is read as. "prd" and "plan" both feed Stage A's plan items; a PRD is the early stages' plan. */
+export type FileKind = "prd" | "plan" | "checks" | "teams" | "other";
+export const PLAN_KINDS: FileKind[] = ["prd", "plan"];
+
+/** Where the project is (PRD R14). Only "launching" runs this semester; the other two are designed. */
+export type Stage = "starting" | "building" | "launching";
 
 export interface UploadedFile {
   id: string;
@@ -15,6 +20,8 @@ export interface UploadedFile {
   sample: boolean;
   /** The browser File, for uploads in live mode. Sample files have none. */
   file?: File;
+  /** Added by connecting the employee directory on the Connect apps step, not uploaded on the plan step. */
+  via?: "directory";
 }
 
 export interface RunSummary {
@@ -65,7 +72,8 @@ export interface Decision {
 }
 export type Decisions = Record<string, Decision>;
 export interface LogEntry { time: string; text: string }
-export interface RunDecisions { decisions: Decisions; log: LogEntry[] }
+/** Keep/dismiss per finding, the log, and which next actions were ticked off (R16), per run. */
+export interface RunDecisions { decisions: Decisions; log: LogEntry[]; actionsDone?: Record<string, boolean> }
 
 export interface DecisionStore {
   load(runKey: string): RunDecisions;

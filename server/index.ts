@@ -43,7 +43,7 @@ export interface ServerOptions {
 
 interface Job { stage: 0 | 1 | 2 | 3; done: boolean; run_id?: string; error?: string; log: string[] }
 
-const KIND_TO_READ_AS: Record<string, ReadAs> = { plan: "plan_items", checks: "launch_checks", teams: "teams_and_owners" };
+const KIND_TO_READ_AS: Record<string, ReadAs> = { prd: "plan_items", plan: "plan_items", checks: "launch_checks", teams: "teams_and_owners" };
 const MIME: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2" };
 
 class HttpError extends Error { constructor(public status: number, msg: string) { super(msg); } }
@@ -124,9 +124,9 @@ export function createApp(opts: ServerOptions = {}) {
         const ra = KIND_TO_READ_AS[String(f.kind)];
         if (ra) readAs[name] = [ra];
       }
-      if (!paths.length) throw new HttpError(400, "No file was read as plan items.");
+      if (!paths.length) throw new HttpError(400, "No file was read as a plan.");
       const plan = await stageA({ files: paths, readAs, launchDate: body?.launch_date ?? null });
-      if (!files.some((f) => f.kind === "plan")) plan.warnings.unshift("No file was read as plan items.");
+      if (!files.some((f) => f.kind === "plan" || f.kind === "prd")) plan.warnings.unshift("No file was read as a plan.");
       log(`plan: ${plan.items.length} items from ${paths.map((p) => basename(p)).join(", ")}`);
       return { plan };
     },

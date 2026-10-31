@@ -78,3 +78,20 @@ export function applyChoices(projects: TeamProject[], choices: Record<string, Te
 export function openFindingCount(findings: Finding[], decisions: Decisions): number {
   return findings.filter((f) => f.strength !== "weak" && !decisions[f.id]).length;
 }
+
+/** One row of "Your next actions" (R16): what, who, by when, why, from the finding's next_action. */
+export interface NextActionView { id: string; text: string; who: string; when: string; why: string; kept: boolean }
+
+/** Every shown finding that is open or kept is a next action; dismissed ones drop out. */
+export function nextActions(shown: Finding[], decisions: Decisions): NextActionView[] {
+  return shown
+    .filter((f) => decisions[f.id]?.kind !== "dismissed")
+    .map((f) => ({
+      id: f.id,
+      text: f.next_action?.action ?? f.ask ?? f.title,
+      who: f.next_action?.who ?? f.owner,
+      when: f.next_action?.by_when ?? "before go/no-go",
+      why: f.next_action?.why ?? f.title,
+      kept: decisions[f.id]?.kind === "kept",
+    }));
+}

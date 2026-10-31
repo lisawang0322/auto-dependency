@@ -1,10 +1,12 @@
 # PRD — Release Readiness Review Skills
 
-Oct 6, 2026 · @Lisa
+Oct 25, 2026 · @Lisa
 
 ## Summary
 
-An agent that checks a release's Jira work against its plan of record (POR) and launch checklist, lists the gaps with owners and evidence, and tracks each team's status on a dashboard across review runs. This semester: a working prototype on sample data. The completed prototype is the deliverable; there is no usability testing.
+An agent that reads a project's plan and the tools its teams already use, then tells the owner who to involve, what's missing and what to do next. It adapts to the project's stage: just starting, building, or preparing to launch. Its core, and this semester's MVP, is the launch review: it checks a release's Jira work against its plan of record (POR) and launch checklist, lists the gaps with owners and evidence, gives a next action for each, and tracks each team's status across review runs. This semester: a working prototype on sample data. The completed prototype is the deliverable; there is no usability testing.
+
+**Revised Oct 25** after Professor Prayaga's review of the prototype: added onboarding, plan files in any format, "Connect your apps" in place of Jira-only, a stage-aware flow, and next actions on every result.
 
 ## Problem
 
@@ -26,6 +28,8 @@ Current tools (Jira, Asana, Linear, Planview) don't track business-process depen
 
 **Evidence:** two survey respondents described this. In one, production had stricter database permissions than QA, forcing an unplanned review and a one-day slip. In the other, undocumented cluster limits caused a late redesign. To be validated with 2–3 TPM interviews.
 
+**Earlier stages too:** many PMs start with no team, no Jira and no contacts. Example from the advisor review: a PM assigned to four evaluations with no existing team. They need to know who to involve and which approvals they'll need long before any launch review. Plans also vary widely: a POR is often a slide deck, not a structured doc.
+
 ## 2. Job to be done
 
 **When** a launch review is a week out and I have to tell leadership whether we're on track, **I want to** see every gap between the plan and the actual work, with owners and sources, **so I can** chase the right people while there's still time and give a status I can defend. **But first** I need to trust the list: every item shows its source, and nothing is filler.
@@ -36,7 +40,7 @@ Current tools (Jira, Asana, Linear, Planview) don't track business-process depen
 
 ## User flow
 
-1. The TPM opens the release and confirms the plan extracted from the POR, correcting one date.
+1. The TPM opens the tool, reads what it does, and picks "Preparing to launch". They add the POR (a slide deck) and launch checklist, confirm the plan extracted from them, correcting one date, and connect Jira.
 2. Four findings appear:
    - Security approval still open (process, strong).
    - A database permissions review promised in a comment, with no ticket (commitment, moderate).
@@ -44,61 +48,81 @@ Current tools (Jira, Asana, Linear, Planview) don't track business-process depen
    - No rollback plan (process, moderate).
 3. They open a finding and see the plan line next to the Jira evidence.
 4. They dismiss one item that doesn't apply.
-5. They open the dashboard: Security and Data Platform are at risk, SRE is late and slipped since the last run. They go into the go/no-go at amber, with two named owners.
+5. They see team status on the same screen: Security and Data Platform are at risk, SRE is late and slipped since the last run. They go into the go/no-go at amber, with two named owners and a list of next actions.
 
 Known miss: anything agreed only in meetings or Slack.
 
+The same flow adapts to earlier stages:
+
+| Stage | User adds | They get |
+|---|---|---|
+| Just starting | A PRD or one-pager; the employee directory | Teams to involve, with why and when; a likely contact per team; a stakeholder map; approvals they'll need; first actions |
+| Building | Their plan; Jira; a team list or directory | Teams missing from the work; approvals not started or without an owner; next actions |
+| Preparing to launch | POR and launch checklist; Jira and the release epic | The launch review above: findings with evidence, team status across runs, next actions |
+
 ## Scope
 
-**In:** POR, launch checklist and Jira as inputs; process, cross-team date and commitment gaps; linkage gaps between the epic and other teams' tickets; evidence and strength on every finding; a GUI over saved runs: findings plus a project status dashboard with history across runs; an answer key for each sample release.
+**MVP (locked by Nov 4):** the launch review. Onboarding that explains the tool, what counts as a plan, and asks the project's stage; plan files in any format (doc, slides, spreadsheet, PDF), with a POR required and a launch checklist and team list optional; "Connect your apps", where apps the company allows can be connected and the rest are greyed out (Jira works; others are shown only); process, cross-team date and commitment gaps; linkage gaps between the epic and other teams' tickets; evidence, strength and a next action on every finding; one review screen over saved runs that combines findings and team status, with history across runs; an answer key for each sample release.
 
-**Out this semester:** usability testing; meeting notes, Slack and email; follow-up chat; a live GUI connected to Devin; other gap types (coverage, ownership, assumption drift); briefs for other roles; releases without a POR; writing to Jira; multi-release rollup; plugin packaging; Glean and Asana; real company data.
+**After the MVP (Nov 16–22):** the early-stage path — suggest teams, contacts and approvals from a PRD plus an employee directory.
+
+**Designed only (prototype):** the building-stage path, and connectors other than Jira and the employee directory.
+
+**Out this semester:** usability testing; meeting notes, Slack and email; follow-up chat; a live GUI connected to Devin; other gap types (coverage, ownership, assumption drift); briefs for other roles; launch reviews without a POR; writing to Jira; multi-release rollup; plugin packaging; Glean and Asana; real company data.
 
 ## Requirements
 
 | ID | Requirement |
-| --- | --- |
-| R1 | Extract a plan from the POR: deliverables, owners, dates, dependencies, approvals |
+|---|---|
+| R1 | Extract a plan from the POR in any format, including slide decks: deliverables, owners, dates, dependencies, approvals, each with its source quote |
 | R2 | TPM confirms or edits the plan before seeing findings |
 | R3 | Load the launch checklist |
 | R4 | Read the epic (stories, links, components, comments, due dates), then follow its issue links and comment-mentioned keys one hop into other teams' projects (status, due date, assignee), then run a scoped search of each POR team's project for unlinked matches to plan items within the release window |
-| R5 | Report process, cross-team date and commitment gaps, each with an owner from the org map (team → owners, Jira project keys, components) |
+| R5 | Report process, cross-team date and commitment gaps, each with an owner from a team list or directory when one is provided, otherwise inferred from Jira and marked as inferred |
 | R6 | Each finding shows the expected item and the evidence found, or "none found" |
 | R7 | Evidence strength: **strong** = plan or checklist item matched to a linked ticket; **moderate** = owner or match inferred; **weak** = comment text only |
 | R8 | Hide weak findings by default; show at most 10 |
-| R9 | Project status dashboard: one row per team and Jira project with status (on track / at risk / late), open gaps, next plan date and change since the last run, expandable to plan items next to their tickets; plus release status, status history across runs, and what the tool can't see |
-| R10 | GUI: plan confirmation, findings list, accept/dismiss (logged), and the dashboard (R9) |
+| R9 | Team status, on the review screen: one row per team and Jira project with status (on track / at risk / late), open gaps, next plan date and change since the last run, expandable to plan items next to their tickets; plus release status, status history across runs, and what the tool can't see |
+| R10 | GUI: onboarding (R14), plan upload and confirmation, Connect your apps (R15), and one review screen with findings, keep/dismiss (logged), team status (R9) and next actions (R16) |
 | R11 | Three skills (reader, analyzer, status) plus an orchestrator; each skill usable alone. The status skill rolls findings up per team and compares them with the previous run |
 | R12 | Sample data and answer key: someone else writes the sample POR, checklist, org map and Jira projects, including known gaps (one is an unlinked cross-team blocker) and an answer key listing them. Each sample release has at least two dated snapshots, with known status changes between them. Devin runs each snapshot 3 times, and the output is checked against the key |
 | R13 | Surface linkage gaps found in R4: a matching ticket in another team's project that isn't linked to the epic, or an issue key mentioned in a comment with no link. Each shows both tickets and the suggested link type. A linkage gap behind a finding is shown on that finding; the rest are listed in a separate "Linkage gaps" section that does not count toward the 10-finding cap |
+| R14 | Onboarding: say what the tool does and what counts as a plan (PRD, one-pager, POR deck, brief, checklist; any format, no template), ask the project's stage, and list what to have ready for that stage before upload |
+| R15 | Connect your apps: a gallery grouped by kind (work tracking, docs, product planning, people and org, chat); apps the company allows can be connected read-only, others are greyed out; required and recommended apps marked per stage. Jira and the employee directory work; others are shown only |
+| R16 | Next actions: every finding carries one (who, what, by when, why), and every result opens with the user's next actions for their stage, which they can tick off |
+| R17 | Early stage (after the MVP): from a PRD, list the signals that imply a team (with the quote), suggest teams to involve with why and when, a likely contact per team from the directory, a stakeholder map, and the approvals to plan for |
+| R18 | Building stage (designed only): compare the teams the plan needs with the people on the Jira work, and show approvals not started or without an owner |
 
-Constraints: sample data only. The dashboard states what the tool can't see: meetings, Slack, and whether technical work is adequate.
+Constraints: sample data only. The review screen states what the tool can't see: meetings, chat and email, approvals tracked in apps that aren't connected, and whether technical work is adequate.
 
 ## How it works
 
-Devin runs the orchestrator on each dated snapshot of a sample release (reader → analyzer → status) and saves each run as JSON; the GUI loads the runs in order, so the dashboard shows the latest status and how it changed. Skills are plain `SKILL.md` files, so they can move to another agent. Details: Dependency Review Skills — Design (Devin + Jira).
+Devin runs the orchestrator on each dated snapshot of a sample release (reader → analyzer → status) and saves each run as JSON; the GUI loads the runs in order, so the review screen shows the latest status and how it changed. The GUI asks the stage first and adapts what it asks for and what it shows; every stage ends in next actions. Skills are plain `SKILL.md` files, so they can move to another agent. Details: Dependency Review Skills — Design (Devin + Jira) (`docs/skills-design.md`; where they disagree, this PRD wins).
 
 ## Success metrics
 
 | Metric | Target |
-| --- | --- |
+|---|---|
 | Known gaps found (vs. answer key) | ≥ 80% |
 | Shown findings that are in the answer key (precision) | ≥ 70% |
 | Unlinked cross-team blocker surfaced as a linkage gap | In all 3 runs |
 | Run-to-run variation | Reported |
 | Every sample release runs end to end and opens in the GUI | All releases |
-| Status changes between snapshots shown correctly on the dashboard | All known changes |
+| Status changes between snapshots shown correctly on the review screen | All known changes |
+| Shown findings with a next action | 100% |
+| Plan items extracted from the POR slide deck that match the markdown POR | All items |
+| Early stage (after the MVP): suggested teams that are in the sample PRD's answer key | ≥ 80% |
 
 ## Milestones
 
-Four one-week milestones, starting Oct 12. Nov 2–4 is catch-up and freezing the saved runs; no work Nov 5–14 (away); the GUI milestone runs Nov 16–22, when the prototype is complete. Phase 0 checks (approvals, Devin + Atlassian MCP, skill-calls-skill) happen in week 1 alongside the reader; the build runs on sample data either way.
+The MVP is locked Nov 4, before the break, and final deliverables are due Dec 4. The GUI and the stage-aware prototype came first (Oct 12–18), so the old GUI week (Nov 16–22) now builds the early-stage path and fixes what the evaluation finds. Nov 2–4 evaluates the launch review against the answer key and freezes the saved runs; no work Nov 5–14 (away). The Phase 0 check (Devin + Atlassian MCP) runs with the reader in the Oct 19–25 week; the build runs on sample data either way.
 
-_[Milestone chart not included in this export: Oct 12 to Nov 22, one week each, away Nov 5–14.]_
+Timeline: Oct 12 to Dec 4, MVP locked Nov 4, away Nov 5–14.
 
 ## Risks
 
 | Risk | Mitigation |
-| --- | --- |
+|---|---|
 | Scope cuts weaken the link to the survey's top finding and to RQ2's conversational question | Say so in the report; reword RQ2 with Shyamala |
 | No second person to write the test data | Recruit this week; otherwise note the limitation |
 | Results vary between runs | Report it as a finding |
@@ -106,9 +130,14 @@ _[Milestone chart not included in this export: Oct 12 to Nov 22, one week each, 
 | Few TPMs in the survey | Validate the problem with 2–3 TPM interviews; note the limitation in the report |
 | Dropping usability testing leaves RQ3 and the proposal's evaluation objective unanswered | Agree the change with Shyamala; report evaluation as future work |
 | The dashboard and run history add scope, against the professor's advice to keep an achievable MVP | Build the dashboard from saved runs only; if time is short, ship the latest status first and add history after the MVP |
+| The stage-aware direction roughly doubles the build | Lock the MVP to the launch review by Nov 4; build the early stage after it; keep the building stage as a designed prototype |
+| Connectors beyond Jira look like promises | Build only Jira and the employee directory; show others in the gallery and say so in the report |
+| POR formats vary widely (slides, docs, spreadsheets) | Read slide decks first, test them against the markdown POR, and keep every plan item tied to a source quote the TPM confirms |
 
 ## Open questions
 
 - [ ] Who writes the sample POR, checklist and org map?
 - [ ] How should RQ2 be reworded?
 - [ ] GUI host: existing program-management-tool codebase or a new page?
+- [ ] One adaptive flow for the three stages, or separate entry points? (Designed as one flow; confirm with Professor Prayaga.)
+- [ ] Which employee directory source is realistic for the early-stage path, and is a sample directory enough for this semester?

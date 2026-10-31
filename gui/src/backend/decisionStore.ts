@@ -1,6 +1,6 @@
 import type { DecisionStore, RunDecisions } from "./types";
 
-const EMPTY: RunDecisions = { decisions: {}, log: [] };
+const EMPTY: RunDecisions = { decisions: {}, log: [], actionsDone: {} };
 
 /** Keep/dismiss decisions per run, in this browser only. Falls back to memory if storage is unavailable. */
 export class LocalDecisionStore implements DecisionStore {
