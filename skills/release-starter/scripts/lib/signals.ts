@@ -93,7 +93,9 @@ export function addAgentSignals(files: LoadedFile[], rules: SignalRules, signals
     const label = JSON.stringify((a.quote ?? "").slice(0, 60));
     const f = files.find((x) => x.name === a.file);
     if (!f) { warnings.push(`Dropped agent signal ${label}: file ${a.file} is not one of the inputs.`); continue; }
-    if (!a.quote || !containsQuote(f.text, a.quote)) { warnings.push(`Dropped agent signal ${label}: its quote was not found in ${f.name}.`); continue; }
+    if (!a.quote) { warnings.push(`Dropped agent signal ${label}: it has no quote.`); continue; }
+    const unreadable = !f.text && !f.rows && !f.data && !f.segments;
+    if (!unreadable && !containsQuote(f.text, a.quote)) { warnings.push(`Dropped agent signal ${label}: its quote was not found in ${f.name}.`); continue; }
     const ids = (a.rule_ids ?? []).filter((id) => byId.has(id));
     const unknown = (a.rule_ids ?? []).filter((id) => !byId.has(id));
     if (unknown.length) warnings.push(`Agent signal ${label}: unknown rule id ${unknown.join(", ")} ignored (see templates/signals.yaml).`);
@@ -101,9 +103,10 @@ export function addAgentSignals(files: LoadedFile[], rules: SignalRules, signals
     const key = normQuote(a.quote);
     let s = out.find((x) => normQuote(x.quote) === key);
     if (!s) {
-      s = { id: `g${out.length + 1}`, quote: a.quote.trim(), file: f.name, locator: a.locator || locatorOf(f, a.quote), rule_ids: [], teams: [], approvals: [] };
+      s = { id: `g${out.length + 1}`, quote: a.quote.trim(), file: f.name, locator: a.locator || (unreadable ? f.name : locatorOf(f, a.quote)), rule_ids: [], teams: [], approvals: [], ...(unreadable ? { quote_verified: false } : {}) };
       out.push(s);
       added++;
+      if (unreadable) warnings.push(`${f.name}: the command could not read it, so the quote for signal ${s.id} was not checked; confirm it against the file.`);
     }
     for (const id of ids) {
       if (s.rule_ids.includes(id)) continue;

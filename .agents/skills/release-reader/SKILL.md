@@ -74,9 +74,10 @@ only) gives the warning `slide N has no extractable text`; there is no OCR.
   anything only said there. A Drive connector would supply the export later; it is not built.
 - **Mixed inputs** work: a deck plus a CSV checklist plus a YAML team list.
 
-**Then read the document yourself.** Run the helper first; it reads only the structured parts
-(the sections and tables above) and misses plan items written as prose, on slides with other headings,
-or in speaker notes. Read every file start to finish and write the items it missed into `items.json`:
+**Read the document yourself, first, in any format.** The helper reads only the structured parts
+(the sections and tables above) of the formats it has a parser for, and misses plan items written as
+prose, on slides with other headings, or in speaker notes. Open every file with your own tools, start
+to finish, and write every plan item into `items.json`; the helper keeps an item it also found once:
 
 ```json
 [{ "text": "Security review approved", "kind": "approval", "owner_team": "Security",
@@ -85,8 +86,10 @@ or in speaker notes. Read every file start to finish and write the items it miss
                "quote": "Security will have the security review approved by Nov 14." } }]
 ```
 
-Then re-run with `--agent-items items.json`. The quote must appear in the named file word for
-word (whitespace and curly quotes are ignored); otherwise the item is dropped with a warning.
+Then run with `--agent-items items.json`. The quote must appear in the named file word for
+word (whitespace and curly quotes are ignored); otherwise the item is dropped with a warning. When
+the helper cannot read the file at all (a format without a parser), the item is kept with
+`quote_verified: false` and a warning, and the table marks it `~`: the person confirms it at the checkpoint.
 `kind` is one of `deliverable`, `dependency`, `approval`, `checklist`. Leave `due_text` null when
 the text gives no date; do not invent one. For a deck, the locator is `"slide N"` or
 `"slide N (notes)"` and the quote must be on that slide.

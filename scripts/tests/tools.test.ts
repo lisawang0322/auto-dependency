@@ -127,4 +127,25 @@ describe("agent-written plan items (--agent-items)", () => {
       expect(JSON.parse(readFileSync(out.file, "utf8")).items).toHaveLength(out.plan.items.length);
     } finally { rmSync(runsRoot, { recursive: true, force: true }); }
   });
+
+  it("keeps items from a file the command cannot read, marked quote_verified: false, with a warning", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rrr-agent-fmt-"));
+    try {
+      const deck = join(dir, "Launch-plan.key");
+      writeFileSync(deck, "\u0000binary keynote bundle, not readable by the command\u0000");
+      const out = await runReview({ files: [deck, `${DOCS}/launch-checklist.csv`, `${DOCS}/team-list.yaml`], epicKey: "INGEST-142", source: { kind: "fixture", dir: SNAP }, label: "2026-11-13", runsRoot: dir, stopAfter: "plan", launchDate: "2026-11-20", agentItems: [
+        { text: "Ingestion service live in production", kind: "deliverable", owner_team: "Ingestion team", due_text: "by Nov 18", source: { file: "Launch-plan.key", locator: "slide 4", quote: "Ingestion live in prod by Nov 18 (Ingestion team)." } },
+        { text: "No quote", kind: "approval", owner_team: "Security", source: { file: "Launch-plan.key", locator: "slide 5", quote: "" } },
+      ] });
+      if (out.stopped !== "plan") throw new Error("expected to stop after plan");
+      const mine = out.plan.items.find((i) => i.source.file === "Launch-plan.key")!;
+      expect(mine).toMatchObject({ kind: "deliverable", owner_team: "Ingestion team", due: "2026-11-18", source: { locator: "slide 4", quote_verified: false } });
+      expect(out.plan.items.filter((i) => i.source.file === "Launch-plan.key")).toHaveLength(1);
+      expect(out.plan.items.find((i) => i.source.file === "launch-checklist.csv")!.source.quote_verified).toBeUndefined();
+      expect(out.plan.files.find((f) => f.name === "Launch-plan.key")).toMatchObject({ read_as: ["plan_items"], notes: "1 item read by the agent (quotes not checked: the command could not read the file)" });
+      expect(out.plan.warnings).toContain('Launch-plan.key: the command could not read it, so the quote for "Ingestion service live in production" was not checked; confirm it against the file.');
+      expect(out.plan.warnings).toContain('Dropped agent item "No quote": it has no quote.');
+      expect(out.plan.warnings.some((w) => /A POR is required|not used/.test(w))).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
 });

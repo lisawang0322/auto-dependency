@@ -59,8 +59,8 @@ async function main() {
     onStage: (stage, detail) => console.error(`${stage.padEnd(9)} ${detail}`),
   });
   if (out.stopped === "plan") {
-    console.error(`stopped after Stage A. Confirm or edit ${out.file}, then re-run with --resume.`);
-    for (const i of out.plan.items) console.error(`  ${i.id.padEnd(4)} ${i.kind.padEnd(12)} ${(i.owner_team ?? "—").padEnd(16)} ${(i.due ?? "—").padEnd(10)}${i.due_is_inferred ? "?" : " "} ${i.text}`);
+    console.error(`stopped after Stage A. Confirm or edit ${out.file}, then re-run with --resume. (? = inferred date, ~ = quote not checked by the command)`);
+    for (const i of out.plan.items) console.error(`  ${i.id.padEnd(4)} ${i.kind.padEnd(12)} ${(i.owner_team ?? "—").padEnd(16)} ${(i.due ?? "—").padEnd(10)}${i.due_is_inferred ? "?" : " "}${i.source.quote_verified === false ? "~" : " "}${i.text}`);
     for (const w of out.plan.warnings) console.error("  warning: " + w);
     console.log(out.file);
     return;

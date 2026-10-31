@@ -14,9 +14,10 @@ Two kinds of work, kept apart:
 
 - **Reading is yours.** A *signal* is a sentence of the PRD that implies a team or an approval
   (customer data, a public API, peak load, a user-facing screen, enterprise GA, the shared platform).
-  The command's patterns in `templates/signals.yaml` catch the obvious wording and miss the rest. You
-  read the whole PRD and add the sentences the patterns missed, each with its quote and the rule it is
-  an instance of.
+  You open the PRD with your own tools, in whatever format it comes, and write down every such
+  sentence with its quote and the rule it is an instance of. The command's patterns in
+  `templates/signals.yaml` add the obvious wording on their own and check your quotes where it can
+  read the file.
 - **Implying is the rules'.** Which teams and approvals a signal implies, with the role, why, when and
   the first action, comes from the rule, never from you. The building stage matches people on Jira
   tickets to teams through the directory and approvals to tickets by keyword. Nothing is rated or
@@ -38,17 +39,14 @@ Ask which stage they are at if it is not clear: *just starting* (no team yet, ma
 
 ### 1. Read the PRD
 
-```
-npm run starter -- --stage starting --files in/<project>/<prd> [in/<project>/<directory>]
-```
-Prints the signals the patterns found, the teams (role, when, contact), the approvals and the first
-actions, and writes `runs/<project-slug>/<date>.starting.json`. (For the building stage run the
-building command from step 3 with `--stop` left out; it writes `runs/<EPIC>/<date>.building.json`.)
+First open `templates/signals.yaml` and read each rule's `id`, `teams` and `approvals`: that is the
+meaning of each kind of signal. Then read the whole PRD with your own tools, in whatever format it
+comes (markdown, Word, PDF, a deck, a Pages or Keynote export), every section and slide. If you cannot
+open a format directly, convert it and say so. Never substitute another file for the one given.
 
-Now open `templates/signals.yaml` and read each rule's `id`, `teams` and `approvals`: that is the
-meaning of each kind of signal. Then read the whole PRD, every section and slide, and write the
-sentences that are an instance of a rule's meaning but are not already in the printed signals, into
-`runs/<project-slug>/<date>.agent-signals.json` (next to the file the command wrote):
+Write `runs/<project-slug>/<date>.agent-signals.json` (the slug is the project's name in lower case
+with dashes; for the building stage use `runs/<EPIC>/<date>.agent-signals.json`) with every sentence
+that is an instance of a rule's meaning:
 
 ```json
 [{ "quote": "Aggregates are kept indefinitely.",
@@ -58,26 +56,30 @@ sentences that are an instance of a rule's meaning but are not already in the pr
 ```
 
 - `quote` is one sentence copied word for word (only whitespace and curly quotes are ignored).
-- `file` is the file's name exactly as given; `locator` is optional (`§3 Data`, `slide 4`); the
-  command finds the section itself when it is left out.
+- `file` is the file's name exactly as given; `locator` is optional (`§3 Data`, `slide 4`, `page 2`);
+  the command finds the section itself when it can read the file.
 - `rule_ids` are ids from `templates/signals.yaml`. A sentence can be an instance of several rules.
   An id that is not in the file is ignored with a warning; a signal with no known id is dropped.
 - A sentence that implies a team no rule covers is not a signal. Do not invent a rule or a team: say
   in chat that the sentence is not covered by the rules, so the company can extend `signals.yaml`.
 - Sentences that say what is *not* in scope, or describe something that already exists, are not signals.
 
-Run the command again with your signals (and the same files):
+Then run the command with your signals:
 
 ```
 npm run starter -- --stage starting --files in/<project>/<prd> [in/<project>/<directory>] --agent-signals runs/<project-slug>/<date>.agent-signals.json
 ```
-A `Dropped agent signal` warning means a quote is not in the file or the rule id does not exist: fix
-it or leave the signal out. Never edit the saved run to add a signal.
+It adds the sentences its own patterns match (a sentence you both found is kept once), checks your
+quotes against the PRD when it can read the file, and prints the signals, the teams (role, when,
+contact), the approvals and the first actions; it writes `runs/<project-slug>/<date>.starting.json`.
+A signal from a file the command cannot read is kept with `quote_verified: false` and a warning; a
+`Dropped agent signal` warning means a quote is not in a readable file or the rule id does not exist.
+Fix it or leave the signal out. Never edit the saved run to add a signal.
 
 **Checkpoint.** Show the person the signals (`signals[]`: quote, where it was found, the teams it
-points to), say which ones you added, and ask which are wrong. Re-run with `--exclude g2,g5` (keeping
-`--agent-signals`) for the ones they untick; the teams, approvals and actions only those signals
-implied drop out.
+points to), say which you read and which the patterns added, which quotes the command could not
+check, and ask which are wrong. Re-run with `--exclude g2,g5` (keeping `--agent-signals`) for the
+ones they untick; the teams, approvals and actions only those signals implied drop out.
 
 ### 2. Just starting: report
 

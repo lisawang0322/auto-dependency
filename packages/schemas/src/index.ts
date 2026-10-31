@@ -21,6 +21,8 @@ export const PlanSource = z.object({
   file: z.string(),
   locator: z.string(),
   quote: z.string().min(1),
+  /** false when the agent supplied the quote and the command could not read the file to check it; absent otherwise. */
+  quote_verified: z.boolean().optional(),
 });
 
 export const PlanItem = z.object({
@@ -356,6 +358,8 @@ export const Signal = z.object({
   rule_ids: z.array(z.string()),
   teams: z.array(z.string()),
   approvals: z.array(z.string()),
+  /** false when the agent supplied the quote and the command could not read the file to check it; absent otherwise. */
+  quote_verified: z.boolean().optional(),
 });
 export type Signal = z.infer<typeof Signal>;
 

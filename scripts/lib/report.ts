@@ -96,7 +96,7 @@ ${otherGaps.map((g) => `<tr><td><code>${esc(g.from)}</code></td><td><code>${esc(
 
 <h2>Plan as confirmed</h2>
 <div class="wrap"><table><thead><tr><th>Id</th><th>Plan item</th><th>Type</th><th>Owner</th><th>Due</th><th>Source</th></tr></thead><tbody>
-${run.plan.items.map((i) => `<tr><td>${esc(i.id)}</td><td>${esc(i.text)}</td><td>${esc(i.kind)}</td><td>${esc(i.owner_team ?? "—")}</td><td>${fmt(i.due)}${i.due_is_inferred ? ' <span class="muted small">(inferred)</span>' : ""}</td><td class="small muted">${esc(i.source.file)} · ${esc(i.source.locator)}</td></tr>`).join("\n")}
+${run.plan.items.map((i) => `<tr><td>${esc(i.id)}</td><td>${esc(i.text)}</td><td>${esc(i.kind)}</td><td>${esc(i.owner_team ?? "—")}</td><td>${fmt(i.due)}${i.due_is_inferred ? ' <span class="muted small">(inferred)</span>' : ""}</td><td class="small muted">${esc(i.source.file)} · ${esc(i.source.locator)}${i.source.quote_verified === false ? " · quote not checked" : ""}</td></tr>`).join("\n")}
 </tbody></table></div>
 <p class="small muted">Teams and projects: ${run.target.projects.map((p) => `${esc(p.team)} → ${esc(p.jira_project ?? "unresolved")}${p.search === false ? " (not searched)" : ""}`).join("; ")}.</p>
 

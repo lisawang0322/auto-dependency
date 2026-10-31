@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadFile } from "../../release-reader/scripts/lib/files.js";
@@ -179,5 +179,19 @@ describe("agent-read signals (--agent-signals)", () => {
       expect(unticked.starter.excluded_signals).toEqual([mine.id]);
       expect(unticked.starter.teams.map((t) => t.team)).toEqual(out.starter.teams.map((t) => t.team)); // Privacy and Legal were already implied by §3
     } finally { rmSync(runsRoot, { recursive: true, force: true }); }
+  });
+
+  it("keeps a signal from a PRD the command cannot read, marked quote_verified: false", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rrr-starter-fmt-"));
+    try {
+      const prd = join(dir, "Ingestion-PRD.pages");
+      writeFileSync(prd, "\u0000pages bundle\u0000");
+      const out = await runStarter({ stage: "starting", files: [prd, `${DOCS}/directory.yaml`], runsRoot: dir, label: "2026-11-13",
+        agentSignals: [{ quote: "Partners push events through a new public API.", file: "Ingestion-PRD.pages", locator: "page 2", rule_ids: ["public_api"] }] });
+      expect(out.starter.signals).toHaveLength(1);
+      expect(out.starter.signals[0]).toMatchObject({ id: "g1", file: "Ingestion-PRD.pages", locator: "page 2", rule_ids: ["public_api"], quote_verified: false });
+      expect(out.starter.teams.map((t) => t.team)).toContain("Security");
+      expect(out.starter.warnings).toContain("Ingestion-PRD.pages: the command could not read it, so the quote for signal g1 was not checked; confirm it against the file.");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

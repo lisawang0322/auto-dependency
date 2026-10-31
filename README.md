@@ -39,9 +39,11 @@ npm run report -- runs/PROJ-123/2026-10-30.json   # one self-contained HTML file
 
 **In Devin (or any agent):** the `release-review` skill in `.agents/skills/` is the only one to
 invoke. It runs doctor, then the review with its two checkpoints, then the report, and says what to
-post in chat. The agent reads the plan files itself and adds the items the rules miss through
-`--agent-items` (each must quote the file or it is dropped), so the document reading runs on the
-agent's own model and credits, with no model API key in the repo; the findings stay rule-based. Put `JIRA_SITE`, `JIRA_EMAIL` and `JIRA_API_TOKEN` in the workspace's secrets; attachments
+post in chat. The agent reads the plan files itself, in any format, and writes the plan items through
+`--agent-items`; the command checks each quote against every file it can read and keeps an item from
+a file it cannot read marked `quote_verified: false`, so the person confirms it. The document reading
+runs on the agent's own model and credits, with no model API key in the repo; the findings stay
+rule-based. Put `JIRA_SITE`, `JIRA_EMAIL` and `JIRA_API_TOKEN` in the workspace's secrets; attachments
 go under `in/<epic>/`. Nothing in the flow asks for a token in chat.
 
 ```

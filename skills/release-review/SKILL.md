@@ -1,6 +1,6 @@
 ---
 name: release-review
-description: Runs a complete release readiness review from plan files and a Jira epic key. You read the plan files and add the plan items the rules miss (each with a quote), the person confirms the plan and the team→project mapping, then the rules compare the plan with Jira. The one skill to invoke; it drives release-reader, release-analyzer and release-status through a single command and ends with a findings table and an HTML report. Jira is only ever read.
+description: Runs a complete release readiness review from plan files and a Jira epic key. You read the plan files yourself, in any format, and write the plan items (each with a quote the command checks where it can), the person confirms the plan and the team→project mapping, then the rules compare the plan with Jira. The one skill to invoke; it drives release-reader, release-analyzer and release-status through a single command and ends with a findings table and an HTML report. Jira is only ever read.
 triggers: ["user"]
 ---
 
@@ -12,11 +12,12 @@ epic and no launch date), use `release-starter` instead.
 
 Two kinds of work, kept apart:
 
-- **Reading is yours.** A plan of record is written for people: a deck, a doc, a one-pager. The
-  command's rules read only the structured parts (sections headed Deliverables, Dependencies,
-  Approvals, Readiness or Milestones; checklist tables; team lists) and miss the rest. You read the
-  whole document and add every plan item the rules missed, each with a quote from the file. An item
-  whose quote is not in the file is dropped, so you cannot add anything the document does not say.
+- **Reading is yours.** A plan of record is written for people, in whatever format they chose: a
+  deck, a doc, a PDF, a spreadsheet. You open the files with your own tools and write down every plan
+  item, each with a quote. The command then checks the quotes against every file it can read itself
+  and adds the structured parts it can parse (checklist rows, team lists). An item whose quote is not
+  in a readable file is dropped, so you cannot add anything the document does not say; an item from a
+  file the command cannot read is kept but marked unchecked, so the person knows to confirm it.
 - **Judging is the rules'.** Which items are gaps, how strong the evidence is, each team's status and
   the next actions come from `release-analyzer` and `release-status`. You run them, show them and
   report them; you never add, remove, rank, reword or rate a finding.
@@ -40,13 +41,14 @@ to repair credentials or install things beyond what the line suggests (`npm inst
 
 ### 1. Read the plan
 
-```
-npm run review -- --files in/<EPIC>/* --epic <EPIC> --source rest --stop-after plan
-```
-This writes `runs/<EPIC>/<date>/plan-draft.json` and prints the plan table the rules found. Now read
-every plan file yourself from start to finish: every slide, its speaker notes and tables, every
-section of a doc. Write `runs/<EPIC>/<date>/agent-items.json` with every plan item the table does
-not already have:
+You read the plan files first, with your own tools, in whatever format they come: a `.pptx` or Google
+Slides export, a PDF, a Word file, a Keynote or Pages export, a spreadsheet, markdown. Open every file
+start to finish: every slide, its speaker notes and tables, every section of a doc. If you cannot open
+a format directly, convert it (for example `soffice --headless --convert-to pdf`) and say so in chat.
+Never substitute another file for the one the person gave, and never skip a file because the command
+can read it on its own.
+
+Write `runs/<EPIC>/<date>/agent-items.json` with every plan item in the files:
 
 ```json
 [{ "text": "Rollback rehearsed",
@@ -66,24 +68,35 @@ document says are out of scope are not items.
   it; `null` when it names none. Never guess a team.
 - `due_text` is the document's own words for the date ("by Nov 14", "the week before launch"); `null`
   when it gives none. Never invent or infer a date; the command resolves relative ones itself.
-- `source.file` is the file's name exactly as given; `locator` is `§4`, `slide 9` or `slide 9 (notes)`;
-  `quote` is one sentence or one table row copied word for word (only whitespace and curly quotes are
-  ignored). For a deck the quote must be on that slide.
-- Do not repeat an item the table already has, even reworded.
+- `source.file` is the file's name exactly as given; `locator` is `§4`, `slide 9`, `slide 9 (notes)`
+  or `page 3`; `quote` is one sentence or one table row copied word for word (only whitespace and
+  curly quotes are ignored). For a deck the quote must be on that slide.
+- One item per commitment. If the same commitment appears twice (a summary slide and a detail slide),
+  quote the more specific one.
 
-Then run Stage A again with your items. No `--resume`: Stage A is recomputed and the file rewritten.
+Then run Stage A with your items:
 
 ```
 npm run review -- --files in/<EPIC>/* --epic <EPIC> --source rest --stop-after plan --agent-items runs/<EPIC>/<date>/agent-items.json
 ```
-A `Dropped agent item` warning means a quote is not in the file: fix the quote or leave the item out.
-Never work around the check by writing the item into `plan-draft.json` yourself.
+The command adds what it can parse on its own (checklist rows, the team list, sections it recognises;
+an item it finds with the same quote as yours is kept once) and checks your quotes against every file
+it can read. Three outcomes per item:
+
+- kept, quote checked: the normal case for markdown, `.pptx`, PDF, Word, csv, yaml;
+- kept, quote **not** checked (`~` in the table, `quote_verified: false` in the file): the command could
+  not read that file's format. The item rests on your reading, so the person must confirm it;
+- dropped with a `Dropped agent item` warning: the quote is not in a file the command could read.
+  Fix the quote or leave the item out. Never work around the check by writing the item into
+  `plan-draft.json` yourself.
 
 **Checkpoint 1.** Show the plan table the command prints (id, kind, owner, due, text; `?` marks an
-inferred date) and the warnings, and say how many items the rules found and how many you added. Ask
-the person to confirm or correct it. Apply corrections by editing `runs/<EPIC>/<date>/plan-draft.json`
-(due dates, owners, wrong items removed; an item the person asks for added with a verbatim quote from
-the file as `source.quote`). Never add an item you cannot quote.
+inferred date, `~` a quote the command could not check) and the warnings. Say which files you read
+and how (directly, or converted), how many items came from your reading and how many the command
+added on its own, and which items the command could not check. Ask the person to confirm or correct
+the table. Apply corrections by editing `runs/<EPIC>/<date>/plan-draft.json` (due dates, owners,
+wrong items removed; an item the person asks for added with a verbatim quote from the file as
+`source.quote`). Never add an item you cannot quote.
 
 ### 2. Resolve the teams
 
@@ -111,8 +124,8 @@ A short table of the shown findings: title, gap type, strength, owner, next acti
 findings as one line ("N weak findings hidden: …"), and the separate linkage gaps. Quote titles and
 actions as the files have them; do not reword, rank, or add findings, and do not state a confidence.
 If the run compared with an earlier one (the `status` line says so), say what changed first. Say how
-many plan items came from the rules and how many from your reading, so the person knows what the
-findings rest on.
+many plan items came from your reading, how many the command added on its own, and how many quotes
+it could not check, so the person knows what the findings rest on.
 
 ## Rules
 

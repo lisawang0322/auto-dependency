@@ -324,6 +324,37 @@ export function extractPlan(opts: ExtractOptions): PlanDraft {
     fileEntries.push({ name: f.name, read_as: readAsOf.get(f.name)!, notes: `${slides ? slides + " slides · " : ""}${counts} · names ${teams.size} teams${epicKeys.size ? " and epic " + [...epicKeys].sort().join(", ") : ""}${rowsSkipped ? ` · ${rowsSkipped} table rows without a team skipped` : ""}` });
   }
 
+  // Agent items: the agent read the document itself, in any format. When the command can read the file too, the
+  // quote must be in it; when it cannot (a format without a parser, a file the parser failed on), the item is kept
+  // with quote_verified: false and a warning, so the person sees what rests on the agent's word.
+  const agentCounts = new Map<string, { items: number; unchecked: number }>();
+  for (const a of opts.agentItems ?? []) {
+    const f = opts.files.find((x) => x.name === a.source?.file);
+    if (!f) { warnings.push(`Dropped agent item "${a.text}": source file ${a.source?.file} is not one of the inputs.`); continue; }
+    if (!a.source.quote) { warnings.push(`Dropped agent item "${a.text}": it has no quote.`); continue; }
+    const unreadable = !f.text && !f.rows && !f.data && !f.segments;
+    if (!unreadable && !containsQuote(f.text, a.source.quote)) { warnings.push(`Dropped agent item "${a.text}": its quote was not found in ${f.name}.`); continue; }
+    if (items.some((i) => norm(i.source.quote) === norm(a.source.quote))) continue;
+    const count = agentCounts.get(f.name) ?? { items: 0, unchecked: 0 };
+    count.items++;
+    if (unreadable) { count.unchecked++; warnings.push(`${f.name}: the command could not read it, so the quote for "${a.text}" was not checked; confirm it against the file.`); }
+    agentCounts.set(f.name, count);
+    const dm = a.due_text ? findDatePhrase(a.due_text, launch_date) : null;
+    if (a.owner_team) addTeam(a.owner_team, `${f.name} ${a.source.locator}`);
+    items.push({
+      id: "",
+      text: a.text,
+      kind: a.kind,
+      owner_team: a.owner_team,
+      due: a.due ?? dm?.due ?? null,
+      due_text: a.due_text ?? null,
+      due_is_inferred: a.due ? false : (dm?.inferred ?? false),
+      source: { file: f.name, locator: a.source.locator, quote: a.source.quote, ...(unreadable ? { quote_verified: false } : {}) },
+    });
+  }
+  // What the agent read also describes the release, for the checklist's "applies to" column.
+  if (agentCounts.size) profileText += (opts.agentItems ?? []).map((x) => `${x.text}\n${x.source?.quote ?? ""}`).join("\n") + "\n";
+
   // Checklist
   const deliverableOwner = items.find((i) => i.kind === "deliverable")?.owner_team ?? null;
   for (const f of checkFiles) {
@@ -368,25 +399,14 @@ export function extractPlan(opts: ExtractOptions): PlanDraft {
     fileEntries.push({ name: f.name, read_as: readAsOf.get(f.name)!, notes: `${total} checks · ${applied} apply to this release` });
   }
 
-  // Agent items (unstructured documents): validate quotes against file text.
-  for (const a of opts.agentItems ?? []) {
-    const f = opts.files.find((x) => x.name === a.source?.file);
-    if (!f) { warnings.push(`Dropped agent item "${a.text}": source file ${a.source?.file} is not one of the inputs.`); continue; }
-    if (!a.source.quote || !containsQuote(f.text, a.source.quote)) { warnings.push(`Dropped agent item "${a.text}": its quote was not found in ${f.name}.`); continue; }
-    if (items.some((i) => norm(i.source.quote) === norm(a.source.quote))) continue;
-    const dm = a.due_text ? findDatePhrase(a.due_text, launch_date) : null;
-    if (a.owner_team) addTeam(a.owner_team, `${f.name} ${a.source.locator}`);
-    items.push({
-      id: "",
-      text: a.text,
-      kind: a.kind,
-      owner_team: a.owner_team,
-      due: a.due ?? dm?.due ?? null,
-      due_text: a.due_text ?? null,
-      due_is_inferred: a.due ? false : (dm?.inferred ?? false),
-      source: { file: f.name, locator: a.source.locator, quote: a.source.quote },
-    });
+  for (const [name, c] of agentCounts) {
+    const note = `${c.items} item${c.items === 1 ? "" : "s"} read by the agent${c.unchecked ? " (quotes not checked: the command could not read the file)" : ""}`;
+    const entry = fileEntries.find((e) => e.name === name);
+    if (entry) entry.notes = `${entry.notes} · ${note}`;
+    else fileEntries.push({ name, read_as: ["plan_items"], notes: note });
+    for (let i = warnings.length - 1; i >= 0; i--) if (warnings[i] === `${name}: nothing could be read from it; not used.` || warnings[i].startsWith(`${name}: could not tell what it contains; not used.`)) warnings.splice(i, 1);
   }
+  if (!planFiles.length && agentCounts.size) { const i = warnings.indexOf("No file was read as plan items. A POR is required."); if (i >= 0) warnings.splice(i, 1); }
 
   for (const f of opts.files) if (!fileEntries.some((e) => e.name === f.name)) fileEntries.push({ name: f.name, read_as: readAsOf.get(f.name) ?? [], notes: "Nothing used from this file" });
   items.forEach((it, i) => { it.id = `p${i + 1}`; });
