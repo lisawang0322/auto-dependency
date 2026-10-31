@@ -21,7 +21,7 @@ import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { PlanItemKind } from "@rrr/schemas";
-import type { AgentItem } from "../skills/release-reader/scripts/lib/plan-extract.js";
+import type { AgentItem, AgentTeam, AgentLaunchDate } from "../skills/release-reader/scripts/lib/plan-extract.js";
 import type { AgentSignal } from "../skills/release-starter/scripts/lib/signals.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -164,8 +164,16 @@ export function signalRuleLines(rules: { rules: { id: string; teams: { team: str
   return rules.rules.map((r) => `- ${r.id}: implies ${r.teams.map((t) => t.team).join(", ")}${r.approvals?.length ? ` and the approvals ${r.approvals.map((a) => a.name).join(", ")}` : ""} (${r.teams[0]?.why ?? ""})`).join("\n");
 }
 
+/** What a file is to the reading: a plan or PRD, a launch checklist, or a team list / org chart. */
+export type FileRole = "plan" | "checks" | "teams";
+const ROLE_TEXT: Record<FileRole, string> = {
+  plan: "a plan or PRD: write down what it commits to",
+  checks: "a launch checklist: write down every check and whether it applies to this release",
+  teams: "a team list or org chart: write down every team and who is on it",
+};
+
 export interface ReadingRequest {
-  files: { name: string; url: string }[];
+  files: { name: string; url: string; role: FileRole }[];
   /** v1 references attachments inside the prompt; v3 passes them as a field and the prompt just names them. */
   inlineAttachments?: boolean;
   /** "launching" asks for plan items; "starting" / "building" ask for signals as well. */
@@ -178,13 +186,15 @@ export interface ReadingRequest {
 
 export function readingPrompt(req: ReadingRequest): string {
   const early = req.stage !== "launching";
+  const has = (r: FileRole) => req.files.some((f) => (f.role ?? "plan") === r);
+  const what = [has("plan") ? (early ? "plan items and signals from the plan files" : "plan items from the plan files") : "", has("checks") ? "every check from the checklists" : "", has("teams") ? "every team from the team lists" : ""].filter(Boolean);
   const lines = [
-    `Read the attached plan files and write down what they commit to. Do not write code, open a pull request, commit, or ask me questions: if something is unclear, decide and note it in the output.`,
+    `Read the attached files and write down what they say. Do not write code, open a pull request, commit, or ask me questions: if something is unclear, decide and note it in the output.`,
     ``,
-    `Files (open each one with your own tools, in whatever format it is: a .pptx or Google Slides export, a PDF, a Word file, a Keynote or Pages export, a spreadsheet, markdown; read every slide with its speaker notes and tables, every section of a doc; if you cannot open a format directly, convert it and say how in files_read):`,
-    ...req.files.map((f) => (req.inlineAttachments === false ? `- ${f.name} (attached)` : `- ${f.name}: ATTACHMENT:"${f.url}"`)),
+    `Files (open each one with your own tools, in whatever format it is: a .pptx or Google Slides export, a PDF, a Word file, a Keynote or Pages export, a spreadsheet, csv, yaml, markdown; read every slide with its speaker notes and tables, every section of a doc, every row of a table; if you cannot open a format directly, convert it and say how in files_read):`,
+    ...req.files.map((f) => `- ${f.name}${req.inlineAttachments === false ? " (attached)" : `: ATTACHMENT:"${f.url}"`} — ${ROLE_TEXT[f.role ?? "plan"]}`),
     ``,
-    `What to extract. ${early ? "Plan items and signals." : "Plan items."}`,
+    `What to extract. ${what.join("; ")}.`,
     ``,
     req.rules,
     ``,
@@ -196,14 +206,31 @@ export function readingPrompt(req: ReadingRequest): string {
       ``,
     );
   }
+  if (has("checks")) {
+    lines.push(
+      `A check is one row or line of a launch checklist. Write each as an item with kind "checklist": text is the check as written; owner_team is the team the checklist names for it (when it says "service team" or "owning team", use the team that owns the deliverables in the plan files; null when you cannot tell); due_text is its own words for the due date; applies_to is its own words for when it applies; applies is true or false: whether this release, as the plan files describe it, is one the check applies to (a check for "all launches" always applies). Quote the row or line as it appears in the file. Write down every check, including those that do not apply.`,
+      ``,
+    );
+  }
+  if (has("teams")) {
+    lines.push(
+      `A team is one entry of a team list or org chart. Write each with name as the file spells it, role when given, jira_project (the Jira project key) when given, owners (the people named, each as "Name (title)" when a title is given), components when given, and the file and a locator for the entry ("teams[2]", "row 3", "slide 2"). Write down every team.`,
+      ``,
+    );
+  }
   lines.push(
+    `Also write down launch_date: the release's launch date as YYYY-MM-DD when a plan file states one, with the sentence that states it quoted word for word; null when none is stated, never inferred. And epic_keys: the Jira issue keys the plan files name as the release's epic (for example INGEST-142); [] when none.`,
+    ``,
     `Result. Provide this JSON object as the session's structured output (nothing else is read):`,
     `{"done": true,`,
-    ` "items": [{"text": "<short label>", "kind": "deliverable|dependency|approval|checklist", "owner_team": "<team or null>", "due_text": "<the document's words or null>", "source": {"file": "<file name exactly as above>", "locator": "<§4 | slide 9 | slide 9 (notes) | page 3>", "quote": "<one sentence or row, verbatim>"}}],`,
+    ` "items": [{"text": "<short label>", "kind": "deliverable|dependency|approval|checklist", "owner_team": "<team or null>", "due_text": "<the document's words or null>", "applies_to": "<checklist items only: the document's words, else null>", "applies": <checklist items only: true or false>, "source": {"file": "<file name exactly as above>", "locator": "<§4 | slide 9 | slide 9 (notes) | page 3 | row 4>", "quote": "<one sentence or row, verbatim>"}}],`,
     early ? ` "signals": [{"quote": "<sentence, verbatim>", "file": "<file name>", "locator": "<§3 Data | slide 4>", "rule_ids": ["<rule id>"]}],` : ` "signals": [],`,
-    ` "files_read": [{"name": "<file name>", "how": "<e.g. python-pptx, text, converted with soffice>"}],`,
+    ` "teams": [{"name": "<team>", "role": "<role or null>", "jira_project": "<KEY or null>", "owners": ["<Name (title)>"], "components": ["<component>"], "source": {"file": "<file name>", "locator": "<teams[2] | row 3>"}}],`,
+    ` "launch_date": {"date": "YYYY-MM-DD", "source": {"file": "<file name>", "quote": "<the sentence, verbatim>"}},`,
+    ` "epic_keys": ["<KEY-123>"],`,
+    ` "files_read": [{"name": "<file name>", "how": "<a few words: the tool or method, e.g. python-pptx; not a report>"}],`,
     ` "unreadable": [{"name": "<file name>", "reason": "<why>"}]}`,
-    `Update the structured output as soon as it is complete, then finish the session.`,
+    `Keep "how" and "reason" to a few words each; decisions and caveats belong in the item fields, not there. Update the structured output as soon as it is complete, then finish the session.`,
   );
   return lines.join("\n");
 }
@@ -218,8 +245,16 @@ export const OUTPUT_SCHEMA = {
     items: { type: "array", items: { type: "object", required: ["text", "kind", "source"], properties: {
       text: { type: "string" }, kind: { type: "string", enum: ["deliverable", "dependency", "approval", "checklist"] },
       owner_team: { type: ["string", "null"] }, due_text: { type: ["string", "null"] },
+      applies_to: { type: ["string", "null"] }, applies: { type: "boolean" },
       source: { type: "object", required: ["file", "quote"], properties: { file: { type: "string" }, locator: { type: "string" }, quote: { type: "string" } } },
     } } },
+    teams: { type: "array", items: { type: "object", required: ["name", "source"], properties: {
+      name: { type: "string" }, role: { type: ["string", "null"] }, jira_project: { type: ["string", "null"] },
+      owners: { type: "array", items: { type: "string" } }, components: { type: "array", items: { type: "string" } },
+      source: { type: "object", required: ["file"], properties: { file: { type: "string" }, locator: { type: ["string", "null"] } } },
+    } } },
+    launch_date: { type: ["object", "null"], required: ["date", "source"], properties: { date: { type: "string" }, source: { type: "object", required: ["file", "quote"], properties: { file: { type: "string" }, quote: { type: "string" } } } } },
+    epic_keys: { type: "array", items: { type: "string" } },
     signals: { type: "array", items: { type: "object", required: ["quote", "file", "rule_ids"], properties: { quote: { type: "string" }, file: { type: "string" }, locator: { type: ["string", "null"] }, rule_ids: { type: "array", items: { type: "string" } } } } },
     files_read: { type: "array", items: { type: "object", required: ["name"], properties: { name: { type: "string" }, how: { type: "string" } } } },
     unreadable: { type: "array", items: { type: "object", required: ["name"], properties: { name: { type: "string" }, reason: { type: "string" } } } },
@@ -234,7 +269,18 @@ const ItemOut = z.object({
   owner_team: z.string().nullable().optional().transform((v) => v ?? null),
   due_text: z.string().nullable().optional().transform((v) => v ?? null),
   source: z.object({ file: z.string().min(1), locator: z.string().optional().transform((v) => v ?? ""), quote: z.string().min(1) }),
+  applies_to: z.string().nullable().optional().transform((v) => v ?? null),
+  applies: z.boolean().optional(),
 });
+const TeamOut = z.object({
+  name: z.string().min(1),
+  role: z.string().nullable().optional().transform((v) => v ?? null),
+  jira_project: z.string().nullable().optional().transform((v) => v ?? null),
+  owners: z.array(z.string()).optional().transform((v) => v ?? []),
+  components: z.array(z.string()).optional().transform((v) => v ?? []),
+  source: z.object({ file: z.string().min(1), locator: z.string().nullable().optional().transform((v) => v ?? null) }),
+});
+const LaunchDateOut = z.object({ date: z.string().min(1), source: z.object({ file: z.string().min(1), quote: z.string().min(1) }) });
 const SignalOut = z.object({ quote: z.string().min(1), file: z.string().min(1), locator: z.string().nullable().optional(), rule_ids: z.array(z.string()).min(1) });
 const FileRead = z.object({ name: z.string(), how: z.string().optional().transform((v) => v ?? "") });
 const Unreadable = z.object({ name: z.string(), reason: z.string().optional().transform((v) => v ?? "") });
@@ -242,6 +288,9 @@ const Output = z.object({
   done: z.boolean().optional(),
   items: z.array(z.unknown()).optional(),
   signals: z.array(z.unknown()).optional(),
+  teams: z.array(z.unknown()).optional(),
+  launch_date: z.unknown().optional(),
+  epic_keys: z.array(z.unknown()).optional(),
   files_read: z.array(z.unknown()).optional(),
   unreadable: z.array(z.unknown()).optional(),
 });
@@ -249,6 +298,9 @@ const Output = z.object({
 export interface ReadingResult {
   items: AgentItem[];
   signals: AgentSignal[];
+  teams: AgentTeam[];
+  launch_date: AgentLaunchDate | null;
+  epic_keys: string[];
   files_read: { name: string; how: string }[];
   unreadable: { name: string; reason: string }[];
   /** Entries Devin wrote that did not match the shape, as warnings. */
@@ -257,7 +309,7 @@ export interface ReadingResult {
 
 /** Validate Devin's structured output; bad entries become warnings, not failures. */
 export function parseReading(raw: unknown, fileNames: string[]): ReadingResult {
-  const out: ReadingResult = { items: [], signals: [], files_read: [], unreadable: [], warnings: [] };
+  const out: ReadingResult = { items: [], signals: [], teams: [], launch_date: null, epic_keys: [], files_read: [], unreadable: [], warnings: [] };
   const parsed = Output.safeParse(raw);
   if (!parsed.success) { out.warnings.push("Devin's result was not in the expected shape; nothing was read from it."); return out; }
   const known = new Set(fileNames);
@@ -265,8 +317,20 @@ export function parseReading(raw: unknown, fileNames: string[]): ReadingResult {
     const r = ItemOut.safeParse(it);
     if (!r.success) { out.warnings.push(`Devin item ${i + 1} was dropped: ${r.error.issues[0]?.message ?? "invalid"}.`); continue; }
     if (!known.has(r.data.source.file)) { out.warnings.push(`Devin item "${r.data.text}" was dropped: it names ${r.data.source.file}, which was not uploaded.`); continue; }
-    out.items.push({ text: r.data.text, kind: r.data.kind, owner_team: r.data.owner_team, due_text: r.data.due_text, source: { file: r.data.source.file, locator: r.data.source.locator || "document", quote: r.data.source.quote } });
+    out.items.push({ text: r.data.text, kind: r.data.kind, owner_team: r.data.owner_team, due_text: r.data.due_text, source: { file: r.data.source.file, locator: r.data.source.locator || "document", quote: r.data.source.quote }, ...(r.data.kind === "checklist" ? { applies_to: r.data.applies_to, applies: r.data.applies ?? true } : {}) });
   }
+  for (const [i, t] of (parsed.data.teams ?? []).entries()) {
+    const r = TeamOut.safeParse(t);
+    if (!r.success) { out.warnings.push(`Devin team ${i + 1} was dropped: ${r.error.issues[0]?.message ?? "invalid"}.`); continue; }
+    if (!known.has(r.data.source.file)) { out.warnings.push(`Devin team "${r.data.name}" was dropped: it names ${r.data.source.file}, which was not uploaded.`); continue; }
+    out.teams.push({ name: r.data.name, role: r.data.role, jira_project: r.data.jira_project, owners: r.data.owners, components: r.data.components, source: { file: r.data.source.file, locator: r.data.source.locator } });
+  }
+  if (parsed.data.launch_date != null) {
+    const r = LaunchDateOut.safeParse(parsed.data.launch_date);
+    if (r.success && known.has(r.data.source.file)) out.launch_date = r.data;
+    else out.warnings.push("Devin's launch date was dropped: no date, or no quote from an uploaded file.");
+  }
+  for (const k of parsed.data.epic_keys ?? []) if (typeof k === "string" && /^[A-Za-z][A-Za-z0-9]+-\d+$/.test(k.trim())) out.epic_keys.push(k.trim().toUpperCase());
   for (const [i, sg] of (parsed.data.signals ?? []).entries()) {
     const r = SignalOut.safeParse(sg);
     if (!r.success) { out.warnings.push(`Devin signal ${i + 1} was dropped: ${r.error.issues[0]?.message ?? "invalid"}.`); continue; }
@@ -289,15 +353,15 @@ export interface ReadingOutcome extends ReadingResult {
 }
 
 /** Upload the files, run one Devin session, wait for its structured output. Never throws: a failure is an outcome with status "failed". */
-export async function readWithDevin(client: DevinClient, req: { paths: string[]; stage: ReadingRequest["stage"]; rules: string; signalRules?: string; user?: string | null; mode?: DevinMode | null; onLog?: (line: string) => void }): Promise<ReadingOutcome> {
+export async function readWithDevin(client: DevinClient, req: { files: { path: string; role: FileRole }[]; stage: ReadingRequest["stage"]; rules: string; signalRules?: string; user?: string | null; mode?: DevinMode | null; onLog?: (line: string) => void }): Promise<ReadingOutcome> {
   const log = req.onLog ?? (() => {});
-  const names = req.paths.map((p) => basename(p));
+  const names = req.files.map((f) => basename(f.path));
   const mode = client.api === "v3" ? (req.mode ?? client.defaultMode) : null;
-  const fail = (error: string, session: DevinSession | null = null): ReadingOutcome => ({ status: "failed", error, session_url: session?.url ?? null, session_id: session?.session_id ?? null, mode, items: [], signals: [], files_read: [], unreadable: [], warnings: [] });
+  const fail = (error: string, session: DevinSession | null = null): ReadingOutcome => ({ status: "failed", error, session_url: session?.url ?? null, session_id: session?.session_id ?? null, mode, items: [], signals: [], teams: [], launch_date: null, epic_keys: [], files_read: [], unreadable: [], warnings: [] });
   let session: DevinSession | null = null;
   try {
-    const files: { name: string; url: string }[] = [];
-    for (const p of req.paths) { files.push({ name: basename(p), url: await client.uploadAttachment(basename(p), readFileSync(p)) }); log(`uploaded ${basename(p)}`); }
+    const files: { name: string; url: string; role: FileRole }[] = [];
+    for (const f of req.files) { files.push({ name: basename(f.path), role: f.role, url: await client.uploadAttachment(basename(f.path), readFileSync(f.path)) }); log(`uploaded ${basename(f.path)}`); }
     const v3 = client.api === "v3";
     const prompt = readingPrompt({ files, stage: req.stage, rules: req.rules, signalRules: req.signalRules, user: req.user, inlineAttachments: !v3 });
     session = await client.createSession({ prompt, title: `Readiness Review: read ${names.join(", ")}${req.user ? ` for ${req.user}` : ""}`, tags: ["readiness-review"], attachmentUrls: files.map((f) => f.url), outputSchema: v3 ? OUTPUT_SCHEMA : undefined, mode });
@@ -309,7 +373,7 @@ export async function readWithDevin(client: DevinClient, req: { paths: string[];
       const ready = !!output && typeof output === "object" && ((output as any).done === true || (Array.isArray((output as any).items) && (st.phase === "done" || st.phase === "waiting")));
       if (ready) {
         const parsed = parseReading(output, names);
-        log(`Devin read ${parsed.items.length} items, ${parsed.signals.length} signals (${parsed.files_read.map((f) => f.name).join(", ") || "no files listed"})`);
+        log(`Devin read ${parsed.items.length} items, ${parsed.signals.length} signals, ${parsed.teams.length} teams (${parsed.files_read.map((f) => f.name).join(", ") || "no files listed"})`);
         return { ...parsed, status: "done", error: null, session_url: session.url || st.url || null, session_id: session.session_id, mode };
       }
       if (st.phase === "done" || st.phase === "failed") return fail(`Devin session ended (${st.detail}) without a result.`, session);

@@ -57,7 +57,7 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export class FixtureBackend implements ReviewBackend {
   readonly mode = "sample" as const;
   /** The demo shows the agent path too: a simulated Devin reading, with no session behind it. */
-  readonly agent: AgentInfo = { available: true, name: "Devin", modes: [], default_mode: null };
+  readonly agent: AgentInfo = { available: true, name: "Devin", modes: ["lite", "normal"], default_mode: "normal" };
   constructor(private delayMs = 300) {}
 
   async saveSettings(patch: Partial<Settings>): Promise<void> {
@@ -70,10 +70,13 @@ export class FixtureBackend implements ReviewBackend {
     if (!opts.agent) return { ...r, agent: null };
     for (const s of [0, 1, 2] as const) { opts.onProgress?.(s); await wait(this.delayMs * 3); }
     opts.onProgress?.(3);
-    const docs = files.filter((f) => PLAN_KINDS.includes(f.kind));
+    // Devin reads every upload: the plan, the checklist and the team list; the directory connector's export is structured data.
+    const docs = files.filter((f) => f.kind !== "other" && f.via !== "directory");
+    const count = (ra: string, re: RegExp) => Number(r.plan.files.find((f) => f.read_as.includes(ra as never) && docs.some((d) => d.name === f.name))?.notes.match(re)?.[1] ?? 0);
     const agent: AgentRead = {
       name: "Devin", status: "done", cached: false, session_url: null,
       items_read: stage === "launching" ? r.plan.items.filter((i) => i.kind !== "checklist").length : 0, signals_read: stage === "launching" ? 0 : r.signals.length,
+      checks_read: count("launch_checks", /(\d+) checks/), checks_apply: r.plan.items.filter((i) => i.kind === "checklist").length, teams_read: count("teams_and_owners", /(\d+) teams/),
       files_read: docs.map((f) => ({ name: f.name, how: "simulated" })), unreadable: [], warnings: [], error: null,
     };
     return { ...r, agent };

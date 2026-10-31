@@ -233,13 +233,15 @@ token form stays, so a laptop setup and the CLI's `JIRA_*` variables keep workin
 
 With `DEVIN_API_KEY` set (a Devin service-user key, held by the server and never shown to the browser), the
 GUI offers to let Devin read the files the person adds on the "Your plan" step. On "Let Devin read my
-files", each plan document (not the csv or yaml, which the parsers read) is uploaded to Devin as an
+files", every file the person added (the plan or PRD, the launch checklist, the team list) is uploaded to Devin as an
 attachment and one short session reads it with the same instructions as `skills/release-review/SKILL.md`
-step 1, returning the items as the session's structured output. The items then go through Stage A's quote
-check like any agent items: checked where the server can read the file, kept but marked `~` where it
-cannot. The GUI shows the reading as it happens, a link to the session, what Devin could not open, and the
-rules' result with a "Try again" button if the session fails. Every document's reading is cached by content
-under `out/agent-reads/`, so changing "read as" or re-adding the same file spends nothing.
+step 1, returning the plan items, every check with whether it applies, the teams and their people, the launch
+date and the epic key as the session's structured output. Nothing is parsed by rules on this path: Stage A takes
+Devin's reading whole and only checks each quote and name against the file (checked where the server can read
+the file, kept but marked `~` where it cannot). The one exception is the employee directory connected on the
+apps step, which is structured data and stays with the directory reader. The GUI shows the reading as it happens, a link to the session, what Devin could not open, and the
+rules' result with a "Try again" button if the session fails. Every file's reading is cached by content, "read as"
+and tier under `out/agent-reads/`, so re-adding the same file spends nothing.
 
 ```
 DEVIN_API_KEY=cog_…                 # enables it; Settings → Service users in Devin

@@ -21,6 +21,18 @@ function person(v: unknown): Person | null {
   return null;
 }
 
+/** The same entries from teams an agent read out of a team list or org chart (owners written "Name (title)"). */
+export function directoryFromAgentTeams(teams: { name: string; jira_project?: string | null; owners?: string[] }[]): DirectoryEntry[] {
+  const out: DirectoryEntry[] = [];
+  for (const t of teams) {
+    const name = String(t.name ?? "").trim();
+    if (!name) continue;
+    const project = t.jira_project ? String(t.jira_project).trim().toUpperCase() : null;
+    out.push({ name, aliases: [], project, people: (t.owners ?? []).map(person).filter((p): p is Person => !!p && !!p.name) });
+  }
+  return out;
+}
+
 export function loadDirectory(f: LoadedFile): DirectoryEntry[] {
   const d = f.data as any;
   const out: DirectoryEntry[] = [];

@@ -40,6 +40,10 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await page.locator("#plan-files").setInputFiles([POR, CHECKS]);
   await expect(page.getByRole("combobox", { name: "Read as" }).nth(0)).toHaveValue("plan");
   await expect(page.getByRole("combobox", { name: "Read as" }).nth(1)).toHaveValue("checks");
+  // Nothing is read until asked: the files sit with their "Read as" and a question about Devin.
+  await expect(page.getByRole("heading", { name: "Plan we read" })).toHaveCount(0);
+  await expect(page.getByTestId("agent-consent")).toContainText("Devin will read these files");
+  await page.getByTestId("agent-read").click();
   await expect(page.getByText("4 commitments found · 4 teams named · epic INGEST-142")).toBeVisible();
   await expect(page.getByText("3 of 9 checks apply to this release")).toBeVisible();
   await expect(page.getByText("Not found — you'll get team names, not people.")).toBeVisible();
@@ -171,6 +175,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await page.goto("/?fast=1&backend=sample");
   await pickLaunching(page);
   await page.getByRole("button", { name: "Use sample files" }).click();
+  await page.getByTestId("agent-read").click();
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
   await connectJira(page);
   await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Covered by team-list.yaml from your files");
@@ -189,6 +194,7 @@ test("connecting the employee directory stands in for a team list, and disconnec
   await page.goto("/?fast=1&backend=sample");
   await pickLaunching(page);
   await page.locator("#plan-files").setInputFiles([POR]);
+  await page.getByTestId("agent-read").click();
   await expect(page.getByText("Owners: inferred from Jira")).toBeVisible();
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
   await connectJira(page);
@@ -219,6 +225,7 @@ test("works at phone width with no horizontal scroll", async ({ page }) => {
   await page.goto("/?fast=1&backend=sample");
   await pickLaunching(page);
   await page.getByRole("button", { name: "Use sample files" }).click();
+  await page.getByTestId("agent-read").click();
   await expect(page.getByRole("heading", { name: "Plan we read" })).toBeVisible();
   // No horizontal page scroll: the plan table scrolls inside its own wrapper.
   const scrolled = await page.evaluate(() => { window.scrollTo(10000, 0); return window.scrollX; });

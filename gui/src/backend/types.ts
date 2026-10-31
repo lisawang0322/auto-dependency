@@ -44,8 +44,13 @@ export interface AgentRead {
   cached: boolean;
   session_url: string | null;
   mode?: string | null;
+  /** Plan items (not checks). */
   items_read: number;
   signals_read: number;
+  /** Checks read from checklists and how many apply to this release; teams read from team lists. */
+  checks_read?: number;
+  checks_apply?: number;
+  teams_read?: number;
   files_read: { name: string; how: string }[];
   unreadable: { name: string; reason: string }[];
   warnings: string[];

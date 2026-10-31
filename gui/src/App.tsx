@@ -57,9 +57,14 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
   const setAgentMode = useCallback((m: string | null) => { setAgentModeState(m); void backend.saveSettings({ agent_mode: m }).catch(() => {}); }, [backend]);
   const [agentStage, setAgentStage] = useState<AgentReadStage | null>(null);
   const [agentRead, setAgentRead] = useState<AgentRead | null>(null);
+  const [planReading, setPlanReading] = useState(false);
+  /** How the current plan was read (agent or rules), so a connector change can re-read the same way without asking again. */
+  const lastRead = useRef<boolean | null>(null);
   const seq = useRef(0);
 
   const hasPlanFile = files.some((f) => PLAN_KINDS.includes(f.kind));
+  /** Anything Devin (or the rules) can read: every upload but "other"; the directory connector's export is structured data, not a document. */
+  const hasReadable = files.some((f) => f.kind !== "other" && f.via !== "directory");
   const teamFiles = files.filter((f) => f.kind === "teams");
   const hasTeamList = teamFiles.length > 0;
   const directoryFile = teamFiles.find((f) => f.via === "directory") ?? null;
@@ -80,44 +85,45 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
   const prevUploadKey = useRef(uploadKey);
   useEffect(() => {
     const my = ++seq.current;
-    if (prevUploadKey.current !== uploadKey) { setPlanConfirmed(false); prevUploadKey.current = uploadKey; }
+    const uploadChanged = prevUploadKey.current !== uploadKey;
+    if (uploadChanged) { setPlanConfirmed(false); prevUploadKey.current = uploadKey; }
     setConfirmed(false);
     setTarget(null);
     setChoices({});
     setStarter(null);
-    // The rules read for free on every change; the agent (which spends credits) only reads on "Read with Devin" below,
-    // so the person can first fix what each file is read as. A change here makes any earlier agent reading stale.
-    setAgentRead(null);
-    setAgentStage(null);
-    if (!hasPlanFile || !stage) { setPlan(null); setSignals([]); setProject(null); setPlanError(null); return; }
-    backend.extractPlan(files, stage, { agent: false }).then((r) => {
-      if (my !== seq.current) return;
-      setPlan(r.plan);
-      setSignals(r.signals);
-      setProject(r.project);
-      setPlanError(null);
-      if (r.plan.launch_date) setLaunch(r.plan.launch_date);
-    }).catch((e) => { if (my === seq.current) { setPlan(null); setSignals([]); setPlanError(String(e.message ?? e)); } });
-  }, [files, backend, hasPlanFile, uploadKey, stage]);
+    // Nothing is read until the person asks: files land, "Read as" is set, then one click reads them, with Devin or
+    // with the built-in rules alone. A change to the uploads makes any earlier reading stale, so the results clear.
+    // A connector (the employee directory on step 3) is not an upload: it re-reads the same way as before, silently.
+    if (uploadChanged || !plan || lastRead.current === null) {
+      lastRead.current = null;
+      setAgentRead(null);
+      setAgentStage(null);
+      setPlanReading(false);
+      setPlan(null); setSignals([]); setProject(null); setPlanError(null);
+      return;
+    }
+    readFilesRef.current?.(lastRead.current);
+  }, [files, backend, hasPlanFile, uploadKey, stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** The deliberate step: the agent opens the plan documents, with the kinds and mode as they stand now. */
-  const readWithAgent = useCallback(() => {
-    if (!hasPlanFile || !stage || agentConsent !== "yes" || !backend.agent.available) return;
+  /** The deliberate step: read the files as they stand now, with Devin (which spends credits) or the rules alone. */
+  const readFiles = useCallback((withAgent: boolean) => {
+    if (!hasReadable || !stage) return;
+    const useAgent = withAgent && backend.agent.available;
+    lastRead.current = useAgent;
     const my = ++seq.current;
     setAgentRead(null);
-    setAgentStage(0);
+    setAgentStage(useAgent ? 0 : null);
+    setPlanReading(true);
     setConfirmed(false);
-    backend.extractPlan(files, stage, { agent: true, onProgress: (s) => { if (my === seq.current) setAgentStage(s); } }).then((r) => {
+    backend.extractPlan(files, stage, { agent: useAgent, onProgress: (st) => { if (my === seq.current) setAgentStage(st); } }).then((r) => {
       if (my !== seq.current) return;
-      setPlan(r.plan);
-      setSignals(r.signals);
-      setProject(r.project);
-      setPlanError(null);
-      setAgentRead(r.agent ?? null);
-      setAgentStage(null);
+      setPlan(r.plan); setSignals(r.signals); setProject(r.project); setPlanError(null);
+      setAgentRead(r.agent ?? null); setAgentStage(null); setPlanReading(false);
       if (r.plan.launch_date) setLaunch(r.plan.launch_date);
-    }).catch((e) => { if (my === seq.current) { setAgentStage(null); setPlanError(String(e.message ?? e)); } });
-  }, [backend, files, stage, hasPlanFile, agentConsent]);
+    }).catch((e) => { if (my === seq.current) { setPlan(null); setSignals([]); setAgentStage(null); setPlanReading(false); setPlanError(String(e.message ?? e)); } });
+  }, [backend, files, stage, hasReadable]);
+  const readFilesRef = useRef(readFiles);
+  readFilesRef.current = readFiles;
 
   const epicVal = epic.trim();
   const epicOk = /^[A-Z][A-Z0-9]+-\d+$/.test(epicVal);
@@ -261,7 +267,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
             onLoadSample={() => setFiles((cur) => { const replaced = cur.filter((f) => f.via !== "directory").length; setPlanNotice(replaced ? `Replaced ${replaced} file${replaced === 1 ? "" : "s"} with the sample set.` : null); return [...sampleFilesFor(stage), ...cur.filter((f) => f.via === "directory")]; })}
             onSetDate={(id, v) => setPlanDates((d) => ({ ...d, [id]: v }))}
             onToggleSignal={(id) => { setSignalsOff((s) => ({ ...s, [id]: !s[id] })); setConfirmed(false); }}
-            agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, mode: agentMode, setMode: setAgentMode, stage: agentStage, read: agentRead, read_now: readWithAgent }}
+            agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, mode: agentMode, setMode: setAgentMode, stage: agentStage, reading: planReading, read: agentRead, read_now: readFiles }}
             onBack={() => setScreen("start")}
             onConfirm={() => { setPlanConfirmed(true); setScreen("apps"); }}
           />

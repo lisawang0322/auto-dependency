@@ -61,8 +61,10 @@ export class LiveBackend implements ReviewBackend {
   private async payload(files: UploadedFile[]) {
     const out = [];
     for (const f of files) {
-      if (f.sample || !f.file) out.push({ name: f.name, kind: f.kind, sample: true });
-      else out.push({ name: f.name, kind: f.kind, content_base64: toBase64(await f.file.arrayBuffer()) });
+      // The directory connector's export is marked, so the server keeps it as structured data rather than sending it to Devin.
+      const via = f.via ? { via: f.via } : {};
+      if (f.sample || !f.file) out.push({ name: f.name, kind: f.kind, sample: true, ...via });
+      else out.push({ name: f.name, kind: f.kind, content_base64: toBase64(await f.file.arrayBuffer()), ...via });
     }
     return out;
   }

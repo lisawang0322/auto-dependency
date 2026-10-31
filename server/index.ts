@@ -35,11 +35,11 @@ import { basename, extname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { PlanDraft, ReleaseTarget, ReadAs } from "@rrr/schemas";
 import { JiraRest, JiraAuthError, type RestCreds } from "../skills/release-reader/scripts/lib/jira-rest.js";
-import { stageA, stageB, stageC, analyzeStep, statusStep, previousRun, saveRun, listRunLabels, loadRun, todayLabel, readStarterInputs, starterSignals, starterPlan, runStarter, type SourceSpec } from "../scripts/lib/pipeline.js";
+import { stageA, stageB, stageC, analyzeStep, statusStep, previousRun, saveRun, listRunLabels, loadRun, todayLabel, readStarterInputs, starterSignals, starterPlan, runStarter, type SourceSpec, type AgentReading } from "../scripts/lib/pipeline.js";
 import { loadRules } from "../skills/release-starter/scripts/lib/config.js";
-import type { AgentItem } from "../skills/release-reader/scripts/lib/plan-extract.js";
+import type { AgentItem, AgentTeam, AgentLaunchDate } from "../skills/release-reader/scripts/lib/plan-extract.js";
 import type { AgentSignal } from "../skills/release-starter/scripts/lib/signals.js";
-import { DevinClient, devinFromEnv, readWithDevin, itemRules, signalRuleLines, type DevinOptions, type ReadingOutcome, type DevinMode } from "./devin.js";
+import { DevinClient, devinFromEnv, readWithDevin, itemRules, signalRuleLines, type DevinOptions, type ReadingOutcome, type DevinMode, type FileRole } from "./devin.js";
 import { createHash } from "node:crypto";
 import { Store, type User } from "./store.js";
 import { Auth, authFromEnv, LOCAL_USER, type AuthConfig } from "./auth.js";
@@ -82,8 +82,13 @@ export interface AgentRead {
   session_url: string | null;
   /** The Devin tier that read the documents (v3), or null for Devin's default. */
   mode: string | null;
+  /** Plan items (not checks). */
   items_read: number;
   signals_read: number;
+  /** Checks read from checklists, and how many of them Devin judged to apply to this release. */
+  checks_read: number;
+  checks_apply: number;
+  teams_read: number;
   files_read: { name: string; how: string }[];
   unreadable: { name: string; reason: string }[];
   warnings: string[];
@@ -91,7 +96,7 @@ export interface AgentRead {
 }
 
 /** One document's cached reading. */
-interface CachedRead { name: string; items: AgentItem[]; signals: AgentSignal[]; file_read: { name: string; how: string } | null; unreadable: { name: string; reason: string } | null; warnings: string[]; session_url: string | null; mode?: string | null }
+interface CachedRead { name: string; items: AgentItem[]; signals: AgentSignal[]; teams?: AgentTeam[]; launch_date?: AgentLaunchDate | null; epic_keys?: string[]; file_read: { name: string; how: string } | null; unreadable: { name: string; reason: string } | null; warnings: string[]; session_url: string | null; mode?: string | null }
 
 interface Job { stage: 0 | 1 | 2 | 3; done: boolean; run_id?: string; error?: string; log: string[]; result?: unknown }
 
@@ -168,7 +173,9 @@ export function createApp(opts: ServerOptions = {}) {
 
   // ---------- Devin reads the documents ----------
 
-  const DOC_KINDS = new Set(["prd", "plan"]);
+  /** What each upload is to Devin. Every kind goes, except "other" and the directory connector's export (structured data, not a document). */
+  const ROLE_OF: Record<string, FileRole> = { prd: "plan", plan: "plan", checks: "checks", teams: "teams" };
+  const safeName = (f: any) => basename(String(f.name ?? "")).replace(/[^\w.\- ()]+/g, "_");
   function cacheKey(path: string): string { return createHash("sha256").update(readFileSync(path)).digest("hex"); }
   function cachedRead(root: string, key: string): CachedRead | null {
     const hit = agentCache.get(`${root}|${key}`);
@@ -183,59 +190,70 @@ export function createApp(opts: ServerOptions = {}) {
     writeFileSync(join(root, `${key}.json`), JSON.stringify(c, null, 2) + "\n");
   }
 
-  /** Devin reads the plan documents among the uploads (cached per file by content). Never throws. */
-  async function readDocuments(u: User, paths: string[], files: any[], stage: "launching" | "starting" | "building", say: (l: string) => void): Promise<{ items: AgentItem[]; signals: AgentSignal[]; agent: AgentRead }> {
+  /** Devin reads every upload: plans and PRDs, checklists, team lists (cached per file by content, role and tier). Never throws. */
+  async function readDocuments(u: User, paths: string[], files: any[], stage: "launching" | "starting" | "building", say: (l: string) => void): Promise<{ reading: AgentReading | null; signals: AgentSignal[]; agent: AgentRead }> {
     const root = rootsFor(u).agentCacheRoot;
     const mode = modeFor(u);
-    const docs = paths.filter((p) => DOC_KINDS.has(String(files.find((f) => basename(String(f.name ?? "")).replace(/[^\w.\- ()]+/g, "_") === basename(p))?.kind)));
+    const docs: { path: string; role: FileRole }[] = [];
+    for (const p of paths) {
+      const f = files.find((x) => safeName(x) === basename(p));
+      const role = ROLE_OF[String(f?.kind)];
+      if (role && f?.via !== "directory") docs.push({ path: p, role });
+    }
     const reads: CachedRead[] = [];
-    const toRead: { path: string; key: string }[] = [];
-    // A reading is cached per document and per tier: a different tier may read differently, so it reads again.
-    for (const p of docs) { const key = cacheKey(p) + (mode ? `.${mode}` : ""); const c = cachedRead(root, key); if (c) reads.push(c); else toRead.push({ path: p, key }); }
+    const toRead: { path: string; role: FileRole; key: string }[] = [];
+    // A reading is cached per document, per role and per tier: read as something else, or by another tier, it reads again.
+    for (const d of docs) { const key = `${cacheKey(d.path)}.${d.role}${mode ? `.${mode}` : ""}`; const c = cachedRead(root, key); if (c) reads.push(c); else toRead.push({ ...d, key }); }
     let outcome: ReadingOutcome | null = null;
     if (toRead.length) {
       say(`Devin: reading ${toRead.map((t) => basename(t.path)).join(", ")}${reads.length ? ` (${reads.length} cached)` : ""}`);
       const early = stage !== "launching";
-      outcome = await readWithDevin(devin!, { paths: toRead.map((t) => t.path), stage, rules: itemRules(), signalRules: early ? signalRuleLines(loadRules()) : undefined, user: u.id === LOCAL_USER.id ? null : u.name, mode, onLog: (l) => say(`Devin: ${l}`) });
+      outcome = await readWithDevin(devin!, { files: toRead.map((t) => ({ path: t.path, role: t.role })), stage, rules: itemRules(), signalRules: early ? signalRuleLines(loadRules()) : undefined, user: u.id === LOCAL_USER.id ? null : u.name, mode, onLog: (l) => say(`Devin: ${l}`) });
       if (outcome.status === "done") {
         for (const t of toRead) {
           const name = basename(t.path);
           const c: CachedRead = {
-            name, items: outcome.items.filter((i) => i.source.file === name), signals: outcome.signals.filter((g) => g.file === name),
+            name, items: outcome.items.filter((i) => i.source.file === name), signals: outcome.signals.filter((g) => g.file === name), teams: outcome.teams.filter((x) => x.source.file === name),
+            launch_date: outcome.launch_date?.source.file === name ? outcome.launch_date : null, epic_keys: t.role === "plan" ? outcome.epic_keys : [],
             file_read: outcome.files_read.find((f) => f.name === name) ?? null, unreadable: outcome.unreadable.find((u) => u.name === name) ?? null,
             warnings: outcome.warnings, session_url: outcome.session_url, mode: outcome.mode,
           };
           storeRead(root, t.key, c); reads.push(c);
         }
       } else say(`Devin: ${outcome.error}`);
-    } else if (docs.length) say(`Devin: all ${docs.length} document(s) read before; using the cached reading`);
-    const items = reads.flatMap((r) => r.items), signals = reads.flatMap((r) => r.signals);
+    } else if (docs.length) say(`Devin: all ${docs.length} file(s) read before; using the cached reading`);
+    const items = reads.flatMap((r) => r.items), signals = reads.flatMap((r) => r.signals), teams = reads.flatMap((r) => r.teams ?? []);
+    const checks = items.filter((i) => i.kind === "checklist");
+    const ok = !outcome || outcome.status === "done";
     const agent: AgentRead = {
       name: "Devin", status: outcome ? outcome.status : "done", cached: !outcome, session_url: outcome?.session_url ?? reads.find((r) => r.session_url)?.session_url ?? null,
       mode: outcome?.mode ?? reads.find((r) => r.mode)?.mode ?? mode,
-      items_read: items.length, signals_read: signals.length,
+      items_read: items.length - checks.length, signals_read: signals.length,
+      checks_read: checks.length, checks_apply: checks.filter((c) => c.applies !== false).length, teams_read: teams.length,
       files_read: reads.map((r) => r.file_read).filter((x): x is { name: string; how: string } => !!x),
       unreadable: reads.map((r) => r.unreadable).filter((x): x is { name: string; reason: string } => !!x),
       warnings: [...new Set(reads.flatMap((r) => r.warnings))], error: outcome?.error ?? null,
     };
-    return { items, signals, agent };
+    // When the reading failed, the rules read on their own (the GUI says so); otherwise the parsers read nothing.
+    const reading: AgentReading | null = ok ? { items, teams, launchDate: reads.map((r) => r.launch_date).find((d) => d) ?? null, epicKeys: [...new Set(reads.flatMap((r) => r.epic_keys ?? []))], files: reads.map((r) => docs.find((d) => basename(d.path) === r.name)?.path).filter((p): p is string => !!p) } : null;
+    return { reading, signals, agent };
   }
 
   /** Stage A (or the early stages' signals) over saved uploads, with the agent's items and signals if any. */
-  async function buildPlan(paths: string[], readAs: Record<string, ReadAs[]>, dirPaths: string[], files: any[], stage: string, launchDate: string | null, agentItems?: AgentItem[], agentSignals?: AgentSignal[]) {
+  async function buildPlan(paths: string[], readAs: Record<string, ReadAs[]>, dirPaths: string[], files: any[], stage: string, launchDate: string | null, agent?: AgentReading | null, agentSignals?: AgentSignal[]) {
     if (stage === "starting" || stage === "building") {
       // Early stages: the PRD's signals, and the plan Stage B needs (the needed teams, with directory projects).
-      const inputs = await readStarterInputs(paths, dirPaths);
+      const inputs = await readStarterInputs(paths, dirPaths, agent);
       if (!inputs.docs.length) throw new HttpError(400, "No PRD or plan file: every file was read as a team list or directory.");
-      const sig = starterSignals(inputs, loadRules(), [], agentSignals ?? []);
-      const plan = await starterPlan(inputs, sig, paths);
+      const sig = starterSignals(inputs, loadRules(), [], agentSignals ?? [], !!agent);
+      const plan = await starterPlan(inputs, sig, paths, agent);
       plan.warnings.push(...sig.warnings);
-      log(`plan (${stage}): ${sig.signals.length} signals, ${sig.teams.length} teams from ${paths.map((p) => basename(p)).join(", ")}`);
+      log(`plan (${stage}): ${sig.signals.length} signals, ${sig.teams.length} teams from ${paths.map((p) => basename(p)).join(", ")}${agent ? " (read by Devin)" : ""}`);
       return { plan, signals: sig.signals, project: inputs.project };
     }
-    const plan = await stageA({ files: paths, readAs, launchDate, agentItems });
+    const plan = await stageA({ files: paths, readAs, launchDate, agent });
     if (!files.some((f) => f.kind === "plan" || f.kind === "prd")) plan.warnings.unshift("No file was read as a plan.");
-    log(`plan: ${plan.items.length} items from ${paths.map((p) => basename(p)).join(", ")}${agentItems?.length ? ` (${agentItems.length} from Devin)` : ""}`);
+    log(`plan: ${plan.items.length} items from ${paths.map((p) => basename(p)).join(", ")}${agent ? ` (${agent.items.length} items, ${agent.teams.length} teams read by Devin)` : ""}`);
     return { plan };
   }
 
@@ -343,7 +361,7 @@ export function createApp(opts: ServerOptions = {}) {
           const say = (l: string) => { job.log.push(l); log(`  ${l}`); if (/^Devin: Devin session /.test(l)) job.stage = 1; };
           const read = await readDocuments(u, paths, files, stage, say);
           job.stage = 2;
-          const data = await buildPlan(paths, readAs, dirPaths, files, stage, launchDate, read.items, read.signals);
+          const data = await buildPlan(paths, readAs, dirPaths, files, stage, launchDate, read.reading, read.signals);
           job.result = { ...data, agent: read.agent }; job.stage = 3; job.done = true;
         } catch (e) {
           job.error = (e as Error).message ?? String(e); job.done = true;

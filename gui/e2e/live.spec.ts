@@ -17,14 +17,16 @@ const DOCS = join(ROOT, "fixtures/ingest-142/docs");
 const file = (name: string, mimeType: string) => ({ name, mimeType, buffer: readFileSync(join(DOCS, name)) });
 
 let jira: FakeJira, devin: FakeDevin, idp: FakeIdp, srv: Awaited<ReturnType<typeof startServer>>, tmp: string;
+let extraItem = false;
 // One server on the proxied port 8787, so playwright.config.ts runs this file in the desktop project only.
 test.beforeAll(async () => {
   tmp = mkdtempSync(join(tmpdir(), "rrr-live-e2e-"));
   // The fake Jira also plays Atlassian's OAuth endpoints, so "Sign in with Atlassian" runs end to end in the popup.
   jira = await startFakeJira(join(ROOT, "fixtures/ingest-142/jira/2026-11-13"), { oauth: { clientId: "jira-app", clientSecret: "jira-secret", cloudId: "cloud-e2e" } });
-  devin = await startFakeDevin({ workingPolls: 1, answer: (s) => {
-    const out = naiveReader(s) as any;
-    out.items.push({ text: "Load test at 2× the batch importer's peak", kind: "dependency", owner_team: "SRE", due_text: null, source: { file: "Ingestion-service-POR-v3.md", locator: "§5", quote: "Peak load at launch is 2× the batch importer's peak." } });
+  devin = await startFakeDevin({ workingPolls: 1, answer: async (s) => {
+    const out = await naiveReader(s) as any;
+    // Only the Devin-focused test asks the fake to find the extra item; the others want the same seven rows the rules give.
+    if (extraItem) out.items.push({ text: "Load test at 2× the batch importer's peak", kind: "dependency", owner_team: "SRE", due_text: null, source: { file: "Ingestion-service-POR-v3.md", locator: "§5", quote: "Peak load at launch is 2× the batch importer's peak." } });
     return out;
   } });
   idp = await startFakeIdp();
@@ -58,8 +60,8 @@ test("uploads real files, connects with a token and a directory export, reads Ji
 
   // Step 2: real uploads, really parsed by Stage A. No team list yet. Devin is offered once a document is in, and declined here.
   await page.locator("#plan-files").setInputFiles([file("Ingestion-service-POR-v3.md", "text/markdown"), file("launch-checklist.csv", "text/csv")]);
-  await expect(page.getByRole("heading", { name: "Plan we read" })).toBeVisible();
-  await page.getByRole("button", { name: "Not now" }).click();
+  await page.getByTestId("agent-read").click(); // Devin reads the plan and the checklist; the fake returns the same seven rows the rules used to
+  await expect(page.getByRole("heading", { name: "Plan we read" })).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".plan-table tbody tr")).toHaveCount(7);
   await expect(page.getByText("Owners: inferred from Jira")).toBeVisible();
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
@@ -115,7 +117,8 @@ test("building stage over the API: PRD + directory upload, the real epic, covera
   await page.locator("#plan-files").setInputFiles([file("ingestion-service-PRD.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), file("directory.yaml", "application/yaml")]);
   await expect(page.getByRole("combobox", { name: "Read as" }).nth(0)).toHaveValue("prd");
   await expect(page.getByRole("combobox", { name: "Read as" }).nth(1)).toHaveValue("teams");
-  await expect(page.getByTestId("signals").getByRole("checkbox")).toHaveCount(6);
+  await page.getByTestId("agent-read").click();
+  await expect(page.getByTestId("signals").getByRole("checkbox")).toHaveCount(6, { timeout: 20_000 });
   await expect(page.getByText("10 teams, 21 people")).toBeVisible();
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
 
@@ -144,40 +147,37 @@ test("Devin reads the uploads once the person allows it, and the connect step sh
   await page.getByRole("radio", { name: /Preparing to launch/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // No offer before a document exists; the files come first.
+  // No question before a document exists; the files come first.
   await expect(page.getByTestId("agent-consent")).toHaveCount(0);
-  const before = devin.sessions.length;
+  const before = devin.sessions.length, uploadsBefore = devin.uploads.length;
   await page.locator("#plan-files").setInputFiles([file("Ingestion-service-POR-v3.md", "text/markdown"), file("launch-checklist.csv", "text/csv")]);
-  // Upload alone reads with the rules only; nothing goes to Devin until the person clicks.
-  await expect(page.getByRole("heading", { name: "Plan we read" })).toBeVisible();
-  // The offer, now that there is something to read. Allowing it is remembered for the session.
-  await expect(page.getByTestId("agent-consent")).toContainText("Devin can read these files");
-  await page.locator("#agent-mode-consent").selectOption("lite");
-  await page.getByRole("button", { name: "Let Devin read my files" }).click();
-  await expect(page.getByTestId("agent-consent")).toHaveCount(0);
-  await expect(page.locator(".plan-table tbody tr")).toHaveCount(7);
-  await expect(page.getByText("Devin has not read these files yet")).toBeVisible();
+  // Nothing is read on upload: no table, no session; the panel waits for the click.
+  await expect(page.getByRole("heading", { name: "Plan we read" })).toHaveCount(0);
+  await expect(page.getByTestId("agent-consent")).toContainText("Devin will read these files");
   expect(devin.sessions.length).toBe(before);
-  await expect(page.getByTestId("agent-panel")).toContainText("Ready for Devin to read");
+  extraItem = true;
+  await page.locator("#agent-mode-consent").selectOption("lite");
   await page.getByTestId("agent-read").click();
   await expect(page.getByTestId("agent-reading")).toContainText("Devin is reading your files");
-  await expect(page.getByTestId("agent-result")).toContainText("Devin (lite) read 4 plan items from Ingestion-service-POR-v3.md (text)", { timeout: 20_000 });
+  await expect(page.getByTestId("agent-result")).toContainText("Devin (lite) read 5 plan items and 3 of 9 checks from Ingestion-service-POR-v3.md, launch-checklist.csv", { timeout: 20_000 });
+  await expect(page.getByTestId("agent-result")).toContainText("Ingestion-service-POR-v3.md: text"); // the method, folded under "How it was read"
   expect(devin.sessions[devin.sessions.length - 1].devin_mode).toBe("lite");
   await expect(page.getByTestId("agent-result").getByRole("link", { name: /open the Devin session/ })).toHaveAttribute("href", /app\.devin\.ai\/sessions\//);
-  // The rules' 7 plus the one only Devin found; the document went to Devin once, the csv did not go at all.
+  // The 4 plan items plus the one only Devin found, and the 3 checks it judged to apply; both files went to Devin, once.
   await expect(page.locator(".plan-table tbody tr")).toHaveCount(8);
   await expect(page.locator(".plan-table tbody tr", { hasText: "Load test at 2× the batch importer's peak" })).toHaveCount(1);
   expect(devin.sessions.length).toBe(before + 1);
-  expect(devin.uploads.map((u) => u.name)).toEqual(["Ingestion-service-POR-v3.md"]);
+  expect(devin.uploads.slice(uploadsBefore).map((u) => u.name)).toEqual(["Ingestion-service-POR-v3.md", "launch-checklist.csv"]); // the checklist is Devin's to read too
 
-  // Changing how a file is read drops the reading (rules only again) and offers to read again; the repeat is served from the cache.
+  // Changing how a file is read drops the reading entirely and offers to read again; the repeat is served from the cache.
   await page.locator("select[id^=kind-]").first().selectOption("prd");
   await expect(page.getByTestId("agent-result")).toHaveCount(0);
-  await expect(page.locator(".plan-table tbody tr")).toHaveCount(7);
+  await expect(page.getByRole("heading", { name: "Plan we read" })).toHaveCount(0);
+  await expect(page.getByTestId("agent-panel")).toContainText("Ready for Devin to read");
   await expect(page.getByTestId("agent-read")).toHaveText("Read with Devin");
   expect(devin.sessions.length).toBe(before + 1);
   await page.getByTestId("agent-read").click();
-  await expect(page.getByTestId("agent-result")).toContainText("from an earlier reading of the same file", { timeout: 20_000 });
+  await expect(page.getByTestId("agent-result")).toContainText("From an earlier reading of the same file", { timeout: 20_000 });
   await expect(page.locator(".plan-table tbody tr")).toHaveCount(8);
   expect(devin.sessions.length).toBe(before + 1);
 
@@ -192,16 +192,17 @@ test("the answer about Devin is kept on the server across reloads, and signing o
   await page.getByRole("radio", { name: /Preparing to launch/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Use sample files" }).click();
-  await page.getByRole("button", { name: "Not now" }).click();
-  await expect(page.getByTestId("agent-consent")).toHaveCount(0);
+  await expect(page.getByTestId("agent-consent")).toContainText("Devin will read these files");
+  await page.getByTestId("agent-read").click(); // the first read records the answer
+  await expect(page.getByTestId("agent-result")).toBeVisible({ timeout: 20_000 });
   await page.reload();
   await expect(page.getByTestId("user-chip")).toHaveText("Lisa Wang");
   await page.getByRole("radio", { name: /Preparing to launch/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByTestId("agent-consent")).toHaveCount(0); // remembered server-side, not asked again
   await page.getByRole("button", { name: "Use sample files" }).click();
-  await expect(page.getByText("Devin not used")).toBeVisible();
-  await expect(page.getByTestId("agent-panel")).toHaveCount(0);
+  await expect(page.getByTestId("agent-consent")).toHaveCount(0); // remembered server-side, not asked again
+  await expect(page.getByTestId("agent-panel")).toContainText("Ready for Devin to read");
+  await expect(page.getByTestId("rules-read")).toHaveCount(0);
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("heading", { name: "Sign in with your company account" })).toBeVisible();
   const res = await page.request.get("/api/settings");

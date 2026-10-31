@@ -5,10 +5,10 @@
  * over REST through the same request cache the MCP mode uses.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { PlanDraft, ReleaseTarget, Release, Findings, Status, Run, ReadAs, type Team } from "@rrr/schemas";
 import { loadFile } from "../../skills/release-reader/scripts/lib/files.js";
-import { type AgentItem, extractPlan } from "../../skills/release-reader/scripts/lib/plan-extract.js";
+import { type AgentItem, type AgentTeam, type AgentLaunchDate, containsQuote, extractPlan } from "../../skills/release-reader/scripts/lib/plan-extract.js";
 import { FixtureSource, type JiraSource } from "../../skills/release-reader/scripts/lib/jira-source.js";
 import { JiraRest, runRestLoop, type RestCreds } from "../../skills/release-reader/scripts/lib/jira-rest.js";
 import { resolveRelease } from "../../skills/release-reader/scripts/lib/resolve.js";
@@ -37,10 +37,14 @@ export async function withSource<T>(spec: SourceSpec, step: (src: JiraSource) =>
 
 // ---------- stages ----------
 
-export async function stageA(opts: { files: string[]; readAs?: Record<string, ReadAs[]>; launchDate?: string | null; agentItems?: AgentItem[] }): Promise<PlanDraft> {
+/** What an agent read out of the files, when it read them all: the parsers then read nothing on their own. */
+export interface AgentReading { items: AgentItem[]; teams: AgentTeam[]; launchDate?: AgentLaunchDate | null; epicKeys?: string[]; /** The paths the agent read. */ files: string[] }
+
+export async function stageA(opts: { files: string[]; readAs?: Record<string, ReadAs[]>; launchDate?: string | null; agentItems?: AgentItem[]; agent?: AgentReading | null }): Promise<PlanDraft> {
   const files = [];
   for (const p of opts.files) files.push(await loadFile(p));
-  return extractPlan({ files, readAs: opts.readAs, launchDate: opts.launchDate ?? null, agentItems: opts.agentItems });
+  const a = opts.agent;
+  return extractPlan({ files, readAs: opts.readAs, launchDate: opts.launchDate ?? null, agentItems: a?.items ?? opts.agentItems, agentTeams: a?.teams, agentLaunchDate: a?.launchDate ?? null, agentEpicKeys: a?.epicKeys, agentOnly: !!a, agentFiles: a?.files.map((p) => basename(p)) });
 }
 
 export async function stageB(opts: { plan: PlanDraft; epicKey: string | null; source: SourceSpec; noSearch?: string[] }): Promise<ReleaseTarget> {
@@ -197,7 +201,7 @@ import { type LoadedFile } from "../../skills/release-reader/scripts/lib/files.j
 import { classifyFile } from "../../skills/release-reader/scripts/lib/plan-extract.js";
 import { loadRules, DEFAULT_RULES, type SignalRules } from "../../skills/release-starter/scripts/lib/config.js";
 import { addAgentSignals, type AgentSignal, readSignals, projectName } from "../../skills/release-starter/scripts/lib/signals.js";
-import { loadDirectory, findTeam, type DirectoryEntry } from "../../skills/release-starter/scripts/lib/directory.js";
+import { loadDirectory, findTeam, type DirectoryEntry , directoryFromAgentTeams } from "../../skills/release-starter/scripts/lib/directory.js";
 import { suggest } from "../../skills/release-starter/scripts/lib/starter.js";
 import { coverage, readApprovalTickets } from "../../skills/release-starter/scripts/lib/coverage.js";
 
@@ -226,14 +230,22 @@ export interface StarterInput {
 export interface StarterInputs { docs: LoadedFile[]; directory: DirectoryEntry[]; files: PlanFile[]; project: string; warnings: string[] }
 
 /** Load the files and tell the PRD from the directory. */
-export async function readStarterInputs(files: string[], directoryFiles: string[] = []): Promise<StarterInputs> {
+export async function readStarterInputs(files: string[], directoryFiles: string[] = [], agent?: AgentReading | null): Promise<StarterInputs> {
   const docs: LoadedFile[] = [], directory: DirectoryEntry[] = [], out: PlanFile[] = [], warnings: string[] = [];
   const dirSet = new Set(directoryFiles.map((p) => resolve(p)));
+  const agentSet = new Set((agent?.files ?? []).map((p) => resolve(p)));
   for (const p of files) {
     const f = await loadFile(p);
     warnings.push(...f.warnings);
     const isDir = dirSet.has(resolve(p)) || classifyFile(f).includes("teams_and_owners");
-    if (isDir) {
+    if (isDir && agent && agentSet.has(resolve(p))) {
+      // A team list the agent read: its teams stand in for the parsed ones, each name checked against the file.
+      const unreadable = !f.text && !f.rows && !f.data && !f.segments;
+      const mine = agent.teams.filter((t) => t.source?.file === f.name && t.name && (unreadable || containsQuote(f.text, t.name)));
+      const entries = directoryFromAgentTeams(mine);
+      directory.push(...entries);
+      out.push({ name: f.name, read_as: ["teams_and_owners"], notes: `${entries.length} teams · ${entries.reduce((n, e) => n + e.people.length, 0)} people · read by the agent` });
+    } else if (isDir) {
       const entries = loadDirectory(f);
       directory.push(...entries);
       out.push({ name: f.name, read_as: ["teams_and_owners"], notes: `${entries.length} teams · ${entries.reduce((n, e) => n + e.people.length, 0)} people` });
@@ -262,8 +274,9 @@ export function loadStarter(runsRoot: string, key: string, stage: "starting" | "
 }
 
 /** Signals and what they imply, without Jira: shared by both stages and by the GUI's plan step. */
-export function starterSignals(inputs: StarterInputs, rules: SignalRules, excludeSignals: string[] = [], agentSignals: AgentSignal[] = []) {
-  const merged = addAgentSignals(inputs.docs, rules, readSignals(inputs.docs, rules), agentSignals);
+export function starterSignals(inputs: StarterInputs, rules: SignalRules, excludeSignals: string[] = [], agentSignals: AgentSignal[] = [], agentOnly = false) {
+  // With the agent reading everything, the rules' own scan of the PRD is skipped: the signals are the agent's, checked against the file.
+  const merged = addAgentSignals(inputs.docs, rules, agentOnly ? [] : readSignals(inputs.docs, rules), agentSignals);
   const signals = merged.signals;
   const s = suggest({ signals, rules, directory: inputs.directory, excludeSignals });
   const files = inputs.files.map((f) => f.read_as.includes("plan_items") ? { ...f, notes: `${signals.filter((g) => g.file === f.name).length} signals about teams and approvals` } : f);
@@ -272,10 +285,10 @@ export function starterSignals(inputs: StarterInputs, rules: SignalRules, exclud
 
 /** The plan Stage B needs at the early stages: Stage A's plan with the needed teams added (directory projects as hints).
  *  A PRD has few dated items, so Stage A's item warnings are dropped; the files carry the signal counts. */
-export async function starterPlan(inputs: StarterInputs, sig: { teams: { team: string }[]; files: PlanFile[] }, filePaths: string[]): Promise<PlanDraft> {
+export async function starterPlan(inputs: StarterInputs, sig: { teams: { team: string }[]; files: PlanFile[] }, filePaths: string[], agent?: AgentReading | null): Promise<PlanDraft> {
   const readAs: Record<string, ReadAs[]> = {};
   for (const f of inputs.files) readAs[f.name] = f.read_as;
-  const plan = await stageA({ files: filePaths, readAs });
+  const plan = await stageA({ files: filePaths, readAs, agent });
   plan.files = sig.files;
   plan.warnings = [...inputs.warnings, ...plan.warnings.filter((w) => !/no owning team found|No launch date found|read as plan items/.test(w))];
   const needed = sig.teams;

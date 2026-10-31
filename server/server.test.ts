@@ -126,8 +126,8 @@ describe("Devin reads the uploads (agent: \"devin\")", () => {
   beforeAll(async () => {
     tmp = mkdtempSync(join(tmpdir(), "rrr-server-devin-"));
     jira = await startFakeJira("fixtures/ingest-142/jira/2026-11-13");
-    devin = await startFakeDevin({ answer: (s) => {
-      const out = naiveReader(s) as any;
+    devin = await startFakeDevin({ answer: async (s) => {
+      const out = await naiveReader(s) as any;
       // Devin also finds the assumption the rules skip, and one item with a quote that is not in the file.
       out.items.push({ text: "Load test at 2× the batch importer's peak", kind: "dependency", owner_team: "SRE", due_text: null, source: { file: "Ingestion-service-POR-v3.md", locator: "§5", quote: "Peak load at launch is 2× the batch importer's peak." } });
       out.items.push({ text: "Made up", kind: "approval", owner_team: "Legal", due_text: null, source: { file: "Ingestion-service-POR-v3.md", locator: "§4", quote: "Legal signs off by Nov 1." } });
@@ -159,28 +159,40 @@ describe("Devin reads the uploads (agent: \"devin\")", () => {
     expect(job.error).toBeUndefined();
     expect(job.stage).toBe(3);
     const { plan, agent } = job.result;
-    expect(agent).toMatchObject({ name: "Devin", status: "done", cached: false, items_read: 5, signals_read: 0, session_url: "https://app.devin.ai/sessions/devin-1", error: null, mode: "normal" });
+    expect(agent).toMatchObject({ name: "Devin", status: "done", cached: false, items_read: 6, signals_read: 0, checks_read: 9, checks_apply: 3, teams_read: 4, session_url: "https://app.devin.ai/sessions/devin-1", error: null, mode: "normal" });
     expect(devin.sessions[0].devin_mode).toBe("normal");
-    expect(agent.files_read).toEqual([{ name: "Ingestion-service-POR-v3.md", how: "text" }]);
-    expect(agent.warnings).toEqual(["Devin item 6 was dropped: Invalid enum value. Expected 'deliverable' | 'dependency' | 'approval' | 'checklist', received 'wish'."]);
-    // The rules' 7 items plus the one Devin added; Devin's duplicates of the rules' items are kept once.
+    expect(agent.files_read).toEqual([{ name: "Ingestion-service-POR-v3.md", how: "text" }, { name: "launch-checklist.csv", how: "csv" }, { name: "team-list.yaml", how: "yaml" }]);
+    expect(agent.warnings).toEqual(["Devin item 16 was dropped: Invalid enum value. Expected 'deliverable' | 'dependency' | 'approval' | 'checklist', received 'wish'."]);
+    // Everything is Devin's reading: 5 plan items (4 plus the one only it found), the 3 of 9 checks it judged to apply, the team list's 4 teams.
+    // The parsers read nothing on their own; they only checked the quotes, and the launch date and epic came from Devin too.
     expect(plan.items).toHaveLength(8);
+    expect(plan.items.filter((i: any) => i.kind === "checklist").map((i: any) => [i.text, i.owner_team])).toEqual([["Load test passed at 2× peak", "Ingestion team"], ["Production DB permissions reviewed", "Data Platform"], ["Rollback plan documented", "Ingestion team"]]);
     expect(plan.items.find((i: any) => i.text.startsWith("Load test at 2×"))).toMatchObject({ kind: "dependency", owner_team: "SRE", source: { locator: "§5" } });
     expect(plan.items.every((i: any) => i.source.quote_verified === undefined)).toBe(true);
     expect(plan.warnings).toContain('Dropped agent item "Made up": its quote was not found in Ingestion-service-POR-v3.md.');
-    expect(plan.files[0].notes).toMatch(/ · 1 item read by the agent$/);
-    // Only the document went to Devin; the csv and yaml stayed with the parsers. One session, capped.
-    expect(devin.uploads.map((u) => u.name)).toEqual(["Ingestion-service-POR-v3.md"]);
+    expect(plan.launch_date).toBe("2026-11-20");
+    expect(plan.epic_keys_mentioned).toEqual(["INGEST-142"]);
+    expect(plan.teams.map((t: any) => [t.name, t.jira_project_hint, t.owners.length])).toEqual([["Ingestion team", "INGEST", 3], ["Data Platform", "DATA", 3], ["Security", "SEC", 2], ["SRE", "SRE", 3]]);
+    expect(plan.files.map((f: any) => f.notes)).toEqual([
+      "5 plan items · 1 approval · 3 dependencies · names 4 teams and epic INGEST-142 · read by the agent",
+      "9 checks · 3 apply to this release · read by the agent",
+      "4 teams · 4 Jira projects · 11 owners · read by the agent",
+    ]);
+    // Every file went to Devin in one session, capped.
+    expect(devin.uploads.map((u) => u.name)).toEqual(["Ingestion-service-POR-v3.md", "launch-checklist.csv", "team-list.yaml"]);
     expect(devin.sessions).toHaveLength(1);
     expect(devin.sessions[0].max_acu_limit).toBe(1);
     // A cog_ key means the v3 API: attachments and the output schema travel as fields, not inside the prompt.
     expect(devin.sessions[0].api).toBe("v3");
     expect(devin.sessions[0].prompt).not.toContain('ATTACHMENT:"');
-    expect(devin.sessions[0].prompt).toContain("- Ingestion-service-POR-v3.md (attached)");
+    expect(devin.sessions[0].prompt).toContain("- Ingestion-service-POR-v3.md (attached) — a plan or PRD");
+    expect(devin.sessions[0].prompt).toContain("- launch-checklist.csv (attached) — a launch checklist");
+    expect(devin.sessions[0].prompt).toContain("- team-list.yaml (attached) — a team list or org chart");
     expect(devin.sessions[0].prompt).toContain("A plan item is");
-    expect(devin.sessions[0].attachments.map((a) => a.name)).toEqual(["Ingestion-service-POR-v3.md"]);
+    expect(devin.sessions[0].attachments.map((a) => a.name)).toEqual(["Ingestion-service-POR-v3.md", "launch-checklist.csv", "team-list.yaml"]);
     expect((devin.sessions[0].output_schema as any)?.required).toEqual(["done", "items", "files_read"]);
-    expect(devin.sessions[0].title).toBe("Readiness Review: read Ingestion-service-POR-v3.md");
+    expect(Object.keys((devin.sessions[0].output_schema as any)?.properties)).toEqual(expect.arrayContaining(["teams", "launch_date", "epic_keys"]));
+    expect(devin.sessions[0].title).toBe("Readiness Review: read Ingestion-service-POR-v3.md, launch-checklist.csv, team-list.yaml");
     expect((await api("GET", "/api/health")).data.agent.api).toBe("v3");
   });
 
@@ -188,9 +200,11 @@ describe("Devin reads the uploads (agent: \"devin\")", () => {
     const r = await api("POST", "/api/plan", { files: [{ ...files[0], kind: "prd" }, files[1]], agent: "devin" });
     const job = await poll(r.data.job);
     expect(job.error).toBeUndefined();
-    expect(job.result.agent).toMatchObject({ status: "done", cached: true, items_read: 5 });
+    expect(job.result.agent).toMatchObject({ status: "done", cached: true, items_read: 6, checks_read: 9, teams_read: 0 });
     expect(devin.sessions).toHaveLength(1);
     expect(job.result.plan.items.some((i: any) => i.text.startsWith("Load test at 2×"))).toBe(true);
+    // Without the team list, the teams are the ones the items name.
+    expect(job.result.plan.teams.map((t: any) => t.name).sort()).toEqual(["Data Platform", "Ingestion team", "SRE", "Security"]);
   });
 
   it("a chosen reading mode is saved per person, sent on the session, and read again on a change of tier", async () => {
@@ -238,7 +252,7 @@ describe("Devin with a legacy key (v1 API)", () => {
       const { job } = await res.json();
       let j: any;
       for (let i = 0; i < 200; i++) { j = await (await fetch(srv.url + `/api/jobs/${job}`)).json(); if (j.done) break; await new Promise((r) => setTimeout(r, 20)); }
-      expect(j.result.agent).toMatchObject({ status: "done", items_read: 3 });
+      expect(j.result.agent).toMatchObject({ status: "done", items_read: 4 });
       expect(devin.sessions[0].api).toBe("v1");
       expect(devin.sessions[0].prompt).toContain('ATTACHMENT:"');
       expect(devin.calls).toContain("POST /v1/attachments");
@@ -281,12 +295,17 @@ describe("Devin fails or is absent", () => {
 
 describe("the reading prompt and result parser", () => {
   it("builds the prompt from the skill's item rules, with every attachment and the output shape", () => {
-    const p = readingPrompt({ files: [{ name: "Plan.pptx", url: "https://x/1" }], stage: "launching", rules: itemRules() });
+    const p = readingPrompt({ files: [{ name: "Plan.pptx", url: "https://x/1", role: "plan" }, { name: "checks.csv", url: "https://x/3", role: "checks" }], stage: "launching", rules: itemRules() });
+    expect(p).toContain("- checks.csv: ATTACHMENT:\"https://x/3\" — a launch checklist");
+    expect(p).toContain("A check is one row");
+    expect(p).not.toContain("A team is one entry");
+    expect(p).toContain('"launch_date"');
     expect(p).toContain('- Plan.pptx: ATTACHMENT:"https://x/1"');
     expect(p).toContain("A plan item is something a team must deliver");
     expect(p).toContain('"files_read"');
     expect(p).not.toContain("A signal is");
-    const early = readingPrompt({ files: [{ name: "PRD.docx", url: "https://x/2" }], stage: "starting", rules: itemRules(), signalRules: "- customer_data: implies Privacy, Legal" });
+    const early = readingPrompt({ files: [{ name: "PRD.docx", url: "https://x/2", role: "plan" }, { name: "org.yaml", url: "https://x/4", role: "teams" }], stage: "starting", rules: itemRules(), signalRules: "- customer_data: implies Privacy, Legal" });
+    expect(early).toContain("A team is one entry");
     expect(early).toContain("A signal is");
     expect(early).toContain("- customer_data: implies Privacy, Legal");
   });

@@ -49,7 +49,9 @@ main.page { display: flex; flex-direction: column; gap: 24px; padding-top: 28px;
 .btn.dashed { border: 1px dashed #8A8F98; font-size: 14px; padding: 0 12px; }
 .chip { min-height: 44px; padding: 0 12px; border-radius: 6px; cursor: pointer; font-size: 14px; background: var(--paper); color: var(--ink); border: 1px solid var(--line-strong); }
 .chip[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
-.input { height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--paper); color: var(--ink); width: 100%; }
+.input { box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--paper); color: var(--ink); width: 100%; font: inherit; }
+/* Selects draw their own chevron inside the box, so nothing overflows and every select looks the same. */
+select.input { appearance: none; -webkit-appearance: none; padding-right: 36px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5l5 5 5-5' fill='none' stroke='%235B616B' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>"); background-repeat: no-repeat; background-position: right 12px center; }
 .input.mono { font-family: var(--mono); font-size: 14px; }
 .input.err { border-color: var(--late); }
 select.input { padding-right: 28px; }
@@ -174,3 +176,18 @@ details.more > .app-grid { margin-top: 12px; }
 
 /* The agent's reading, once done, reads as a result rather than a prompt. */
 .card.agent-done { border-color: var(--blue-line); background: var(--blue-bg); }
+
+/* Alignment pass: badges, pills, chips and tags are inline-flex boxes of one height, centred on the text next to them. */
+.badge, .pill, .app-badge, .tag, .stage-chip, .chip-note, .key, .inferred-tag, .changed-tag { display: inline-flex; align-items: center; vertical-align: middle; line-height: 1.3; box-sizing: border-box; }
+.badge { height: 22px; } .pill, .app-badge, .inferred-tag, .changed-tag, .chip-note { height: 20px; } .tag, .stage-chip { height: 24px; } .key { height: 20px; }
+.badge.late { padding: 0 8px; }
+/* Checkboxes and radios centre on the first line of their label (15px text, 1.5 line height). */
+.signal-row input, .action-row input, .stage-card input { margin-top: 1px; }
+/* Rows that pair a heading with a count or a hint share a baseline; rows that pair text with a control centre. */
+.file-row > div:last-child { align-items: center; }
+/* The team header's "Hide" / "Show N items" sits on the title line, not mid-block. */
+.team-head > .small { align-self: flex-start; margin-top: 3px; }
+/* Table cells centre on the row, so one-line text sits level with the date input beside it. */
+.plan-table td { vertical-align: middle; }
+/* A card's icon sits with its title line, whatever the description's length. */
+.app-card .app-mono { margin-top: 1px; }

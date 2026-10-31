@@ -24,6 +24,7 @@ test("just starting: PRD signals → who to involve, then a directory adds names
   // Step 2: the sample PRD and the signals read from it; untick the customer-data sentence.
   await page.getByRole("button", { name: "Use sample files" }).click();
   await expect(page.getByRole("combobox", { name: "Read as" })).toHaveValue("prd");
+  await page.getByTestId("agent-read").click();
   await expect(page.getByText("6 lines point to a team or an approval")).toBeVisible();
   await expect(page.getByRole("heading", { name: "What we read in your PRD" })).toBeVisible();
   const signals = page.getByTestId("signals");
@@ -77,6 +78,7 @@ test("just starting: PRD signals → who to involve, then a directory adds names
 test("building: PRD + Jira → which needed teams are missing and which approvals have no ticket or owner", async ({ page }) => {
   await pickStage(page, /Team forming/);
   await page.getByRole("button", { name: "Use sample files" }).click();
+  await page.getByTestId("agent-read").click();
   await expect(page.getByTestId("signals").getByRole("checkbox")).toHaveCount(6);
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
 
