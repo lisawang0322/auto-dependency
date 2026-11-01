@@ -112,7 +112,7 @@ export function GetStarted(p: Props2) {
               <div className="stack-sm" style={{ gap: 8 }} data-testid="directory-sources">
                 {info?.entra.available && (
                   <div className="plain-row" data-testid="source-entra">
-                    <span className="stack-sm" style={{ gap: 2 }}><span style={{ fontWeight: 500 }}>Microsoft Entra ID</span><span className="small muted">Names, titles, departments and managers, through the sign-in you already have.</span></span>
+                    <span className="stack-sm" style={{ gap: 2 }}><span style={{ fontWeight: 500 }}>Microsoft Entra ID</span><span className="small muted">{info.entra.connected ? "Names, titles, departments and managers, read with your sign-in." : "Names, titles, departments and managers. Your sign-in did not include directory access, so this asks for it once."}</span></span>
                     {info.entra.connected
                       ? <span style={{ display: "flex", alignItems: "center", gap: 10 }}><span className="small ok">{info.entra.connected.teams} teams, {info.entra.connected.people} people</span><button type="button" className="linkbtn" disabled={busy !== null} onClick={() => run("entra-off", () => p.onDisconnectSource("entra"))}>Disconnect</button></span>
                       : <button type="button" className="btn" disabled={busy !== null || !!p.directory.fromFiles} onClick={() => run("entra", p.onConnectEntra)}>{busy === "entra" ? "Connecting…" : "Use Microsoft Entra ID"}</button>}

@@ -41,13 +41,15 @@ test.afterAll(async () => { await srv?.close(); await jira?.close(); await devin
 
 /** Through the sign-in screen, the fake provider and back, landing in live mode as Lisa. The server keeps her
  *  settings between tests (one user, one store), so each test starts with the Devin question unanswered. */
-async function signIn(page: import("@playwright/test").Page) {
+async function signIn(page: import("@playwright/test").Page, keepDirectory = false) {
   await page.goto("/?backend=live");
   await expect(page.getByRole("heading", { name: "Sign in with your company account" })).toBeVisible();
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByTestId("user-chip")).toHaveText("Lisa Wang");
   await expect(page.locator(".tag").first()).toHaveText(/Live/);
   await page.request.put("/api/settings", { data: { agent_consent: "unknown" } });
+  // The sign-in's consent brings the directory along; most tests here model a person who removed it, to see the inferred path.
+  if (!keepDirectory) await page.request.delete("/api/directory/entra", { headers: { "Content-Type": "application/json" } });
   await page.reload();
   await expect(page.getByTestId("user-chip")).toHaveText("Lisa Wang");
 }
@@ -188,14 +190,11 @@ test("Devin reads the uploads once the person allows it, and the connect step sh
   await expect(page.getByTestId("app-devin").getByTestId("app-state")).toHaveText("Not connected");
 });
 
-test("the directory's two layers connect on step 1 through the sign-ins: Entra's consent popup, then Jira's projects", async ({ page }) => {
-  await signIn(page);
-  await expect(page.getByTestId("start-directory-state")).toHaveText("Not connected");
-  // Microsoft Entra ID: a second consent on the same registration, in a popup; the fake provider approves and the callback page closes it.
-  const popup = page.waitForEvent("popup");
-  await page.getByRole("button", { name: "Use Microsoft Entra ID" }).click();
-  await popup;
-  await expect(page.getByTestId("source-entra")).toContainText("6 teams, 13 people", { timeout: 20_000 });
+test("the directory's two layers connect on step 1 through the sign-ins: Entra with the sign-in itself, then Jira's projects", async ({ page }) => {
+  await signIn(page, true);
+  // The sign-in's consent covered the directory: Get started opens with it connected, no second prompt.
+  await expect(page.getByTestId("source-entra")).toContainText("6 teams, 13 people");
+  await expect(page.getByTestId("source-entra")).toContainText("read with your sign-in");
   await expect(page.getByTestId("start-directory-state")).toHaveText("Connected · read-only · Microsoft Entra ID · tenant-abc");
   // Jira's projects: Jira is still connected on the server from the earlier test, so the projects come straight away.
   await page.getByRole("button", { name: "Use Jira projects" }).click();

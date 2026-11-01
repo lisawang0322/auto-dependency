@@ -5,7 +5,7 @@
 import { createServer, type Server } from "node:http";
 import { createHash, generateKeyPairSync, sign as cryptoSign, randomBytes } from "node:crypto";
 
-export interface FakeIdpOptions { clientId?: string; clientSecret?: string; user?: { sub: string; email: string; name: string; tid?: string }; /** The directory the Graph look-alike serves (GET /graph/users). */ directory?: FakeGraphUser[] }
+export interface FakeIdpOptions { clientId?: string; clientSecret?: string; user?: { sub: string; email: string; name: string; tid?: string }; /** The directory the Graph look-alike serves (GET /graph/users). */ directory?: FakeGraphUser[]; /** Scopes this provider refuses (an admin has not consented): /authorize sends back error=consent_required. */ refuseScopes?: string[] }
 export interface FakeGraphUser { displayName: string; jobTitle?: string; department?: string; manager?: string; accountEnabled?: boolean }
 export interface FakeIdp { url: string; issuer: string; /** Microsoft Graph look-alike: {graph}/users with $select, $expand=manager and paging. */ graph: string; calls: string[]; scopes: string[]; user: Required<FakeIdpOptions>["user"]; close(): Promise<void>; /** Sign a token by hand (for negative tests). */ token(claims: Record<string, unknown>, kid?: string): string }
 
@@ -52,8 +52,14 @@ export async function startFakeIdp(opts: FakeIdpOptions = {}): Promise<FakeIdp> 
     if (p === "/authorize") {
       const q = url.searchParams;
       if (q.get("client_id") !== clientId || q.get("response_type") !== "code" || q.get("code_challenge_method") !== "S256") return json(res, 400, { error: "invalid_request" });
-      const code = randomBytes(8).toString("hex");
       scopes.push(q.get("scope") ?? "");
+      const asked = (q.get("scope") ?? "").split(/\s+/);
+      if (opts.refuseScopes?.some((s) => asked.includes(s))) {
+        const back = new URL(q.get("redirect_uri")!);
+        back.searchParams.set("error", "consent_required"); back.searchParams.set("error_description", "AADSTS65001: The user or administrator has not consented to use the application."); back.searchParams.set("state", q.get("state") ?? "");
+        res.writeHead(302, { Location: back.toString() }); return res.end();
+      }
+      const code = randomBytes(8).toString("hex");
       codes.set(code, { nonce: q.get("nonce") ?? "", challenge: q.get("code_challenge") ?? "", redirect: q.get("redirect_uri") ?? "" });
       const back = new URL(q.get("redirect_uri")!);
       back.searchParams.set("code", code); back.searchParams.set("state", q.get("state") ?? "");

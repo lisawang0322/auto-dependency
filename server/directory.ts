@@ -107,7 +107,21 @@ export class DirectoryHub {
     return snap;
   }
 
-  // ---- entra: Microsoft Graph through the sign-in, with its own consent ----
+  /** The directory from a Graph token the sign-in already holds (one consent for both). */
+  async connectWithToken(u: User, accessToken: string): Promise<DirectorySnapshot> {
+    const snap = await this.readGraph(accessToken, u.org);
+    this.save(u, snap);
+    this.log(`directory: ${u.name} connected Microsoft Entra ID at sign-in (${snap.teams.length} teams, ${snap.people} people)`);
+    return snap;
+  }
+  /** The demo company's directory, as the demo sign-in connects it. */
+  async connectDemo(u: User): Promise<DirectorySnapshot> {
+    const snap = this.teamsFromGraphUsers(DEMO_DIRECTORY.map((x) => ({ displayName: x.displayName, jobTitle: x.jobTitle, department: x.department, manager: x.manager ?? null })), `Microsoft Entra ID · ${DEMO_ORG} (demo)`);
+    this.save(u, snap);
+    return snap;
+  }
+
+  // ---- entra: Microsoft Graph through the sign-in, with its own consent (the fallback when the sign-in could not carry the scope) ----
   private cookie(value: string, maxAge: number, secure: boolean) { return `${COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`; }
   /** Handle /auth/directory/entra/*; returns false when the path is not one of them. */
   async handle(req: IncomingMessage, res: ServerResponse, url: URL, user: User | null): Promise<boolean> {
@@ -136,8 +150,7 @@ export class DirectoryHub {
     };
     if (!user) return finish(401, "Sign in first.", false);
     if (decision !== "accept") return finish(400, "The identity provider did not grant directory access: you cancelled.", false);
-    const snap = this.teamsFromGraphUsers(DEMO_DIRECTORY.map((u) => ({ displayName: u.displayName, jobTitle: u.jobTitle, department: u.department, manager: u.manager ?? null })), `Microsoft Entra ID · ${DEMO_ORG} (demo)`);
-    this.save(user, snap);
+    const snap = await this.connectDemo(user);
     this.log(`directory: ${user.name} connected the demo directory (${snap.teams.length} teams, ${snap.people} people)`);
     return finish(200, `Directory connected: ${snap.teams.length} teams, ${snap.people} people. You can close this window.`, true);
   }

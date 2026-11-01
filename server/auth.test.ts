@@ -42,7 +42,7 @@ describe("sign-in with the company identity provider (OIDC)", () => {
     const port = Number(new URL(probe.url).port);
     await probe.close();
     srv = await startServer({ port, quiet: true, creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), storePath: ":memory:", devin: null, guiDist: join(tmp, "nodist"),
-      auth: { mode: "oidc", issuer: idp.url, clientId: "app-client-id", clientSecret: "app-secret", appUrl: `http://127.0.0.1:${port}`, sessionSecret: "test-secret" } });
+      auth: { mode: "oidc", issuer: idp.url, clientId: "app-client-id", clientSecret: "app-secret", appUrl: `http://127.0.0.1:${port}`, sessionSecret: "test-secret" }, directory: { graphBase: idp.graph } });
   });
   afterAll(async () => { await srv?.close(); await idp.close(); await jira.close(); rmSync(tmp, { recursive: true, force: true }); });
 
@@ -66,6 +66,9 @@ describe("sign-in with the company identity provider (OIDC)", () => {
     expect(idp.calls).toContain("POST /token");
     const h1 = (await c.json("GET", "/api/health")).data;
     expect(h1.auth.user).toMatchObject({ name: "Lisa Wang", email: "lisa@example.com", org: "tenant-abc" });
+    // One consent covered the directory too: the sign-in asked for the Graph scope and read the directory on arrival.
+    expect(idp.scopes[idp.scopes.length - 1]).toBe("openid profile email offline_access User.Read.All");
+    expect(h1.directory.entra.connected).toMatchObject({ label: "Microsoft Entra ID · tenant-abc", teams: 6, people: 13 });
     expect(h1.settings).toEqual({ agent_consent: "unknown", agent_mode: null });
     expect(h1.runs_root).toMatch(/orgs\/tenant-abc$/);
 
@@ -164,6 +167,32 @@ describe("the store", () => {
   });
 });
 
+describe("sign-in when the provider refuses the directory scope", () => {
+  it("signs in with identity alone and leaves the directory for its own consent", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "rrr-nodir-"));
+    const idp2 = await startFakeIdp({ refuseScopes: ["User.Read.All"] });
+    const probe = await startServer({ port: 0, quiet: true, creds: null, storePath: ":memory:", devin: null });
+    const port = Number(new URL(probe.url).port);
+    await probe.close();
+    const srv = await startServer({ port, quiet: true, creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), storePath: ":memory:", devin: null, guiDist: join(tmp, "nodist"),
+      auth: { mode: "oidc", issuer: idp2.url, clientId: "app-client-id", clientSecret: "app-secret", appUrl: `http://127.0.0.1:${port}`, sessionSecret: "test-secret" }, directory: { graphBase: idp2.graph } });
+    try {
+      const c = client(srv.url);
+      await c.follow("/auth/login?next=%2F", 10);
+      expect(c.jar.has("rrr_session")).toBe(true);
+      expect(idp2.scopes).toEqual(["openid profile email offline_access User.Read.All", "openid profile email"]); // asked, refused, asked again without
+      const h = (await c.json("GET", "/api/health")).data;
+      expect(h.auth.user).toMatchObject({ name: "Lisa Wang" });
+      expect(h.directory.entra).toEqual({ available: true, connected: null });
+      // The directory's own consent meets the same refusal, and says what an admin must do.
+      const own = await c.follow("/auth/directory/entra/start?next=%2F");
+      expect(own.status).toBe(400);
+      expect(await own.text()).toMatch(/did not grant directory access: consent_required .*An admin may have to consent to User\.Read\.All/);
+      expect((await c.json("GET", "/api/directory")).data.entra.connected).toBeNull();
+    } finally { await srv.close(); await idp2.close(); rmSync(tmp, { recursive: true, force: true }); }
+  });
+});
+
 describe("demo sign-in (AUTH=demo)", () => {
   it("serves a sign-in page of people, keeps a session per person, and connects the sample directory through the demo consent", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "rrr-demo-"));
@@ -182,8 +211,9 @@ describe("demo sign-in (AUTH=demo)", () => {
       expect(c.jar.has("rrr_session")).toBe(true);
       const h = (await c.json("GET", "/api/health")).data;
       expect(h.auth.user).toMatchObject({ name: "Priya Natarajan", email: "priya@sample-co.example", org: "sample-co" });
-      expect(h.directory.entra).toEqual({ available: true, connected: null });
-      // The directory's Entra layer: the demo consent page, then the sample company's departments as teams.
+      // The demo sign-in connects the sample directory on arrival, as a real sign-in would with its consent.
+      expect(h.directory.entra.connected).toMatchObject({ label: "Microsoft Entra ID · sample-co (demo)", teams: 7 });
+      // Its own consent page still exists, for a re-connect.
       const consent = await c.req("/auth/directory/entra/start");
       expect(await consent.text()).toContain("Permissions requested");
       const done = await c.req("/auth/directory/entra/callback", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "decision=accept" });
@@ -195,7 +225,9 @@ describe("demo sign-in (AUTH=demo)", () => {
       const c2 = client(srv.url);
       await c2.req("/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "persona=anika&next=%2F" });
       expect((await c2.json("GET", "/api/health")).data.auth.user.name).toBe("Anika Rao");
-      expect((await c2.json("GET", "/api/directory")).data.entra.connected).toBeNull();
+      expect((await c2.json("GET", "/api/directory")).data.entra.connected).toMatchObject({ teams: 7 }); // her own sign-in connected it for her
+      expect((await c2.json("DELETE", "/api/directory/entra")).data.entra.connected).toBeNull();
+      expect((await c.json("GET", "/api/directory")).data.entra.connected).toMatchObject({ teams: 7 }); // Priya's stays
       expect((await c.req("/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "persona=nobody" })).status).toBe(400);
     } finally { await srv.close(); rmSync(tmp, { recursive: true, force: true }); }
   });

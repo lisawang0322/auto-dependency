@@ -37,13 +37,16 @@ describe("the employee directory: Microsoft Entra ID through the sign-in, Jira p
     await c.follow("/auth/login?next=%2F");
     expect(c.jar.has("rrr_session")).toBe(true);
     const h0 = (await c.json("GET", "/api/health")).data;
-    expect(h0.directory).toEqual({ entra: { available: true, connected: null }, jira: { available: true, connected: null } });
+    // The sign-in's consent covered the directory: it is connected on arrival.
+    expect(h0.directory.entra.connected).toMatchObject({ teams: 6 });
+    expect(h0.directory.jira).toEqual({ available: true, connected: null });
+    expect(idp.calls).toContain("GET /graph/users");
 
-    // Entra: a second consent on the same registration, asking for the Graph scope; the token is used once to list users.
+    // Entra's own consent still works (a re-connect): the same registration, asking for the Graph scope; the token is used once.
+    expect((await c.json("DELETE", "/api/directory/entra")).data.entra.connected).toBeNull();
     const back = await c.follow("/auth/directory/entra/start?next=%2F");
     expect(back.status).toBe(404); // landed on "/": no GUI build here
     expect(idp.scopes[idp.scopes.length - 1]).toBe("openid User.Read.All");
-    expect(idp.calls).toContain("GET /graph/users");
     const d1 = (await c.json("GET", "/api/directory")).data;
     // Departments become teams; a department's outside manager leads it; a disabled account is left out.
     expect(d1.entra.connected).toMatchObject({ label: "Microsoft Entra ID · tenant-abc", teams: 6, people: 13 });

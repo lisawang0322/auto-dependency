@@ -252,11 +252,14 @@ and tier under `out/agent-reads/`, so re-adding the same file spends nothing.
 
 Connected first, on **Get started**, in two layers that combine (PRD "Employee directory sources"):
 
-- **Microsoft Entra ID** through the sign-in the person already has. "Use Microsoft Entra ID" opens a second consent
-  on the same app registration asking for `User.Read.All` (`GRAPH_SCOPES` to change it); the server reads every user's
-  name, title, department and manager from Microsoft Graph (`GRAPH_API_BASE`, default `https://graph.microsoft.com/v1.0`),
-  makes a team per department with the department's outside manager first, and stores that snapshot per person,
-  sealed. The Graph token is used once and never stored. A work tenant's admin may have to consent to the scope.
+- **Microsoft Entra ID**, with the sign-in itself. The sign-in asks for `User.Read.All` along with identity
+  (`GRAPH_SCOPES` to change it, `OIDC_DIRECTORY_AT_SIGNIN=0` to leave it out), so one consent covers both, and the
+  server reads every user's name, title, department and manager from Microsoft Graph (`GRAPH_API_BASE`, default
+  `https://graph.microsoft.com/v1.0`) in the sign-in callback: Get started opens with the directory connected. It makes
+  a team per department with the department's outside manager first and stores that snapshot per person, sealed;
+  the Graph token is used once and never stored. If the provider refuses the scope (a work tenant whose admin has not
+  consented, or a personal account), the sign-in retries with identity alone and "Use Microsoft Entra ID" on Get
+  started asks for the directory on its own, saying what the admin must consent to.
 - **Jira projects** through the Jira connection (Sign in with Atlassian, a token, or the company's credentials): every
   project becomes a team, with its lead and the people assigned its work. On Get started this connects Jira first
   when it is not yet.

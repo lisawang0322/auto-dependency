@@ -137,6 +137,9 @@ export function createApp(opts: ServerOptions = {}) {
   const atlCfg = opts.atlassian === undefined ? atlassianFromEnv(process.env, appUrl) : opts.atlassian ? { ...opts.atlassian, appUrl: opts.atlassian.appUrl || appUrl } : null;
   const atlassian = atlCfg ? new Atlassian(atlCfg, store, box, log) : null;
   const directory = new DirectoryHub(store, box, auth, opts.directory ?? directoryFromEnv(), log);
+  // The sign-in's consent covers the directory: it is read on arrival, so Get started shows it connected without another prompt.
+  auth.onSignedIn = async (u, token) => { await directory.connectWithToken(u, token); };
+  auth.onDemoSignedIn = async (u) => { await directory.connectDemo(u); };
   /** With sign-in, each organisation's runs, uploads and caches live under orgs/<org>/; without it, the plain roots. */
   const rootsFor = (u: User) => authCfg.mode === "none" ? { runsRoot, uploadRoot, cacheRoot, agentCacheRoot } : {
     runsRoot: join(runsRoot, "orgs", safeSeg(u.org)), uploadRoot: join(uploadRoot, "orgs", safeSeg(u.org)), cacheRoot: join(cacheRoot, "orgs", safeSeg(u.org)), agentCacheRoot: join(agentCacheRoot, "orgs", safeSeg(u.org)),

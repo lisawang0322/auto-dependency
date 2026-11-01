@@ -15,7 +15,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Store, User } from "./store.js";
 import { DEMO_ORG, DEMO_PERSONAS, demoLoginPage } from "./demo.js";
 
-export interface OidcConfig { issuer: string; clientId: string; clientSecret: string; appUrl: string; sessionSecret?: string; allowedEmailDomains?: string[]; sessionTtlMs?: number; fetchImpl?: typeof fetch }
+export interface OidcConfig {
+  issuer: string; clientId: string; clientSecret: string; appUrl: string; sessionSecret?: string; allowedEmailDomains?: string[]; sessionTtlMs?: number; fetchImpl?: typeof fetch;
+  /** Ask for the employee directory with the sign-in itself (one consent, no second prompt); off means the directory asks on its own. Default on. */
+  directoryAtSignIn?: boolean;
+  /** The Graph scopes that read the directory (default User.Read.All). */
+  directoryScopes?: string[];
+}
 /** AUTH=demo: a sign-in page served by this server with a few people to sign in as (server/demo.ts); sessions work as with OIDC. */
 export interface DemoConfig { appUrl: string; sessionSecret?: string; sessionTtlMs?: number }
 export type AuthConfig = { mode: "none" } | ({ mode: "oidc" } & OidcConfig) | ({ mode: "demo" } & DemoConfig);
@@ -30,6 +36,8 @@ export function authFromEnv(env = process.env): AuthConfig {
     mode: "oidc", issuer: env.OIDC_ISSUER, clientId: env.OIDC_CLIENT_ID, clientSecret: env.OIDC_CLIENT_SECRET,
     appUrl: (env.APP_URL ?? `http://localhost:${env.PORT ?? 8787}`).replace(/\/+$/, ""), sessionSecret: env.SESSION_SECRET,
     allowedEmailDomains: env.ALLOWED_EMAIL_DOMAINS ? env.ALLOWED_EMAIL_DOMAINS.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean) : undefined,
+    directoryAtSignIn: env.OIDC_DIRECTORY_AT_SIGNIN !== "0",
+    directoryScopes: env.GRAPH_SCOPES ? env.GRAPH_SCOPES.split(/[\s,]+/).filter(Boolean) : undefined,
   };
 }
 
@@ -61,9 +69,15 @@ export class Auth {
   private jwks: Jwk[] = [];
   private readonly ttl: number;
   readonly secure: boolean;
+  /** Called after an OIDC sign-in that carried the directory scope, with the access token the provider returned for it: the directory reads itself at once. */
+  onSignedIn: ((user: User, accessToken: string) => Promise<void>) | null = null;
+  /** Called after a demo sign-in. */
+  onDemoSignedIn: ((user: User) => Promise<void>) | null = null;
 
   private readonly demo: DemoConfig | null;
+  private readonly logLine: (s: string) => void;
   constructor(config: AuthConfig, private readonly store: Store, log: (s: string) => void = () => {}) {
+    this.logLine = log;
     this.mode = config.mode;
     this.cfg = config.mode === "oidc" ? config : null;
     this.demo = config.mode === "demo" ? config : null;
@@ -153,11 +167,15 @@ export class Auth {
     const next = url.searchParams.get("next") ?? "/";
     const state = randomBytes(16).toString("base64url"), nonce = randomBytes(16).toString("base64url"), verifier = randomBytes(32).toString("base64url");
     const challenge = createHash("sha256").update(verifier).digest("base64url");
+    // One consent covers identity and the directory: the Graph scope rides with the sign-in, so the directory is connected on
+    // arrival. ?nodir=1 is the retry after a provider refused that scope (admin consent missing, or a personal account).
+    const withDir = (this.cfg.directoryAtSignIn ?? true) && url.searchParams.get("nodir") !== "1";
+    const scope = ["openid", "profile", "email", ...(withDir ? ["offline_access", ...(this.cfg.directoryScopes ?? ["User.Read.All"])] : [])].join(" ");
     const q = new URLSearchParams({
-      response_type: "code", client_id: this.cfg.clientId, redirect_uri: `${this.cfg.appUrl}/auth/callback`, scope: "openid profile email",
+      response_type: "code", client_id: this.cfg.clientId, redirect_uri: `${this.cfg.appUrl}/auth/callback`, scope,
       state, nonce, code_challenge: challenge, code_challenge_method: "S256",
     });
-    res.writeHead(302, { Location: `${d.authorization_endpoint}${d.authorization_endpoint.includes("?") ? "&" : "?"}${q}`, "Set-Cookie": this.cookie(LOGIN_COOKIE, this.sealLogin({ state, nonce, verifier, next: safeNext(next) }), 600), "Cache-Control": "no-store" });
+    res.writeHead(302, { Location: `${d.authorization_endpoint}${d.authorization_endpoint.includes("?") ? "&" : "?"}${q}`, "Set-Cookie": this.cookie(LOGIN_COOKIE, this.sealLogin({ state, nonce, verifier, next: safeNext(next), dir: withDir ? "1" : "0" }), 600), "Cache-Control": "no-store" });
     res.end();
   }
 
@@ -167,18 +185,26 @@ export class Auth {
     const login = this.openLogin(parseCookies(req)[LOGIN_COOKIE]);
     if (!login) return fail(400, "the sign-in attempt expired or was not started here; try again.");
     const err = url.searchParams.get("error");
+    if (err && login.dir === "1") {
+      // The provider would not grant the directory scope with the sign-in: sign in with identity alone; the directory can ask on its own later.
+      this.logLine(`auth: the provider refused the directory scope at sign-in (${err}); signing in without it`);
+      res.writeHead(302, { Location: `/auth/login?nodir=1&next=${encodeURIComponent(login.next || "/")}`, "Set-Cookie": this.cookie(LOGIN_COOKIE, "", 0), "Cache-Control": "no-store" });
+      return res.end();
+    }
     if (err) return fail(400, `${err}: ${url.searchParams.get("error_description") ?? ""}`.trim());
     const code = url.searchParams.get("code"), state = url.searchParams.get("state");
     if (!code || !state || state !== login.state) return fail(400, "the state did not match; try again.");
     let claims: Record<string, any>;
+    let graphToken: string | null = null;
     try {
       const d = await this.discover();
       const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: `${this.cfg.appUrl}/auth/callback`, client_id: this.cfg.clientId, client_secret: this.cfg.clientSecret, code_verifier: login.verifier });
       const tok = await this.f(d.token_endpoint, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body });
       if (!tok.ok) return fail(502, `the identity provider rejected the code (${tok.status}).`);
-      const data = (await tok.json()) as { id_token?: string };
+      const data = (await tok.json()) as { id_token?: string; access_token?: string };
       if (!data.id_token) return fail(502, "no id_token came back.");
       claims = await this.verifyIdToken(data.id_token, login.nonce);
+      graphToken = login.dir === "1" ? data.access_token ?? null : null;
     } catch (e) {
       return fail(e instanceof AuthError ? e.status : 502, (e as Error).message);
     }
@@ -189,6 +215,8 @@ export class Auth {
       if (!domain || !this.cfg.allowedEmailDomains.includes(domain)) return fail(403, `${email ?? "this account"} is not in an allowed domain.`);
     }
     const user = this.store.upsertUser({ issuer: String(claims.iss), sub: String(claims.sub), email, name: String(claims.name ?? email ?? claims.sub), org: String(claims.tid ?? claims.hd ?? claims.org ?? new URL(String(claims.iss)).hostname) });
+    // The directory, with the same consent: read now, so Get started shows it connected. A failure here never fails the sign-in.
+    if (graphToken && this.onSignedIn) await this.onSignedIn(user, graphToken).catch((e) => this.logLine(`auth: the directory could not be read at sign-in: ${(e as Error).message}`));
     const session = this.store.createSession(user.id, this.ttl);
     res.writeHead(302, { Location: login.next || "/", "Set-Cookie": [this.cookie(SESSION_COOKIE, session.id, Math.floor(this.ttl / 1000)), this.cookie(LOGIN_COOKIE, "", 0)], "Cache-Control": "no-store" });
     res.end();
@@ -201,6 +229,7 @@ export class Auth {
     const persona = DEMO_PERSONAS.find((p) => p.id === f.get("persona"));
     if (!persona) { res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" }); return res.end("Sign-in failed: pick one of the people on the page."); }
     const user = this.store.upsertUser({ issuer: "demo", sub: persona.id, email: persona.email, name: persona.name, org: DEMO_ORG });
+    if (this.onDemoSignedIn) await this.onDemoSignedIn(user).catch(() => {});
     const session = this.store.createSession(user.id, this.ttl);
     res.writeHead(302, { Location: safeNext(f.get("next") ?? "/"), "Set-Cookie": this.cookie(SESSION_COOKIE, session.id, Math.floor(this.ttl / 1000)), "Cache-Control": "no-store" });
     res.end();
