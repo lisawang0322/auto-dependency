@@ -20,8 +20,8 @@ async function boot() {
   if (want === "live" && !live) console.warn("backend=live requested but the server did not answer on /api/health; using sample data.");
   const root = createRoot(document.getElementById("root")!);
   // With sign-in on, nothing else is shown until the person has signed in.
-  if (live && health!.auth?.mode === "oidc" && !health!.auth.user) {
-    root.render(<React.StrictMode><SignIn loginUrl={health!.auth.login_url ?? "/auth/login"} next={location.pathname + location.search} /></React.StrictMode>);
+  if (live && health!.auth && health!.auth.mode !== "none" && !health!.auth.user) {
+    root.render(<React.StrictMode><SignIn loginUrl={health!.auth.login_url ?? "/auth/login"} next={location.pathname + location.search} demo={health!.auth.mode === "demo"} /></React.StrictMode>);
     return;
   }
   const backend = live ? new LiveBackend(health) : new FixtureBackend(fast ? 20 : 300);
@@ -32,7 +32,7 @@ async function boot() {
   const user = live ? (health!.auth?.user ?? null) : null;
   root.render(
     <React.StrictMode>
-      <App backend={backend} jira={jira} store={store} user={user} initialConsent={initialConsent} initialMode={initialMode} onSignOut={live && health!.auth?.mode === "oidc" ? signOut : undefined} />
+      <App backend={backend} jira={jira} store={store} user={user} initialConsent={initialConsent} initialMode={initialMode} onSignOut={live && health!.auth && health!.auth.mode !== "none" ? signOut : undefined} />
     </React.StrictMode>,
   );
 }

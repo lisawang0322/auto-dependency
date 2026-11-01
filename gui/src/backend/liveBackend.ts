@@ -18,7 +18,7 @@ async function apiRaw<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string
 }
 async function api<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> { return (await apiRaw<T>(method, path, body)).data; }
 
-export interface AuthInfo { mode: "none" | "oidc"; user: UserInfo | null; login_url: string | null }
+export interface AuthInfo { mode: "none" | "oidc" | "demo"; user: UserInfo | null; login_url: string | null }
 export interface Health { jira: JiraInfo; agent?: AgentInfo; auth?: AuthInfo; settings?: Settings | null; directory?: DirectoryInfo }
 
 /** Ends the session and returns to the sign-in screen. */

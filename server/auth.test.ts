@@ -163,3 +163,40 @@ describe("the store", () => {
     s.close();
   });
 });
+
+describe("demo sign-in (AUTH=demo)", () => {
+  it("serves a sign-in page of people, keeps a session per person, and connects the sample directory through the demo consent", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "rrr-demo-"));
+    const srv = await startServer({ port: 0, quiet: true, creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), storePath: ":memory:", devin: null, guiDist: join(tmp, "nodist"), auth: { mode: "demo", appUrl: "http://127.0.0.1", sessionSecret: "demo-secret" } });
+    try {
+      const c = client(srv.url);
+      expect((await c.json("GET", "/api/health")).data.auth).toEqual({ mode: "demo", user: null, login_url: "/auth/login" });
+      const page = await c.req("/auth/login?next=%2F");
+      expect(page.status).toBe(200);
+      const html = await page.text();
+      expect(html).toContain("Sign in to Sample Co");
+      expect(html).toContain("Priya Natarajan");
+      expect(html).toContain("Demo identity provider");
+      const signed = await c.req("/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "persona=priya&next=%2F" });
+      expect(signed.status).toBe(302);
+      expect(c.jar.has("rrr_session")).toBe(true);
+      const h = (await c.json("GET", "/api/health")).data;
+      expect(h.auth.user).toMatchObject({ name: "Priya Natarajan", email: "priya@sample-co.example", org: "sample-co" });
+      expect(h.directory.entra).toEqual({ available: true, connected: null });
+      // The directory's Entra layer: the demo consent page, then the sample company's departments as teams.
+      const consent = await c.req("/auth/directory/entra/start");
+      expect(await consent.text()).toContain("Permissions requested");
+      const done = await c.req("/auth/directory/entra/callback", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "decision=accept" });
+      expect(done.status).toBe(302);
+      const d = (await c.json("GET", "/api/directory")).data;
+      expect(d.entra.connected).toMatchObject({ label: "Microsoft Entra ID · sample-co (demo)", teams: 7 });
+      expect((await c.req("/auth/directory/entra/callback", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "decision=cancel" })).status).toBe(400);
+      // A second person is separate.
+      const c2 = client(srv.url);
+      await c2.req("/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "persona=anika&next=%2F" });
+      expect((await c2.json("GET", "/api/health")).data.auth.user.name).toBe("Anika Rao");
+      expect((await c2.json("GET", "/api/directory")).data.entra.connected).toBeNull();
+      expect((await c.req("/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "persona=nobody" })).status).toBe(400);
+    } finally { await srv.close(); rmSync(tmp, { recursive: true, force: true }); }
+  });
+});

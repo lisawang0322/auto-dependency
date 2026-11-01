@@ -1,5 +1,5 @@
 /** Live mode with sign-in: nothing else is shown until the person has signed in with the company identity provider. */
-export function SignIn({ loginUrl, next }: { loginUrl: string; next: string }) {
+export function SignIn({ loginUrl, next, demo = false }: { loginUrl: string; next: string; /** AUTH=demo: the server's own sign-in page with people to sign in as. */ demo?: boolean }) {
   const go = () => { location.href = `${loginUrl}?next=${encodeURIComponent(next)}`; };
   return (
     <div>
@@ -16,7 +16,7 @@ export function SignIn({ loginUrl, next }: { loginUrl: string; next: string }) {
           <div>
             <button type="button" className="btn primary" style={{ padding: "0 20px" }} onClick={go}>Sign in</button>
           </div>
-          <span className="small muted">You will be sent to your company's sign-in page and back here.</span>
+          <span className="small muted">{demo ? "Demo: you will be sent to a sign-in page that stands in for your company's, pick a person, and come back here." : "You will be sent to your company's sign-in page and back here."}</span>
         </div>
       </main>
     </div>

@@ -189,6 +189,11 @@ exported as `.docx` by `fixtures/build_docx.py`) and directory (`directory.yaml`
 
 ## Sign-in with the company identity provider
 
+`AUTH=demo` turns on a demo identity provider served by this server: the sign-in page lists a few people at
+"Sample Co" to sign in as (`server/demo.ts`), each with their own plans, decisions and connections, and "Use
+Microsoft Entra ID" on Get started opens the consent page Entra would show and connects the sample company's
+directory. Nothing talks to a real tenant; it is for showing the flow without an app registration.
+
 Without any `OIDC_*` variable the server runs as one local user (`AUTH=none`): the demo, the tests and a
 laptop setup. With them, nothing is shown until the person has signed in through the company identity
 provider (OpenID Connect, authorization code with PKCE; Microsoft Entra ID, Google and Okta all work):

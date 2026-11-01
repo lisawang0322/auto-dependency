@@ -22,6 +22,7 @@ import type { DirectoryEntry } from "../skills/release-starter/scripts/lib/direc
 import type { Store, User } from "./store.js";
 import type { TokenBox } from "./crypto.js";
 import { parseCookies, safeNext, type Auth } from "./auth.js";
+import { DEMO_DIRECTORY, DEMO_ORG, demoDirectoryConsentPage, escapeHtml } from "./demo.js";
 
 export type DirectorySourceId = "entra" | "jira";
 export interface DirectorySnapshot { source: DirectorySourceId; label: string; teams: DirectoryEntry[]; people: number; connected_at: string }
@@ -57,7 +58,7 @@ export class DirectoryHub {
   disconnect(u: User, s: DirectorySourceId) { this.store.deleteConnection(u.id, KIND(s)); }
   private summary(snap: DirectorySnapshot | null): DirectorySummary | null { return snap ? { label: snap.label, teams: snap.teams.length, people: snap.people, connected_at: snap.connected_at } : null; }
   info(u: User, jiraAvailable: boolean): DirectoryInfo {
-    return { entra: { available: this.auth.oidc() !== null, connected: this.summary(this.snapshot(u, "entra")) }, jira: { available: jiraAvailable, connected: this.summary(this.snapshot(u, "jira")) } };
+    return { entra: { available: this.auth.oidc() !== null || this.auth.mode === "demo", connected: this.summary(this.snapshot(u, "entra")) }, jira: { available: jiraAvailable, connected: this.summary(this.snapshot(u, "jira")) } };
   }
   /** The merged directory, or null when no source is connected. Entries with the same name merge: people from both, the Jira project from Jira. */
   merged(u: User): DirectoryEntry[] | null {
@@ -111,9 +112,34 @@ export class DirectoryHub {
   /** Handle /auth/directory/entra/*; returns false when the path is not one of them. */
   async handle(req: IncomingMessage, res: ServerResponse, url: URL, user: User | null): Promise<boolean> {
     const p = url.pathname;
+    if (this.auth.mode === "demo") {
+      // The demo provider: a consent page served here, and the sample company's directory on accept.
+      if (p === "/auth/directory/entra/start" && req.method === "GET") {
+        if (!user) { res.writeHead(401, { "Content-Type": "text/plain" }); return res.end("Sign in first."), true; }
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }); res.end(demoDirectoryConsentPage(this.graphScopes, url.searchParams.get("popup") === "1")); return true;
+      }
+      if (p === "/auth/directory/entra/callback" && req.method === "POST") { await this.demoCallback(req, res, url, user); return true; }
+      return false;
+    }
     if (p === "/auth/directory/entra/start" && req.method === "GET") { await this.start(res, url, user); return true; }
     if (p === "/auth/directory/entra/callback" && req.method === "GET") { await this.callback(req, res, url, user); return true; }
     return false;
+  }
+  private async demoCallback(req: IncomingMessage, res: ServerResponse, url: URL, user: User | null) {
+    let body = ""; for await (const c of req) body += c;
+    const decision = new URLSearchParams(body).get("decision");
+    const popup = url.searchParams.get("popup") === "1";
+    const finish = (status: number, text: string, ok: boolean) => {
+      if (popup) { res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }); return res.end(`<!doctype html><meta charset="utf-8"><title>Directory ${ok ? "connected" : "not connected"}</title><body style="font-family:system-ui;padding:24px"><p>${escapeHtml(text)}</p><script>try{window.opener&&window.opener.postMessage({type:"rrr:directory",ok:${ok ? "true" : "false"},message:${JSON.stringify(text)}},location.origin)}catch(e){}${ok ? "window.close();" : ""}</script></body>`); }
+      if (ok) { res.writeHead(302, { Location: "/", "Cache-Control": "no-store" }); return res.end(); }
+      res.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" }); res.end(text);
+    };
+    if (!user) return finish(401, "Sign in first.", false);
+    if (decision !== "accept") return finish(400, "The identity provider did not grant directory access: you cancelled.", false);
+    const snap = this.teamsFromGraphUsers(DEMO_DIRECTORY.map((u) => ({ displayName: u.displayName, jobTitle: u.jobTitle, department: u.department, manager: u.manager ?? null })), `Microsoft Entra ID · ${DEMO_ORG} (demo)`);
+    this.save(user, snap);
+    this.log(`directory: ${user.name} connected the demo directory (${snap.teams.length} teams, ${snap.people} people)`);
+    return finish(200, `Directory connected: ${snap.teams.length} teams, ${snap.people} people. You can close this window.`, true);
   }
   private async start(res: ServerResponse, url: URL, user: User | null) {
     const oidc = this.auth.oidc();
@@ -174,6 +200,10 @@ export class DirectoryHub {
       for (const v of page.value ?? []) if (v?.displayName && v.accountEnabled !== false) users.push({ displayName: String(v.displayName), jobTitle: v.jobTitle ?? null, department: v.department ?? null, manager: v.manager?.displayName ?? null });
       next = page["@odata.nextLink"] ?? null;
     }
+    return this.teamsFromGraphUsers(users, `Microsoft Entra ID · ${tenant}`);
+  }
+  /** A team per department, its people with their titles; the department's outside manager (whom most of it reports to) leads the list. */
+  private teamsFromGraphUsers(users: { displayName: string; jobTitle: string | null; department: string | null; manager: string | null }[], label: string): DirectorySnapshot {
     const byDept = new Map<string, DirectoryEntry>();
     for (const v of users) {
       if (!v.department) continue;
@@ -189,7 +219,7 @@ export class DirectoryHub {
       if (lead) { const m = users.find((v) => v.displayName === lead); t.people.unshift({ name: lead, title: m?.jobTitle ?? "manager" }); }
     }
     const teams = [...byDept.values()];
-    return { source: "entra", label: `Microsoft Entra ID · ${tenant}`, teams, people: teams.reduce((n, t) => n + t.people.length, 0), connected_at: new Date().toISOString() };
+    return { source: "entra", label, teams, people: teams.reduce((n, t) => n + t.people.length, 0), connected_at: new Date().toISOString() };
   }
 }
 
@@ -197,4 +227,3 @@ export function directoryFromEnv(env = process.env): DirectoryOptions {
   return { graphBase: env.GRAPH_API_BASE, graphScopes: env.GRAPH_SCOPES ? env.GRAPH_SCOPES.split(/[\s,]+/).filter(Boolean) : undefined };
 }
 
-function escapeHtml(s: string): string { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string)); }

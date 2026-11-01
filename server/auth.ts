@@ -13,13 +13,17 @@
 import { createHmac, createPublicKey, createHash, randomBytes, timingSafeEqual, verify as cryptoVerify, type KeyObject } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Store, User } from "./store.js";
+import { DEMO_ORG, DEMO_PERSONAS, demoLoginPage } from "./demo.js";
 
 export interface OidcConfig { issuer: string; clientId: string; clientSecret: string; appUrl: string; sessionSecret?: string; allowedEmailDomains?: string[]; sessionTtlMs?: number; fetchImpl?: typeof fetch }
-export type AuthConfig = { mode: "none" } | ({ mode: "oidc" } & OidcConfig);
+/** AUTH=demo: a sign-in page served by this server with a few people to sign in as (server/demo.ts); sessions work as with OIDC. */
+export interface DemoConfig { appUrl: string; sessionSecret?: string; sessionTtlMs?: number }
+export type AuthConfig = { mode: "none" } | ({ mode: "oidc" } & OidcConfig) | ({ mode: "demo" } & DemoConfig);
 
 export const LOCAL_USER: User = { id: "local", issuer: "local", sub: "local", email: null, name: "You", org: "local", created_at: "", last_seen: "" };
 
 export function authFromEnv(env = process.env): AuthConfig {
+  if (env.AUTH === "demo") return { mode: "demo", appUrl: (env.APP_URL ?? `http://localhost:${env.PORT ?? 8787}`).replace(/\/+$/, ""), sessionSecret: env.SESSION_SECRET };
   if (!env.OIDC_ISSUER) return { mode: "none" };
   if (!env.OIDC_CLIENT_ID || !env.OIDC_CLIENT_SECRET) throw new Error("OIDC_ISSUER is set but OIDC_CLIENT_ID or OIDC_CLIENT_SECRET is missing.");
   return {
@@ -58,14 +62,17 @@ export class Auth {
   private readonly ttl: number;
   readonly secure: boolean;
 
+  private readonly demo: DemoConfig | null;
   constructor(config: AuthConfig, private readonly store: Store, log: (s: string) => void = () => {}) {
     this.mode = config.mode;
     this.cfg = config.mode === "oidc" ? config : null;
+    this.demo = config.mode === "demo" ? config : null;
+    const common = this.cfg ?? this.demo;
     this.f = this.cfg?.fetchImpl ?? fetch;
-    this.ttl = this.cfg?.sessionTtlMs ?? 7 * 24 * 3600_000;
-    this.secure = !!this.cfg && this.cfg.appUrl.startsWith("https://");
-    if (this.cfg && !this.cfg.sessionSecret) log("auth: SESSION_SECRET not set; a random one is used, so a restart logs everyone out");
-    this.secret = this.cfg?.sessionSecret ? createHash("sha256").update(this.cfg.sessionSecret).digest() : randomBytes(32);
+    this.ttl = common?.sessionTtlMs ?? 7 * 24 * 3600_000;
+    this.secure = !!common && common.appUrl.startsWith("https://");
+    if (common && !common.sessionSecret) log("auth: SESSION_SECRET not set; a random one is used, so a restart logs everyone out");
+    this.secret = common?.sessionSecret ? createHash("sha256").update(common.sessionSecret).digest() : randomBytes(32);
   }
 
   /** The OIDC registration (client, app URL), for connectors that ask the same provider for more (the directory); null without sign-in. */
@@ -85,12 +92,14 @@ export class Auth {
   /** What the GUI shows: the mode, the user, and where to sign in. */
   me(req: IncomingMessage) {
     const u = this.userOf(req);
-    return { mode: this.mode, user: u ? { id: u.id, name: u.name, email: u.email, org: u.org } : null, login_url: this.mode === "oidc" ? "/auth/login" : null };
+    return { mode: this.mode, user: u ? { id: u.id, name: u.name, email: u.email, org: u.org } : null, login_url: this.mode === "none" ? null : "/auth/login" };
   }
 
   /** Handle /auth/* ; returns false when the path is not an auth route. */
   async handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
     const p = url.pathname;
+    if (this.demo && p === "/auth/login" && req.method === "GET") { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }); res.end(demoLoginPage(safeNext(url.searchParams.get("next") ?? "/"))); return true; }
+    if (this.demo && p === "/auth/login" && req.method === "POST") { await this.demoLogin(req, res); return true; }
     if (p === "/auth/login" && req.method === "GET") { await this.login(req, res, url); return true; }
     if (p === "/auth/callback" && req.method === "GET") { await this.callback(req, res, url); return true; }
     if (p === "/auth/logout" && req.method === "POST") { this.logout(req, res); return true; }
@@ -182,6 +191,18 @@ export class Auth {
     const user = this.store.upsertUser({ issuer: String(claims.iss), sub: String(claims.sub), email, name: String(claims.name ?? email ?? claims.sub), org: String(claims.tid ?? claims.hd ?? claims.org ?? new URL(String(claims.iss)).hostname) });
     const session = this.store.createSession(user.id, this.ttl);
     res.writeHead(302, { Location: login.next || "/", "Set-Cookie": [this.cookie(SESSION_COOKIE, session.id, Math.floor(this.ttl / 1000)), this.cookie(LOGIN_COOKIE, "", 0)], "Cache-Control": "no-store" });
+    res.end();
+  }
+
+  /** Demo sign-in: the chosen persona becomes a user of the sample organisation, with a session like any other. */
+  private async demoLogin(req: IncomingMessage, res: ServerResponse) {
+    let body = ""; for await (const c of req) body += c;
+    const f = new URLSearchParams(body);
+    const persona = DEMO_PERSONAS.find((p) => p.id === f.get("persona"));
+    if (!persona) { res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" }); return res.end("Sign-in failed: pick one of the people on the page."); }
+    const user = this.store.upsertUser({ issuer: "demo", sub: persona.id, email: persona.email, name: persona.name, org: DEMO_ORG });
+    const session = this.store.createSession(user.id, this.ttl);
+    res.writeHead(302, { Location: safeNext(f.get("next") ?? "/"), "Set-Cookie": this.cookie(SESSION_COOKIE, session.id, Math.floor(this.ttl / 1000)), "Cache-Control": "no-store" });
     res.end();
   }
 
