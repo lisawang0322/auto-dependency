@@ -590,7 +590,7 @@ if (isMain) {
     console.error(`Release Readiness Review server on ${s.url}`);
     console.error(j.fixture ? `  Jira: demo mode, reading ${j.site}` : j.connected ? `  Jira: ${j.site} (from environment)` : j.oauth ? "  Jira: Sign in with Atlassian on the Connect step (ATLASSIAN_CLIENT_ID set)" : "  Jira: not connected; the GUI's Connect step asks for a site, email and API token (set ATLASSIAN_CLIENT_ID and ATLASSIAN_CLIENT_SECRET for Sign in with Atlassian)");
     const a = s.app.agentInfo();
-    console.error(s.app.auth.mode === "oidc" ? "  Sign-in: with your identity provider (OIDC_ISSUER)" : "  Sign-in: off (AUTH=none); set OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET and APP_URL to require it");
+    console.error(s.app.auth.mode === "oidc" ? "  Sign-in: with your identity provider (OIDC_ISSUER)" : s.app.auth.mode === "demo" ? "  Sign-in: demo (AUTH=demo); a Sample Co sign-in page with people to sign in as, and a demo directory" : "  Sign-in: off (AUTH=none); set OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET and APP_URL to require it");
     if (a.available) {
       const who = await devinWhoami();
       console.error(`  Devin: reads uploaded plan documents (${a.api} API; up to ${a.max_acu} ACU per reading${who?.user_name ? `; key belongs to ${who.user_name}` : ""}${who?.org_id ? `, organisation ${who.org_id}` : ""}${a.api === "v3" ? `; mode ${a.default_mode ?? "Devin's default"}, people may pick ${a.modes.join(", ")}` : ""})`);
