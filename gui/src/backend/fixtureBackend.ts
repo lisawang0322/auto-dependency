@@ -1,5 +1,5 @@
 import { PlanDraft, ReleaseTarget, Run, Starter, Signal, type Stage } from "@rrr/schemas";
-import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, PlanExtract, StarterRunInput, AgentInfo, AgentRead, ExtractOptions, Settings, AgentConsent } from "./types";
+import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, PlanExtract, StarterRunInput, AgentInfo, AgentRead, ExtractOptions, Settings, AgentConsent, DirectoryConnection, DirectoryInfo, DirectorySourceId } from "./types";
 
 const CONSENT_KEY = "rrr.agent.consent";
 /** Sample mode keeps the person's answer about the agent in this browser. */
@@ -54,11 +54,24 @@ export function sampleFilesFor(stage: Stage): UploadedFile[] { return stage === 
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** The demo's directory layers: a simulated sign-in consent and Jira's sample projects, with nothing behind them. */
+export class FixtureDirectory implements DirectoryConnection {
+  private state: DirectoryInfo = { entra: { available: true, connected: null }, jira: { available: true, connected: null } };
+  constructor(private delayMs = 300) {}
+  async info() { return structuredClone(this.state); }
+  async connectEntra() { await wait(this.delayMs * 2); this.state.entra.connected = { label: "Microsoft Entra ID · sample", teams: 10, people: 21, connected_at: new Date().toISOString() }; return this.info(); }
+  async connectJira() { await wait(this.delayMs); this.state.jira.connected = { label: "Jira projects · sample-company.atlassian.net", teams: 6, people: 6, connected_at: new Date().toISOString() }; return this.info(); }
+  async disconnect(source: DirectorySourceId) { this.state[source].connected = null; return this.info(); }
+  /** What the sample plan says about the merged directory, for the file list. */
+  note(): string { const e = this.state.entra.connected, j = this.state.jira.connected; return e ? "10 teams · 21 people" : j ? `${j.teams} teams · ${j.people} people` : "0 teams · 0 people"; }
+}
+
 export class FixtureBackend implements ReviewBackend {
   readonly mode = "sample" as const;
   /** The demo shows the agent path too: a simulated Devin reading, with no session behind it. */
   readonly agent: AgentInfo = { available: true, name: "Devin", modes: ["lite", "normal"], default_mode: "normal" };
-  constructor(private delayMs = 300) {}
+  readonly directory: FixtureDirectory;
+  constructor(private delayMs = 300) { this.directory = new FixtureDirectory(delayMs); }
 
   async saveSettings(patch: Partial<Settings>): Promise<void> {
     if (patch.agent_consent) { try { localStorage.setItem(CONSENT_KEY, patch.agent_consent); } catch { /* private mode */ } }
@@ -88,7 +101,7 @@ export class FixtureBackend implements ReviewBackend {
     const has = (k: UploadedFile["kind"]) => files.some((f) => f.kind === k);
     if (!has("plan") && !has("prd")) throw new Error("No file was read as a plan.");
     const kindOf = { prd: "plan_items", plan: "plan_items", checks: "launch_checks", teams: "teams_and_owners" } as const;
-    const teamsNote = (f: UploadedFile) => (f.name === "directory.yaml" ? "10 teams · 21 people" : PLAN.files.find((b) => b.read_as.includes("teams_and_owners"))?.notes ?? "");
+    const teamsNote = (f: UploadedFile) => (f.source === "server" ? this.directory.note() : f.name === "directory.yaml" ? "10 teams · 21 people" : PLAN.files.find((b) => b.read_as.includes("teams_and_owners"))?.notes ?? "");
     if (stage !== "launching") {
       // The early stages: the sample PRD's signals and the plan the apps step needs (teams the signals name).
       const signals = STARTING.signals.filter((g) => files.some((f) => f.name === g.file || (!f.sample && PLAN_KINDS.includes(f.kind))));

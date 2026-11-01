@@ -127,7 +127,7 @@ An HR org chart and the team list the tool needs are different things. HR system
 5. **SCIM and the identity provider** (Okta): department and manager live in the SCIM enterprise extension. Relevant mainly if the product were provisioned into the company, so lower priority.
 6. **Exports and org-chart tools**: a CSV or YAML export (built), or a tool such as ChartHop or Pingboard. Always available, never fresh, the one path that needs no admin.
 
-Phasing: directory export (built) → Atlassian Teams and Jira projects (same sign-in, gives teams) → Microsoft Graph delegated read for names, titles and managers (same sign-in, gives people) → Google Workspace and a unified HRIS API as later options. Not confirmed: Slack profile fields as a people source; whether Confluence exposes a people directory.
+Phasing: directory export (built) → Jira projects as teams, through the Jira connection (built Nov 2026: each project, its lead and assignees) → Microsoft Graph delegated read for names, titles, departments and managers through the Entra sign-in (built Nov 2026: a second consent in a popup, a team per department, the snapshot stored per person) → Atlassian Teams, Google Workspace and a unified HRIS API as later options. The two built layers merge by team name into one team list the reader takes as a file. Not confirmed: Slack profile fields as a people source; whether Confluence exposes a people directory.
 
 ## How it works
 

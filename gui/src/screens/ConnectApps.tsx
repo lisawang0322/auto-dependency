@@ -39,7 +39,10 @@ export function appBadge(id: AppId, stage: Stage): "Required" | "Recommended" | 
   return "";
 }
 
-export interface DirectoryState { connected: boolean; name: string | null; fromFiles: string | null }
+import type { DirectoryInfo, DirectorySourceId } from "../backend/types";
+/** The directory as the app sees it: a connected file (an export, or the server-held layers), a team list among the uploads, and the server's two layers. */
+export interface DirectoryState { connected: boolean; name: string | null; fromFiles: string | null; info: DirectoryInfo | null }
+export type DirectoryHandlers = { onConnectDirectory: (file: File | null) => void; onDisconnectDirectory: () => void; onConnectEntra: () => Promise<void>; onConnectJira: () => Promise<void>; onDisconnectSource: (s: DirectorySourceId) => Promise<void> };
 export interface AgentState { info: AgentInfo; consent: AgentConsent; setConsent: (c: AgentConsent) => void; mode: string | null; setMode: (m: string | null) => void }
 
 interface Props {

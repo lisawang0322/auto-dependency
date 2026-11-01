@@ -243,6 +243,26 @@ apps step, which is structured data and stays with the directory reader. The GUI
 rules' result with a "Try again" button if the session fails. Every file's reading is cached by content, "read as"
 and tier under `out/agent-reads/`, so re-adding the same file spends nothing.
 
+## The employee directory
+
+Connected first, on **Get started**, in two layers that combine (PRD "Employee directory sources"):
+
+- **Microsoft Entra ID** through the sign-in the person already has. "Use Microsoft Entra ID" opens a second consent
+  on the same app registration asking for `User.Read.All` (`GRAPH_SCOPES` to change it); the server reads every user's
+  name, title, department and manager from Microsoft Graph (`GRAPH_API_BASE`, default `https://graph.microsoft.com/v1.0`),
+  makes a team per department with the department's outside manager first, and stores that snapshot per person,
+  sealed. The Graph token is used once and never stored. A work tenant's admin may have to consent to the scope.
+- **Jira projects** through the Jira connection (Sign in with Atlassian, a token, or the company's credentials): every
+  project becomes a team, with its lead and the people assigned its work. On Get started this connects Jira first
+  when it is not yet.
+- **An export** (YAML, CSV or a spreadsheet), as before.
+
+The layers merge by team name (Entra's people under Jira's project keys; a title from either layer wins over none)
+and are written as a team list the reader already takes, so Stage A, the early stages and Devin's grounding all see
+one file, "Employee directory.yaml". Routes: `GET /api/directory`, `POST /api/directory/jira`,
+`DELETE /api/directory/{entra|jira}`, `GET /auth/directory/entra/start|callback`. `server/tests/fake-idp.ts` plays
+Microsoft Graph too (`idp.graph`).
+
 Three things from the professor's review (Nov 2026) shape this step. The employee directory is connected on
 **Get started**, before any document, and its team names go into Devin's instructions so owners are spelled as
 the company spells them rather than guessed (a reading is cached per directory too). Right after the reading,

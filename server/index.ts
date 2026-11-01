@@ -41,6 +41,7 @@ import type { AgentItem, AgentTeam, AgentLaunchDate } from "../skills/release-re
 import type { AgentSignal } from "../skills/release-starter/scripts/lib/signals.js";
 import { DevinClient, devinFromEnv, readWithDevin, itemRules, signalRuleLines, type DevinOptions, type ReadingOutcome, type DevinMode, type FileRole } from "./devin.js";
 import { loadFile } from "../skills/release-reader/scripts/lib/files.js";
+import { DirectoryHub, directoryFromEnv, type DirectoryOptions, type DirectorySourceId } from "./directory.js";
 import { loadDirectory } from "../skills/release-starter/scripts/lib/directory.js";
 import { createHash } from "node:crypto";
 import { Store, type User } from "./store.js";
@@ -73,6 +74,8 @@ export interface ServerOptions {
   appUrl?: string;
   /** Encrypts stored tokens; default TOKEN_KEY, else SESSION_SECRET, else a random key (connections are lost on restart). */
   tokenKey?: string;
+  /** The employee directory's Microsoft Graph settings (base URL, scopes); from GRAPH_API_BASE / GRAPH_SCOPES when unset. */
+  directory?: DirectoryOptions;
 }
 
 /** What the GUI shows about the agent's reading of the uploads. */
@@ -133,6 +136,7 @@ export function createApp(opts: ServerOptions = {}) {
   const box = new TokenBox(tokenKey ?? randomBytes(32).toString("hex"));
   const atlCfg = opts.atlassian === undefined ? atlassianFromEnv(process.env, appUrl) : opts.atlassian ? { ...opts.atlassian, appUrl: opts.atlassian.appUrl || appUrl } : null;
   const atlassian = atlCfg ? new Atlassian(atlCfg, store, box, log) : null;
+  const directory = new DirectoryHub(store, box, auth, opts.directory ?? directoryFromEnv(), log);
   /** With sign-in, each organisation's runs, uploads and caches live under orgs/<org>/; without it, the plain roots. */
   const rootsFor = (u: User) => authCfg.mode === "none" ? { runsRoot, uploadRoot, cacheRoot, agentCacheRoot } : {
     runsRoot: join(runsRoot, "orgs", safeSeg(u.org)), uploadRoot: join(uploadRoot, "orgs", safeSeg(u.org)), cacheRoot: join(cacheRoot, "orgs", safeSeg(u.org)), agentCacheRoot: join(agentCacheRoot, "orgs", safeSeg(u.org)),
@@ -276,7 +280,12 @@ export function createApp(opts: ServerOptions = {}) {
       const name = basename(String(f.name ?? "")).replace(/[^\w.\- ()]+/g, "_");
       if (!name) throw new HttpError(400, "A file has no name.");
       let path: string;
-      if (f.sample) {
+      if (f.via === "directory" && f.source === "server") {
+        // The directory connected on Get started: the merged snapshot, written as a team list the reader takes as a file.
+        const written = directory.writeFile(u, join(rootsFor(u).uploadRoot, "directory", u.id));
+        if (!written) throw new HttpError(400, "No employee directory is connected. Connect one on Get started, or add an export.");
+        path = written;
+      } else if (f.sample) {
         path = join(sampleDocs, name);
         if (!existsSync(path)) throw new HttpError(400, `No sample file named ${name}.`);
       } else {
@@ -298,10 +307,25 @@ export function createApp(opts: ServerOptions = {}) {
     async health(req: IncomingMessage) {
       const me = auth.me(req);
       const u = auth.userOf(req);
-      return { ok: true, mode: "live", jira: jiraInfo(u ?? LOCAL_USER), agent: agentInfo(), auth: me, settings: u ? settingsOf(u) : null, runs_root: resolve(u ? rootsFor(u).runsRoot : runsRoot) };
+      return { ok: true, mode: "live", jira: jiraInfo(u ?? LOCAL_USER), agent: agentInfo(), auth: me, settings: u ? settingsOf(u) : null, directory: directory.info(u ?? LOCAL_USER, !!credsFor(u ?? LOCAL_USER)), runs_root: resolve(u ? rootsFor(u).runsRoot : runsRoot) };
     },
 
     async settings(u: User) { return settingsOf(u); },
+
+    // ---- the employee directory (two layers: Entra through the sign-in, Jira projects through the Jira connection) ----
+    async directoryInfo(u: User) { return directory.info(u, !!credsFor(u)); },
+    async directoryFromJira(u: User) {
+      const c = credsFor(u);
+      if (!c) throw new HttpError(400, "Connect Jira first (Sign in with Atlassian, or a token), then its projects can stand in as teams.");
+      try { await directory.fromJira(u, c.creds, c.creds.site.replace(/^https?:\/\//, "")); }
+      catch (e) { if (e instanceof JiraAuthError) throw new HttpError(401, "Jira rejected the connection; connect it again."); throw new HttpError(502, `Could not read Jira's projects: ${(e as Error).message}`); }
+      return directory.info(u, true);
+    },
+    async directoryDisconnect(u: User, source: string) {
+      if (source !== "entra" && source !== "jira") throw new HttpError(404, "No such directory source.");
+      directory.disconnect(u, source as DirectorySourceId);
+      return directory.info(u, !!credsFor(u));
+    },
     async saveSettings(u: User, body: any) {
       if (body?.agent_consent !== undefined) {
         const v = String(body.agent_consent);
@@ -478,6 +502,7 @@ export function createApp(opts: ServerOptions = {}) {
     const p = url.pathname;
     const send = (status: number, data: unknown) => { res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify(data)); };
     try {
+      if (p.startsWith("/auth/directory/")) { if (await directory.handle(req, res, url, auth.userOf(req))) return; return send(404, { error: `No route ${req.method} ${p}` }); }
       if (p.startsWith("/auth/atlassian/")) { if (!atlassian) return send(404, { error: "Sign in with Atlassian is not set up on this server." }); if (await atlassian.handle(req, res, url, auth.userOf(req))) return; return send(404, { error: `No route ${req.method} ${p}` }); }
       if (p.startsWith("/auth/")) { if (await auth.handle(req, res, url)) return; return send(404, { error: `No route ${req.method} ${p}` }); }
       if (p.startsWith("/api/")) {
@@ -497,6 +522,9 @@ export function createApp(opts: ServerOptions = {}) {
         if (p === "/api/settings" && req.method === "PUT") return send(200, await routes.saveSettings(u, body));
         if ((m = p.match(/^\/api\/decisions\/(.+)$/)) && req.method === "GET") return send(200, await routes.decisions(u, decodeURIComponent(m[1])));
         if ((m = p.match(/^\/api\/decisions\/(.+)$/)) && req.method === "PUT") return send(200, await routes.saveDecisions(u, decodeURIComponent(m[1]), body));
+        if (p === "/api/directory" && req.method === "GET") return send(200, await routes.directoryInfo(u));
+        if (p === "/api/directory/jira" && req.method === "POST") return send(200, await routes.directoryFromJira(u));
+        if ((m = p.match(/^\/api\/directory\/(\w+)$/)) && req.method === "DELETE") return send(200, await routes.directoryDisconnect(u, m[1]));
         if (p === "/api/jira/connect" && req.method === "POST") return send(200, await routes.connect(u, body));
         if (p === "/api/jira/disconnect" && req.method === "POST") return send(200, await routes.disconnect(u));
         if (p === "/api/jira/sites" && req.method === "GET") return send(200, await routes.jiraSites(u));

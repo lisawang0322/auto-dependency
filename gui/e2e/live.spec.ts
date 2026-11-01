@@ -34,6 +34,7 @@ test.beforeAll(async () => {
   srv = await startServer({ port: 8787, quiet: true, creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), agentCacheRoot: join(tmp, "agent"), sampleDocs: DOCS, guiDist: join(tmp, "nodist"), storePath: ":memory:",
     devin: { apiKey: "cog_test", baseUrl: devin.url, pollMs: 100, timeoutMs: 20_000, defaultMode: "normal", modes: ["lite", "normal"] },
     auth: { mode: "oidc", issuer: idp.url, clientId: "app-client-id", clientSecret: "app-secret", appUrl: "http://localhost:5173", sessionSecret: "e2e-secret" },
+    directory: { graphBase: idp.graph },
     atlassian: { clientId: "jira-app", clientSecret: "jira-secret", appUrl: "http://localhost:5173", authBase: jira.url, apiBase: jira.url } });
 });
 test.afterAll(async () => { await srv?.close(); await jira?.close(); await devin?.close(); await idp?.close(); rmSync(tmp, { recursive: true, force: true }); });
@@ -185,6 +186,36 @@ test("Devin reads the uploads once the person allows it, and the connect step sh
   await expect(page.getByTestId("app-devin").getByTestId("app-state")).toHaveText("Connected · set up by your company · reads your plan files in lite mode");
   await page.getByRole("button", { name: "Disconnect Devin" }).click();
   await expect(page.getByTestId("app-devin").getByTestId("app-state")).toHaveText("Not connected");
+});
+
+test("the directory's two layers connect on step 1 through the sign-ins: Entra's consent popup, then Jira's projects", async ({ page }) => {
+  await signIn(page);
+  await expect(page.getByTestId("start-directory-state")).toHaveText("Not connected");
+  // Microsoft Entra ID: a second consent on the same registration, in a popup; the fake provider approves and the callback page closes it.
+  const popup = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "Use Microsoft Entra ID" }).click();
+  await popup;
+  await expect(page.getByTestId("source-entra")).toContainText("6 teams, 13 people", { timeout: 20_000 });
+  await expect(page.getByTestId("start-directory-state")).toHaveText("Connected · read-only · Microsoft Entra ID · tenant-abc");
+  // Jira's projects: Jira is still connected on the server from the earlier test, so the projects come straight away.
+  await page.getByRole("button", { name: "Use Jira projects" }).click();
+  await expect(page.getByTestId("source-jira")).toContainText("6 teams", { timeout: 20_000 });
+  await expect(page.getByTestId("start-directory-state")).toContainText("+ Jira projects");
+  // The merged directory reads as a team list: owners come from it, and the stakeholder map says so.
+  await page.getByRole("radio", { name: /Preparing to launch/ }).check();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.locator("#plan-files").setInputFiles([file("Ingestion-service-POR-v3.md", "text/markdown")]);
+  await expect(page.getByText("via Employee directory")).toBeVisible();
+  await page.getByTestId("agent-read").click();
+  await expect(page.getByText("Owners: from your directory")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("stk-Data Platform")).toContainText("In your directory");
+  await expect(page.getByTestId("stk-Data Platform")).toContainText("Wei Zhang (project lead)");
+  // Each layer disconnects on its own.
+  await page.getByRole("button", { name: "1. Get started" }).click();
+  await page.getByTestId("source-entra").getByRole("button", { name: "Disconnect" }).click();
+  await expect(page.getByTestId("start-directory-state")).toHaveText(/^Connected · read-only · Jira projects/);
+  await page.getByTestId("source-jira").getByRole("button", { name: "Disconnect" }).click();
+  await expect(page.getByTestId("start-directory-state")).toHaveText("Not connected");
 });
 
 test("the answer about Devin is kept on the server across reloads, and signing out returns to the sign-in screen", async ({ page }) => {

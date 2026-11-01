@@ -20,8 +20,24 @@ export interface UploadedFile {
   sample: boolean;
   /** The browser File, for uploads in live mode. Sample files have none. */
   file?: File;
-  /** Added by connecting the employee directory on the Connect apps step, not uploaded on the plan step. */
+  /** Added by connecting the employee directory (on Get started or Connect apps), not uploaded on the plan step. */
   via?: "directory";
+  /** A directory the server holds (Microsoft Entra ID, Jira projects): no content travels; the server writes the merged team list. */
+  source?: "server";
+}
+
+/** One connected directory layer, as the server reports it. */
+export interface DirectorySummary { label: string; teams: number; people: number; connected_at: string }
+/** The two server-side layers of the employee directory (PRD "Employee directory sources"): people from the identity provider, teams from Jira. */
+export interface DirectoryInfo { entra: { available: boolean; connected: DirectorySummary | null }; jira: { available: boolean; connected: DirectorySummary | null } }
+export type DirectorySourceId = "entra" | "jira";
+export interface DirectoryConnection {
+  info(): Promise<DirectoryInfo>;
+  /** Microsoft Entra ID through the sign-in the person already has: consent in a popup, then the server reads names, titles, departments and managers. */
+  connectEntra(): Promise<DirectoryInfo>;
+  /** Jira's projects as teams, through the Jira connection: each project, its lead and who is assigned its work. */
+  connectJira(): Promise<DirectoryInfo>;
+  disconnect(source: DirectorySourceId): Promise<DirectoryInfo>;
 }
 
 export interface RunSummary {
@@ -68,6 +84,7 @@ export interface StarterRunInput { stage: "starting" | "building"; files: Upload
 export interface ReviewBackend {
   readonly mode: "sample" | "live";
   readonly agent: AgentInfo;
+  readonly directory: DirectoryConnection;
   saveSettings(patch: Partial<Settings>): Promise<void>;
   /** Stage A. Sample: the fixture plan-draft, filtered by what was read as what. Live: the real extractor.
    *  With opts.agent the agent reads the documents first (a job; onProgress follows it) and its items go through the quote check. */

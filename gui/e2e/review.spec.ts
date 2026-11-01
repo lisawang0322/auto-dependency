@@ -246,10 +246,13 @@ test("works at phone width with no horizontal scroll", async ({ page }) => {
 test("the employee directory connects on step 1, before any document, and grounds the teams the reading names", async ({ page }) => {
   await page.goto("/?fast=1&backend=sample");
   await expect(page.getByTestId("start-directory-state")).toHaveText("Not connected");
-  await page.getByRole("button", { name: "Connect directory" }).click();
-  await expect(page.getByRole("dialog")).toContainText("Read names, titles, teams and reporting lines");
-  await page.getByRole("button", { name: "Accept" }).click();
-  await expect(page.getByTestId("start-directory-state")).toHaveText("Connected · read-only · directory.yaml");
+  // Two layers from sign-ins the person already has, or an export; the demo simulates the first two.
+  await expect(page.getByTestId("directory-sources").locator(".plain-row")).toHaveCount(3);
+  await page.getByRole("button", { name: "Use Microsoft Entra ID" }).click();
+  await expect(page.getByTestId("start-directory-state")).toHaveText("Connected · read-only · Microsoft Entra ID · sample");
+  await expect(page.getByTestId("source-entra")).toContainText("10 teams, 21 people");
+  await page.getByRole("button", { name: "Use Jira projects" }).click();
+  await expect(page.getByTestId("start-directory-state")).toHaveText("Connected · read-only · Microsoft Entra ID · sample + Jira projects · sample-company.atlassian.net");
   await page.getByRole("radio", { name: /Preparing to launch/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Use sample files" }).click();
@@ -261,5 +264,16 @@ test("the employee directory connects on step 1, before any document, and ground
   await expect(page.getByTestId("stk-SRE")).toContainText("In your directory");
   // The apps step shows the same connection.
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
-  await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Connected · read-only · directory.yaml");
+  await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Connected · read-only · Microsoft Entra ID · sample + Jira projects · sample-company.atlassian.net");
+});
+
+test("an export can stand in for the directory on step 1, and removing it clears the connection", async ({ page }) => {
+  await page.goto("/?fast=1&backend=sample");
+  await page.getByRole("button", { name: "Upload an export" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Read names, titles, teams and reporting lines");
+  await page.getByRole("button", { name: "Accept" }).click();
+  await expect(page.getByTestId("start-directory-state")).toHaveText("Connected · read-only · directory.yaml");
+  await expect(page.getByRole("button", { name: "Use Microsoft Entra ID" })).toBeEnabled(); // layers can still be added
+  await page.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByTestId("start-directory-state")).toHaveText("Not connected");
 });

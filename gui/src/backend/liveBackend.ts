@@ -4,21 +4,22 @@
  * again after the connect form.
  */
 import { PlanDraft, ReleaseTarget, Run, Signal, Starter, type Stage } from "@rrr/schemas";
-import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, JiraConnection, JiraCredentials, JiraState, PlanExtract, StarterRunInput, AgentInfo, AgentRead, AgentReadStage, ExtractOptions, Settings, UserInfo } from "./types";
+import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, JiraConnection, JiraCredentials, JiraState, PlanExtract, StarterRunInput, AgentInfo, AgentRead, AgentReadStage, ExtractOptions, Settings, UserInfo, DirectoryConnection, DirectoryInfo, DirectorySourceId } from "./types";
 import { fmtDate } from "../model/dates";
 
 export interface JiraInfo { connected: boolean; site: string | null; user: string | null; fixture: boolean; oauth?: boolean; method?: "oauth" | "token" | "company" | "fixture" | null; sites?: number }
 
-async function apiRaw<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<{ status: number; data: T }> {
-  const res = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+async function apiRaw<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<{ status: number; data: T }> {
+  // The server takes JSON on every write, bodiless DELETEs included (its cross-site check keys on the content type).
+  const res = await fetch(path, { method, headers: method !== "GET" ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error ?? `${res.status} on ${path}`);
   return { status: res.status, data: data as T };
 }
-async function api<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T> { return (await apiRaw<T>(method, path, body)).data; }
+async function api<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> { return (await apiRaw<T>(method, path, body)).data; }
 
 export interface AuthInfo { mode: "none" | "oidc"; user: UserInfo | null; login_url: string | null }
-export interface Health { jira: JiraInfo; agent?: AgentInfo; auth?: AuthInfo; settings?: Settings | null }
+export interface Health { jira: JiraInfo; agent?: AgentInfo; auth?: AuthInfo; settings?: Settings | null; directory?: DirectoryInfo }
 
 /** Ends the session and returns to the sign-in screen. */
 export async function signOut(): Promise<void> {
@@ -50,6 +51,7 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export class LiveBackend implements ReviewBackend {
   readonly mode = "live" as const;
   readonly agent: AgentInfo;
+  readonly directory: DirectoryConnection = new LiveDirectory();
   /** Launch date and go/no-go the person set on the Connect step, applied on run. */
   launchDate: string | null = null;
   constructor(health?: Health | null) { this.agent = health?.agent ?? { available: false, name: "Devin" }; }
@@ -63,6 +65,8 @@ export class LiveBackend implements ReviewBackend {
     for (const f of files) {
       // The directory connector's export is marked, so the server keeps it as structured data rather than sending it to Devin.
       const via = f.via ? { via: f.via } : {};
+      // A directory the server holds travels by name only; the server writes the merged team list itself.
+      if (f.source === "server") { out.push({ name: f.name, kind: f.kind, via: "directory", source: "server" }); continue; }
       if (f.sample || !f.file) out.push({ name: f.name, kind: f.kind, sample: true, ...via });
       else out.push({ name: f.name, kind: f.kind, content_base64: toBase64(await f.file.arrayBuffer()), ...via });
     }
@@ -124,6 +128,32 @@ export class LiveBackend implements ReviewBackend {
       if (j.done && j.run_id) return j.run_id;
     }
   }
+}
+
+const NO_DIRECTORY: DirectoryInfo = { entra: { available: false, connected: null }, jira: { available: false, connected: null } };
+
+/** The server-held layers of the employee directory. The Entra consent runs in a popup like Sign in with Atlassian. */
+export class LiveDirectory implements DirectoryConnection {
+  async info(): Promise<DirectoryInfo> { try { return await api<DirectoryInfo>("GET", "/api/directory"); } catch { return NO_DIRECTORY; } }
+  async connectEntra(): Promise<DirectoryInfo> {
+    const popup = window.open("/auth/directory/entra/start?popup=1", "rrr-directory", "popup=yes,width=620,height=720");
+    if (!popup) { location.href = `/auth/directory/entra/start?next=${encodeURIComponent(location.pathname + location.search)}`; return this.info(); }
+    const outcome = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+      const onMessage = (e: MessageEvent) => { if (e.origin === location.origin && e.data?.type === "rrr:directory") { cleanup(); resolve({ ok: !!e.data.ok, message: e.data.message }); } };
+      const timer = setInterval(async () => {
+        if (popup.closed) { cleanup(); resolve({ ok: false, message: "closed" }); return; }
+        const d = await this.info().catch(() => null);
+        if (d?.entra.connected) { cleanup(); try { popup.close(); } catch { /* cross-origin while on the provider */ } resolve({ ok: true }); }
+      }, 1000);
+      const cleanup = () => { window.removeEventListener("message", onMessage); clearInterval(timer); };
+      window.addEventListener("message", onMessage);
+    });
+    const info = await this.info();
+    if (!outcome.ok && !info.entra.connected) throw new Error(outcome.message && outcome.message !== "closed" ? outcome.message : "The directory was not connected: the consent window closed before access was granted.");
+    return info;
+  }
+  async connectJira(): Promise<DirectoryInfo> { return api<DirectoryInfo>("POST", "/api/directory/jira", {}); }
+  async disconnect(source: DirectorySourceId): Promise<DirectoryInfo> { return api<DirectoryInfo>("DELETE", `/api/directory/${source}`); }
 }
 
 export class LiveJiraConnection implements JiraConnection {

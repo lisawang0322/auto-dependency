@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Stage } from "../backend/types";
-import type { DirectoryState } from "./ConnectApps";
+import type { DirectoryState, DirectoryHandlers } from "./ConnectApps";
 import { DirectoryDialog } from "./DirectoryDialog";
 
 /** Step 1 (PRD R14): what the tool does, what counts as a plan, which stage the project is at, what to have ready. */
@@ -41,14 +41,23 @@ const PLAN_KINDS = ["PRD", "One-pager", "POR slide deck", "Project brief", "Laun
 interface Props {
   stage: Stage | null; onPick: (s: Stage) => void; onContinue: () => void;
   /** The employee directory comes first: it grounds every team the reading names in the real org. */
-  directory: DirectoryState; live: boolean; onConnectDirectory: (file: File | null) => void; onDisconnectDirectory: () => void;
+  directory: DirectoryState; live: boolean;
 }
 
-export function GetStarted(p: Props) {
+type Props2 = Props & DirectoryHandlers;
+
+export function GetStarted(p: Props2) {
   const picked = STAGES.find((s) => s.id === p.stage) ?? null;
   const [dirOpen, setDirOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [dirError, setDirError] = useState<string | null>(null);
+  const info = p.directory.info;
+  const serverOn = !!(info?.entra.connected || info?.jira.connected);
+  /** An export file is connected when the directory file is not one the server holds. */
+  const exportOn = p.directory.connected && !serverOn;
   const dirOn = p.directory.connected || !!p.directory.fromFiles;
   const dirState = p.directory.connected ? `Connected · read-only · ${p.directory.name}` : p.directory.fromFiles ? `Covered by ${p.directory.fromFiles} from your files` : "Not connected";
+  const run = async (what: string, fn: () => Promise<void>) => { setBusy(what); setDirError(null); try { await fn(); } catch (e) { setDirError(String((e as Error).message ?? e)); } finally { setBusy(null); } };
   return (
     <div className="stack" style={{ gap: 24 }}>
       <div className="stack-sm" style={{ gap: 10, maxWidth: 760 }}>
@@ -94,15 +103,35 @@ export function GetStarted(p: Props) {
               <h2 style={{ fontSize: 16 }}>Connect your employee directory first</h2>
               <span className="small muted">Recommended</span>
             </div>
-            <p className="sm text2">Before any document: it tells the reading which teams exist, so each owner is matched to a real team and its people rather than guessed from the wording. Read-only.</p>
+            <p className="sm text2">Before any document: it tells the reading which teams exist, so each owner is matched to a real team and its people rather than guessed from the wording. Read-only, and two layers can combine: people from your sign-in, teams from Jira.</p>
             <span className={"sm " + (dirOn ? "ok" : "muted")} data-testid="start-directory-state">{dirState}</span>
+            {dirError && <div className="notice-grey" role="alert">{dirError}</div>}
             {dirOpen ? (
               <DirectoryDialog live={p.live} onAccept={(f) => { p.onConnectDirectory(f); setDirOpen(false); }} onCancel={() => setDirOpen(false)} />
             ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                {p.directory.connected
-                  ? <button type="button" className="btn" onClick={p.onDisconnectDirectory}>Disconnect directory</button>
-                  : <button type="button" className="btn" disabled={!!p.directory.fromFiles} onClick={() => setDirOpen(true)}>Connect directory</button>}
+              <div className="stack-sm" style={{ gap: 8 }} data-testid="directory-sources">
+                {info?.entra.available && (
+                  <div className="plain-row" data-testid="source-entra">
+                    <span className="stack-sm" style={{ gap: 2 }}><span style={{ fontWeight: 500 }}>Microsoft Entra ID</span><span className="small muted">Names, titles, departments and managers, through the sign-in you already have.</span></span>
+                    {info.entra.connected
+                      ? <span style={{ display: "flex", alignItems: "center", gap: 10 }}><span className="small ok">{info.entra.connected.teams} teams, {info.entra.connected.people} people</span><button type="button" className="linkbtn" disabled={busy !== null} onClick={() => run("entra-off", () => p.onDisconnectSource("entra"))}>Disconnect</button></span>
+                      : <button type="button" className="btn" disabled={busy !== null || !!p.directory.fromFiles} onClick={() => run("entra", p.onConnectEntra)}>{busy === "entra" ? "Connecting…" : "Use Microsoft Entra ID"}</button>}
+                  </div>
+                )}
+                {info?.jira.available && (
+                  <div className="plain-row" data-testid="source-jira">
+                    <span className="stack-sm" style={{ gap: 2 }}><span style={{ fontWeight: 500 }}>Jira projects</span><span className="small muted">Teams as Jira knows them: each project, its lead and who is assigned its work.</span></span>
+                    {info.jira.connected
+                      ? <span style={{ display: "flex", alignItems: "center", gap: 10 }}><span className="small ok">{info.jira.connected.teams} teams, {info.jira.connected.people} people</span><button type="button" className="linkbtn" disabled={busy !== null} onClick={() => run("jira-off", () => p.onDisconnectSource("jira"))}>Disconnect</button></span>
+                      : <button type="button" className="btn" disabled={busy !== null || !!p.directory.fromFiles} onClick={() => run("jira", p.onConnectJira)}>{busy === "jira" ? "Connecting…" : "Use Jira projects"}</button>}
+                  </div>
+                )}
+                <div className="plain-row" data-testid="source-export">
+                  <span className="stack-sm" style={{ gap: 2 }}><span style={{ fontWeight: 500 }}>An export</span><span className="small muted">A team list or org chart file: YAML, CSV or a spreadsheet.</span></span>
+                  {exportOn
+                    ? <button type="button" className="linkbtn" onClick={p.onDisconnectDirectory}>Remove</button>
+                    : <button type="button" className="btn" disabled={busy !== null || !!p.directory.fromFiles} onClick={() => setDirOpen(true)}>Upload an export</button>}
+                </div>
               </div>
             )}
           </div>

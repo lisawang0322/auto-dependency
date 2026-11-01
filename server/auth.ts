@@ -68,6 +68,13 @@ export class Auth {
     this.secret = this.cfg?.sessionSecret ? createHash("sha256").update(this.cfg.sessionSecret).digest() : randomBytes(32);
   }
 
+  /** The OIDC registration (client, app URL), for connectors that ask the same provider for more (the directory); null without sign-in. */
+  oidc(): { clientId: string; clientSecret: string; appUrl: string; issuer: string } | null {
+    return this.cfg ? { clientId: this.cfg.clientId, clientSecret: this.cfg.clientSecret, appUrl: this.cfg.appUrl, issuer: this.cfg.issuer } : null;
+  }
+  /** The provider's endpoints (discovery document), for the same connectors. */
+  async endpoints(): Promise<{ authorization_endpoint: string; token_endpoint: string }> { return this.discover(); }
+
   /** Who is making this request: the local user without sign-in, the session's user, or null. */
   userOf(req: IncomingMessage): User | null {
     if (this.mode === "none") return LOCAL_USER;

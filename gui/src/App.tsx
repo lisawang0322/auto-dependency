@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@rrr/schemas";
-import { PLAN_KINDS, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage, type AgentConsent, type AgentRead, type AgentReadStage, type ReadProgress, type UserInfo } from "./backend/types";
+import { PLAN_KINDS, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage, type AgentConsent, type AgentRead, type AgentReadStage, type ReadProgress, type UserInfo, type DirectoryInfo, type DirectorySourceId } from "./backend/types";
 import { sampleFilesFor, SAMPLE_DIRECTORY } from "./backend/fixtureBackend";
 import { fmtDate } from "./model/dates";
 import { applyChoices, type TeamChoice } from "./model/review";
@@ -171,7 +171,21 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
     });
   }, []);
 
-  // The employee directory (R15): a connector that, for now, is a team list read the same way as an uploaded one.
+  // The employee directory (R15), connected first. Two server-held layers (Microsoft Entra ID through the sign-in, Jira's
+  // projects through the Jira connection) and an export file; whichever is connected becomes one "directory" file the
+  // reader takes as a team list. An export replaces the server layers in the file list; removing it brings them back.
+  const [dirInfo, setDirInfo] = useState<DirectoryInfo | null>(null);
+  useEffect(() => { let on = true; backend.directory.info().then((d) => { if (on) setDirInfo(d); }).catch(() => {}); return () => { on = false; }; }, [backend]);
+  const serverLayers = dirInfo ? [dirInfo.entra.connected, dirInfo.jira.connected].filter((x): x is NonNullable<typeof x> => !!x) : [];
+  const serverLabel = serverLayers.map((l) => l.label).join(" + ");
+  useEffect(() => {
+    setFiles((cur) => {
+      const has = cur.find((f) => f.via === "directory");
+      if (serverLayers.length && !has) return [...cur, { id: "dir-server", name: "Employee directory.yaml", size: `${serverLayers.reduce((n, l) => n + l.teams, 0)} teams · ${serverLayers.reduce((n, l) => n + l.people, 0)} people`, kind: "teams", sample: false, via: "directory", source: "server" }];
+      if (!serverLayers.length && has?.source === "server") return cur.filter((f) => f !== has);
+      return cur;
+    });
+  }, [serverLabel]); // eslint-disable-line react-hooks/exhaustive-deps
   const connectDirectory = useCallback((file: File | null) => {
     setFiles((cur) => {
       const rest = cur.filter((f) => f.via !== "directory");
@@ -182,7 +196,24 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
       return [...rest, { ...SAMPLE_DIRECTORY, id: "dir", via: "directory" }];
     });
   }, [live]);
-  const disconnectDirectory = useCallback(() => setFiles((cur) => cur.filter((f) => f.via !== "directory")), []);
+  const disconnectSource = useCallback(async (s: DirectorySourceId) => { setDirInfo(await backend.directory.disconnect(s)); }, [backend]);
+  /** Disconnecting the directory card: the export goes, and so do the server layers behind a server-held file. */
+  const disconnectDirectory = useCallback(() => {
+    setFiles((cur) => cur.filter((f) => f.via !== "directory"));
+    if (serverLayers.length) void (async () => { if (dirInfo?.entra.connected) await disconnectSource("entra"); if (dirInfo?.jira.connected) await disconnectSource("jira"); })();
+  }, [serverLayers.length, dirInfo, disconnectSource]);
+  const connectEntra = useCallback(async () => { setDirInfo(await backend.directory.connectEntra()); }, [backend]);
+  /** Jira's projects need Jira: connect it the way this mode allows (Atlassian's popup, or the sample consent) and then read the projects. */
+  const connectJiraDirectory = useCallback(async () => {
+    if (jiraState !== "on") {
+      if (jira.oauthAvailable) { const s = await jira.startOAuth(); setJiraState(s); if (s !== "on") throw new Error("Jira was not connected."); }
+      else if (!jira.credentialsNeeded) { jira.start(); setJiraState(await jira.accept()); }
+      else throw new Error("Connect Jira on the apps step first (site, email and API token), then come back for its projects.");
+    }
+    setDirInfo(await backend.directory.connectJira());
+  }, [backend, jira, jiraState]);
+  const directoryState = { connected: !!directoryFile, name: directoryFile ? (directoryFile.source === "server" ? serverLabel : directoryFile.name) : null, fromFiles: uploadedTeamList?.name ?? null, info: dirInfo };
+  const directoryHandlers = { onConnectDirectory: connectDirectory, onDisconnectDirectory: disconnectDirectory, onConnectEntra: connectEntra, onConnectJira: connectJiraDirectory, onDisconnectSource: disconnectSource };
 
   const [runError, setRunError] = useState<string | null>(null);
   const runReview = useCallback(async () => {
@@ -258,8 +289,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
       <main className="wrap page">
         {screen === "start" && (
           <GetStarted stage={stage} onPick={(s) => { if (stage && s !== stage && files.some((f) => f.via !== "directory")) setPlanNotice(`Stage changed to ${STAGE_SHORT[s]}. Your files are kept; check each file's "Read as" for this stage.`); setStageChoice(s); }} onContinue={() => { if (stage) setScreen("plan"); }}
-            directory={{ connected: !!directoryFile, name: directoryFile?.name ?? null, fromFiles: uploadedTeamList?.name ?? null }} live={live}
-            onConnectDirectory={connectDirectory} onDisconnectDirectory={disconnectDirectory} />
+            directory={directoryState} live={live} {...directoryHandlers} />
         )}
         {screen === "plan" && stage && (
           <PlanDocuments
@@ -280,7 +310,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
           <ConnectApps
             stage={stage}
             jira={jira} jiraState={jiraState} setJiraState={(s) => { setJiraState(s); if (s === "off") setConfirmed(false); }}
-            directory={{ connected: !!directoryFile, name: directoryFile?.name ?? null, fromFiles: uploadedTeamList?.name ?? null }}
+            directory={directoryState}
             agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, mode: agentMode, setMode: setAgentMode }}
             onConnectDirectory={connectDirectory} onDisconnectDirectory={disconnectDirectory}
             plan={plan} files={files} epic={epic} setEpic={(v) => { setEpic(v.toUpperCase()); setConfirmed(false); }} epicOk={epicOk}
