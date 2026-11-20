@@ -16,7 +16,7 @@ async function pickLaunching(page: Page) {
   const prep = page.getByTestId("prep");
   await expect(prep).toContainText("Plan of record (doc or slides)");
   await expect(prep).toContainText("Access to Jira and the release epic");
-  await expect(prep.locator("div")).toHaveCount(4); // one row per thing to have ready, inside the chosen stage card
+  await expect(prep.locator(".prep-row")).toHaveCount(4); // one row per thing to have ready, below the stage tiles
   await expect(page.getByTestId("stage-chip")).toHaveText("Stage: Preparing to launch");
   await cont.click();
 }

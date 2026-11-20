@@ -193,6 +193,8 @@ test("Devin reads the uploads once the person allows it, and the connect step sh
 test("the directory's two layers connect on step 1 through the sign-ins: Entra with the sign-in itself, then Jira's projects", async ({ page }) => {
   await signIn(page, true);
   // The sign-in's consent covered the directory: Get started opens with it connected, no second prompt.
+  await expect(page.getByTestId("directory-sources")).toHaveCount(0); // folded: nothing to do
+  await page.getByRole("button", { name: "Manage sources" }).click();
   await expect(page.getByTestId("source-entra")).toContainText("6 teams, 13 people");
   await expect(page.getByTestId("source-entra")).toContainText("read with your sign-in");
   await expect(page.getByTestId("start-directory-state")).toHaveText("Connected · read-only · Microsoft Entra ID · tenant-abc");
@@ -211,6 +213,7 @@ test("the directory's two layers connect on step 1 through the sign-ins: Entra w
   await expect(page.getByTestId("stk-Data Platform")).toContainText("Wei Zhang (project lead)");
   // Each layer disconnects on its own.
   await page.getByRole("button", { name: "1. Get started" }).click();
+  await page.getByRole("button", { name: "Manage sources" }).click();
   await page.getByTestId("source-entra").getByRole("button", { name: "Disconnect" }).click();
   await expect(page.getByTestId("start-directory-state")).toHaveText(/^Connected · read-only · Jira projects/);
   await page.getByTestId("source-jira").getByRole("button", { name: "Disconnect" }).click();
