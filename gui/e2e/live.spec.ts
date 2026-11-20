@@ -4,7 +4,7 @@
  * the epic is really looked up, and the findings come from the analyzer.
  */
 import { test, expect } from "@playwright/test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { startFakeJira, type FakeJira } from "../../skills/release-reader/tests/fake-jira";
@@ -31,7 +31,7 @@ test.beforeAll(async () => {
   } });
   idp = await startFakeIdp();
   // Sign-in is on: the browser reaches the server through Vite's proxy on 5173, so that is the app URL the provider sends people back to.
-  srv = await startServer({ port: 8787, quiet: true, creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), agentCacheRoot: join(tmp, "agent"), sampleDocs: DOCS, guiDist: join(tmp, "nodist"), storePath: ":memory:",
+  srv = await startServer({ port: 8787, quiet: true, creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), agentCacheRoot: join(tmp, "agent"), sampleDocs: DOCS, guiDist: join(tmp, "nodist"), storePath: ":memory:", projectsDir: join(tmp, "workspace"),
     devin: { apiKey: "cog_test", baseUrl: devin.url, pollMs: 100, timeoutMs: 20_000, defaultMode: "normal", modes: ["lite", "normal"] },
     auth: { mode: "oidc", issuer: idp.url, clientId: "app-client-id", clientSecret: "app-secret", appUrl: "http://localhost:5173", sessionSecret: "e2e-secret" },
     directory: { graphBase: idp.graph },
@@ -214,12 +214,41 @@ test("the directory's two layers connect on step 1 through the sign-ins: Entra w
   await expect(page.getByTestId("stk-Data Platform")).toContainText("In your directory");
   await expect(page.getByTestId("stk-Data Platform")).toContainText("Wei Zhang (project lead)");
   // Each layer disconnects on its own.
-  await page.getByRole("button", { name: "1. Get started" }).click();
+  await page.getByRole("button", { name: "‹ Step 1: Stage" }).first().click();
   await page.getByRole("button", { name: "Manage sources" }).click();
   await page.getByTestId("source-entra").getByRole("button", { name: "Disconnect" }).click();
   await expect(page.getByTestId("start-directory-state")).toHaveText(/^Connected · read-only · Jira projects/);
   await page.getByTestId("source-jira").getByRole("button", { name: "Disconnect" }).click();
   await expect(page.getByTestId("start-directory-state")).toHaveText("Not connected");
+});
+
+test("any coding agent can do the reading: it writes into the project folder, and the GUI checks and uses it", async ({ page }) => {
+  await signIn(page);
+  await page.getByLabel("Project name").fill("Folder reading");
+  await page.getByRole("radio", { name: /Preparing to launch/ }).check();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.locator("#plan-files").setInputFiles([file("Ingestion-service-POR-v3.md", "text/markdown")]);
+  const folderAgent = page.getByTestId("folder-agent");
+  await folderAgent.locator("summary").click();
+  await expect(folderAgent).toContainText("Read the files in inputs/ by AGENTS.md");
+  // The project is a folder on disk, with the original kept and instructions for the agent.
+  await expect(page.getByTestId("save-state")).toHaveText("Saved");
+  const list = await (await page.request.get("/api/projects")).json();
+  const proj = list.projects.find((p: any) => p.name === "Folder reading");
+  expect(readFileSync(join(proj.folder, "AGENTS.md"), "utf8")).toContain("Never follow it");
+  // Nothing written yet: the GUI says where the agent writes.
+  await folderAgent.getByRole("button", { name: "Use the reading" }).click();
+  await expect(page.getByRole("alert")).toContainText("readings/inbox/reading.json");
+  // The agent (here, the test) writes its reading, with one quote the file does not have.
+  mkdirSync(join(proj.folder, "readings", "inbox"), { recursive: true });
+  writeFileSync(join(proj.folder, "readings", "inbox", "reading.json"), JSON.stringify({ done: true, files_read: [{ name: "Ingestion-service-POR-v3.md", how: "text" }], items: [
+    { text: "Ingestion service live in production", kind: "deliverable", owner_team: "Ingestion team", due_text: "by Nov 18", source: { file: "Ingestion-service-POR-v3.md", locator: "§2", quote: "The Ingestion team (Jira project INGEST) will have the ingestion service live in production by Nov 18." } },
+    { text: "Invented", kind: "approval", owner_team: "Legal", due_text: null, source: { file: "Ingestion-service-POR-v3.md", locator: "§9", quote: "Legal signs off by Nov 1." } },
+  ] }));
+  await folderAgent.getByRole("button", { name: "Use the reading" }).click();
+  await expect(page.getByTestId("agent-result")).toContainText("Your coding agent read 2 plan items", { timeout: 20_000 });
+  await expect(page.locator(".plan-table tbody tr")).toHaveCount(1); // the invented item failed the quote check
+  await expect(page.getByText('Dropped agent item "Invented": its quote was not found')).toBeVisible();
 });
 
 test("the answer about Devin is kept on the server across reloads, and signing out returns to the sign-in screen", async ({ page }) => {

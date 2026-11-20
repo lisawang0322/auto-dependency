@@ -257,9 +257,14 @@ project is in the URL (`#/p/<id>`). Once reviewed, a project is a workspace: Ove
 to the next stage, keeping its files and connections), Files and plan, Connections, Stage and organisation, History.
 Every review is kept as a record in History (its stage, date, status, open actions, the files it used and the
 result itself), so a review from an earlier stage, or before a re-run, opens later exactly as it was, read-only.
-In live mode projects live on the server per person (`GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/{id}`),
-and each file is uploaded once into the project (`POST /api/projects/{id}/files`) and read by name on every later run.
-Sample mode keeps projects in the browser.
+In live mode each project is a folder on disk (`PROJECTS_DIR`, default `workspace/`), a git repository with a commit
+per save when git is installed: `project.yaml`, the originals in `inputs/`, `readings/`, `reviews/`, `teams.yaml` (no
+people), `history.md`, `README.md` and `AGENTS.md` for any coding agent (`docs/project-folders.md` has the contract,
+the hosted plan and the risks). Routes: `GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/{id}`, `POST
+/api/projects/{id}/files`. On the plan step, "Use your own coding agent" shows the folder: open it in Claude Code,
+Codex, Cursor or Devin, ask it to read the files by `AGENTS.md`, and "Use the reading" takes in what it wrote to
+`readings/inbox/reading.json` (`POST /api/plan` with `agent: "folder"`), checks every quote, undoes anything else it
+changed, and flags text in a document that is addressed to an AI. Sample mode keeps projects in the browser.
 
 ## The employee directory
 

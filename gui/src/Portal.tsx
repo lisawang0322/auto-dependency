@@ -17,9 +17,21 @@ export function Portal(props: Omit<AppProps, "project" | "projectStore" | "onHom
 
   const openRec = (r: ProjectRecord | null) => {
     setOpen(r);
-    history.replaceState(null, "", r ? `${location.pathname}${location.search}#/p/${r.id}` : `${location.pathname}${location.search}`);
+    // A new entry, so the browser's Back from a project comes home, and from home goes back into the project.
+    history.pushState(null, "", r ? `${location.pathname}${location.search}#/p/${r.id}` : `${location.pathname}${location.search}`);
     window.scrollTo(0, 0);
   };
+
+  useEffect(() => {
+    const onPop = () => {
+      const m = location.hash.match(/^#\/p\/([\w-]+)$/);
+      if (!m) { setOpen(null); void reload(); return; }
+      setOpen((cur) => (cur?.id === m[1] ? cur : null));
+      if (!open || open.id !== m[1]) void reload().then((l) => { const hit = l.find((r) => r.id === m[1]); if (hit) setOpen(hit); });
+    };
+    addEventListener("popstate", onPop);
+    return () => removeEventListener("popstate", onPop);
+  }, [reload, open]);
 
   useEffect(() => {
     void reload().then((l) => { const m = location.hash.match(/^#\/p\/([\w-]+)$/); const hit = m && l.find((r) => r.id === m[1]); if (hit) setOpen(hit); });

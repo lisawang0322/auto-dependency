@@ -299,3 +299,21 @@ h2.numbered { display: flex; align-items: center; gap: 10px; }
 .tl-card { gap: 12px; padding: 14px 16px; }
 .record-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 14px; border-radius: 8px; background: var(--grey-bg); max-width: 960px; }
 @media (max-width: 560px) { .tl-event { grid-template-columns: 1fr; gap: 0; } }
+
+/* ---- the project overview (hub) ---- */
+.next-up { border-color: var(--accent); gap: 8px; }
+.check-row { align-items: center; }
+.check-side { display: flex; align-items: center; gap: 14px; flex: none; }
+.flow > .lifecycle { margin-bottom: 0; }
+.check-side .prep-need { margin-top: 0; }
+@media (max-width: 560px) { .check-row { align-items: flex-start; } }
+
+/* Setting up: the four steps in order, each one done gets a tick and can be gone back to. */
+nav.setup-steps button { display: inline-flex; align-items: center; gap: 8px; }
+nav.setup-steps button[aria-current="step"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+nav.setup-steps .step-num { width: 22px; height: 22px; font-size: 12px; background: var(--line-soft); color: var(--text-2); }
+nav.setup-steps button[aria-current="step"] .step-num { background: var(--accent); color: #fff; }
+nav.setup-steps .step-num.done { background: var(--green-bg); color: var(--green-dark); }
+nav.setup-steps button:disabled { cursor: default; }
+/* Back, at the top of a step, where people look for it. */
+.back-link { align-self: flex-start; margin-bottom: -12px; font-weight: 500; }

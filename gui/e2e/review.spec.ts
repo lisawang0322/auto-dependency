@@ -15,8 +15,11 @@ async function pickLaunching(page: Page) {
   await page.getByRole("radio", { name: /Preparing to launch/ }).check();
   const prep = page.getByTestId("prep");
   await expect(prep).toContainText("Plan of record (doc or slides)");
-  await expect(prep).toContainText("Access to Jira and the release epic");
   await expect(prep.locator(".prep-row")).toHaveCount(4); // one row per thing to have ready, below the stage tiles
+  // Jira is a connection, not a file: it is listed with the apps, apart from what to upload.
+  await expect(prep.getByTestId("prep-files")).not.toContainText("Jira");
+  await expect(prep.getByTestId("prep-apps")).toContainText("Jira, and the release epic");
+  await expect(prep.getByTestId("prep-apps")).toContainText("nothing to upload");
   await expect(page.getByTestId("stage-chip")).toHaveText("Stage: Preparing to launch");
   await cont.click();
 }
@@ -100,7 +103,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   // Progress, then step 4.
   await expect(page.getByRole("heading", { name: "Reading your plan and Jira…" })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Launch Nov 20 · 7 days out/ })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Overview · Preparing to launch")).toBeVisible(); // reviewed: the project is a workspace now
+  await expect(page.getByText("Review · Preparing to launch")).toBeVisible();
   await expect(page.getByTestId("release-status")).toHaveText("Amber");
   await expect(page.getByTestId("open-findings")).toHaveText("4");
 
@@ -173,7 +176,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   // The footer leads back to the earlier steps.
   await page.getByRole("button", { name: "Change stage" }).click();
   await expect(page.getByRole("heading", { name: "Where is your project right now?" })).toBeVisible();
-  await page.getByRole("button", { name: "Overview" }).click();
+  await page.getByRole("navigation", { name: "Project" }).getByRole("button", { name: "Review" }).click();
   await expect(page.getByRole("heading", { name: /7 days out/ })).toBeVisible();
 
   // Decisions and ticks survive a reload (localStorage), and the kept finding can be reopened.
@@ -216,8 +219,8 @@ test("connecting the employee directory stands in for a team list, and disconnec
   await expect(page.getByText("From your team list").first()).toBeVisible();
   await expect(page.getByText("4 of 4 teams resolved")).toBeVisible();
 
-  // The directory shows up on the plan step as a file it added, and owners now come from it.
-  await page.getByRole("button", { name: "2. Your plan" }).click();
+  // The directory shows up on the plan step as a file it added, and owners now come from it. Back goes a step back.
+  await page.getByRole("button", { name: "‹ Step 2: Plan" }).first().click();
   await expect(page.getByText("via Employee directory")).toBeVisible();
   await expect(page.getByText("Owners: from your directory")).toBeVisible();
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
@@ -225,7 +228,7 @@ test("connecting the employee directory stands in for a team list, and disconnec
   await page.getByRole("button", { name: "Disconnect Employee directory" }).click();
   await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Not connected");
   await expect(page.getByText("Unresolved — pick one")).toBeVisible();
-  await expect(page.getByRole("button", { name: "3. Connect apps" })).toBeEnabled();
+  await expect(page.getByRole("navigation", { name: "Setup" }).getByRole("button", { name: /Connections/ })).toBeEnabled();
 });
 
 test("works at phone width with no horizontal scroll", async ({ page }) => {

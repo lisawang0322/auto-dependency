@@ -30,7 +30,7 @@
  *   GET  /api/jobs/:job               {stage, done, run_id?, error?, log}
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, statSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { PlanDraft, ReleaseTarget, ReadAs } from "@rrr/schemas";
@@ -42,6 +42,9 @@ import type { AgentSignal } from "../skills/release-starter/scripts/lib/signals.
 import { DevinClient, devinFromEnv, readWithDevin, itemRules, signalRuleLines, type DevinOptions, type ReadingOutcome, type DevinMode, type FileRole } from "./devin.js";
 import { loadFile } from "../skills/release-reader/scripts/lib/files.js";
 import { DirectoryHub, directoryFromEnv, type DirectoryOptions, type DirectorySourceId } from "./directory.js";
+import { Workspace, INBOX, storedPath } from "./workspace.js";
+import { agentsMd, scanForInjection } from "./agent-folder.js";
+import { parseReading } from "./devin.js";
 import { loadDirectory } from "../skills/release-starter/scripts/lib/directory.js";
 import { createHash } from "node:crypto";
 import { Store, type User } from "./store.js";
@@ -76,11 +79,16 @@ export interface ServerOptions {
   tokenKey?: string;
   /** The employee directory's Microsoft Graph settings (base URL, scopes); from GRAPH_API_BASE / GRAPH_SCOPES when unset. */
   directory?: DirectoryOptions;
+  /** Where projects live as folders, one per project (PROJECTS_DIR; default workspace/ under DATA_DIR or the working directory). */
+  projectsDir?: string;
+  /** Make each project folder a git repository and commit every save (default: when git is installed). */
+  projectsGit?: boolean;
 }
 
 /** What the GUI shows about the agent's reading of the uploads. */
 export interface AgentRead {
-  name: "Devin";
+  /** Who read: Devin (through its API) or the coding agent the PM ran in the project folder. */
+  name: string;
   status: "done" | "failed";
   /** True when every document had a cached reading and no session was started. */
   cached: boolean;
@@ -145,8 +153,21 @@ export function createApp(opts: ServerOptions = {}) {
     runsRoot: join(runsRoot, "orgs", safeSeg(u.org)), uploadRoot: join(uploadRoot, "orgs", safeSeg(u.org)), cacheRoot: join(cacheRoot, "orgs", safeSeg(u.org)), agentCacheRoot: join(agentCacheRoot, "orgs", safeSeg(u.org)),
   };
 
-  /** Where a project's files are kept: per organisation, per project. */
-  const projectDir = (u: User, id: string) => join(rootsFor(u).uploadRoot, "projects", safeSeg(id));
+  // Projects are folders: one per project, the local stand-in for one repo per project.
+  const workspace = new Workspace(opts.projectsDir ?? process.env.PROJECTS_DIR ?? join(process.env.DATA_DIR ?? ".", "workspace"), { git: opts.projectsGit, log, agentsMd });
+  /** Whose projects: one person's, inside their organisation (everyone's, without sign-in). */
+  const scope = (u: User) => (authCfg.mode === "none" ? "local" : join("orgs", safeSeg(u.org), safeSeg(u.id)));
+  /** Text in the read files that looks addressed to an AI: flagged to the PM, never acted on. */
+  async function injectionNotes(paths: string[]): Promise<string[]> {
+    const notes: string[] = [];
+    for (const p of paths) {
+      try {
+        const f = await loadFile(p);
+        for (const h of scanForInjection(f.text ?? "")) notes.push(`${basename(p)} contains text addressed to an AI (${h.why}): "${h.line}". It was read as part of the document and not followed; check any item that comes from it.`);
+      } catch { /* unreadable: the reading says so */ }
+    }
+    return notes;
+  }
 
   function envCreds(): RestCreds | null {
     const { JIRA_SITE, JIRA_EMAIL, JIRA_API_TOKEN } = process.env;
@@ -256,6 +277,37 @@ export function createApp(opts: ServerOptions = {}) {
     return { reading, signals, agent };
   }
 
+  /** A coding agent working in the project folder left its reading in readings/inbox/: check it the way a Devin reading is
+   *  checked (schema, known files, every quote against the original), undo anything else it changed, and keep the reading
+   *  file with the stage's readings. */
+  async function folderReading(u: User, id: string, paths: string[], readAs: Record<string, ReadAs[]>, dirPaths: string[], files: any[], stage: "launching" | "starting" | "building", launchDate: string | null, notes: string[]) {
+    if (!workspace.exists(scope(u), id)) throw new HttpError(404, "No such project.");
+    const dir = workspace.dir(scope(u), id);
+    const inbox = join(dir, INBOX);
+    if (!existsSync(inbox)) throw new HttpError(409, `No reading yet: your coding agent writes it to ${INBOX} in the project folder.`);
+    let raw: unknown;
+    try { raw = JSON.parse(readFileSync(inbox, "utf8")); } catch { throw new HttpError(400, `${INBOX} is not valid JSON; ask your agent to write it again.`); }
+    const kept = workspace.quarantine(scope(u), id, (p) => p === INBOX || p.startsWith("readings/inbox/"));
+    const docs = paths.filter((p) => !dirPaths.some((d) => d === p && files.find((f) => safeName(f) === basename(p))?.via === "directory"));
+    const parsed = parseReading(raw, docs.map((p) => basename(p)));
+    const reading: AgentReading = { items: parsed.items, teams: parsed.teams, launchDate: parsed.launch_date, epicKeys: parsed.epic_keys, files: docs };
+    const data: any = await buildPlan(paths, readAs, dirPaths, files, stage, launchDate, reading, parsed.signals);
+    const changes = [...kept.restored.map((p) => `${p} (restored)`), ...kept.moved.map((p) => `${p} (moved to .scratch/quarantine/)`)];
+    const warnings = [...notes, ...(changes.length ? [`Your coding agent also changed files it should not have: ${changes.join(", ")}. Those changes were undone; only its reading was used.`] : []), ...parsed.warnings];
+    data.plan.warnings.unshift(...warnings);
+    const checks = parsed.items.filter((i) => i.kind === "checklist");
+    data.agent = {
+      name: "Your coding agent", status: "done", cached: false, session_url: null, mode: null,
+      items_read: parsed.items.length - checks.length, signals_read: parsed.signals.length, checks_read: checks.length, checks_apply: checks.filter((c) => c.applies !== false).length, teams_read: parsed.teams.length,
+      files_read: parsed.files_read, unreadable: parsed.unreadable, warnings, error: null,
+    } satisfies AgentRead;
+    // The reading is kept with the stage's readings, so the inbox is empty for the next one.
+    mkdirSync(join(dir, "readings", stage), { recursive: true });
+    renameSync(inbox, join(dir, "readings", stage, `agent-reading-${new Date().toISOString().replace(/[:.]/g, "-")}.json`));
+    log(`plan (folder agent) for ${id}: ${parsed.items.length} items, ${parsed.signals.length} signals${changes.length ? `, undid ${changes.length} stray changes` : ""}`);
+    return data;
+  }
+
   /** Stage A (or the early stages' signals) over saved uploads, with the agent's items and signals if any. */
   async function buildPlan(paths: string[], readAs: Record<string, ReadAs[]>, dirPaths: string[], files: any[], stage: string, launchDate: string | null, agent?: AgentReading | null, agentSignals?: AgentSignal[]) {
     if (stage === "starting" || stage === "building") {
@@ -288,10 +340,13 @@ export function createApp(opts: ServerOptions = {}) {
       let path: string;
       if (typeof f.stored === "string" && typeof f.project === "string") {
         // A file kept with a project: uploaded once, read on every later run without the browser sending it again.
-        if (!store.project(u.id, f.project)) throw new HttpError(404, "No such project.");
+        if (!workspace.exists(scope(u), f.project)) throw new HttpError(404, "No such project.");
         const stored = basename(f.stored);
-        path = join(projectDir(u, f.project), stored);
-        if (stored !== f.stored || !existsSync(path)) throw new HttpError(400, `${name} is no longer stored with this project; add it again.`);
+        const found = stored === f.stored ? storedPath(workspace.dir(scope(u), f.project), stored) : null;
+        if (!found) throw new HttpError(400, `${name} is no longer in this project's folder; add it again.`);
+        // Read under its original name, so readings, quotes and the plan name the file as the person knows it.
+        path = join(dir, name);
+        copyFileSync(found, path);
       } else if (f.via === "directory" && f.source === "server") {
         // The directory connected on Get started: the merged snapshot, written as a team list the reader takes as a file.
         const written = directory.writeFile(u, join(rootsFor(u).uploadRoot, "directory", u.id));
@@ -324,33 +379,31 @@ export function createApp(opts: ServerOptions = {}) {
 
     async settings(u: User) { return settingsOf(u); },
 
-    // ---- projects: kept across the project's life, so nothing is uploaded twice ----
-    async projects(u: User) { return { projects: store.projects(u.id) }; },
+    // ---- projects: one folder each, kept across the project's life ----
+    async projects(u: User) { return { projects: workspace.list(scope(u)).map((r) => ({ ...r, folder: workspace.dir(scope(u), r.id) })) }; },
     async createProject(u: User, body: any) {
       const name = String(body?.name ?? "").trim().slice(0, 120) || "Untitled project";
-      return store.createProject(u.id, randomUUID(), name, body?.data ?? {});
+      const r = workspace.create(scope(u), name, body?.data ?? {});
+      return { ...r, folder: workspace.dir(scope(u), r.id) };
     },
-    async getProject(u: User, id: string) { const r = store.project(u.id, id); if (!r) throw new HttpError(404, "No such project."); return r; },
+    async getProject(u: User, id: string) { const r = workspace.get(scope(u), id); if (!r) throw new HttpError(404, "No such project."); return { ...r, folder: workspace.dir(scope(u), id), commits: workspace.log(scope(u), id) }; },
     async saveProject(u: User, id: string, body: any) {
       if (!body || typeof body !== "object" || typeof body.data !== "object") throw new HttpError(400, "Expected {name, data}.");
-      const r = store.saveProject(u.id, id, String(body.name ?? "").trim().slice(0, 120) || "Untitled project", body.data);
+      const r = workspace.save(scope(u), id, String(body.name ?? "").trim().slice(0, 120) || "Untitled project", body.data);
       if (!r) throw new HttpError(404, "No such project.");
       return { id: r.id, updated_at: r.updated_at };
     },
     async deleteProject(u: User, id: string) {
-      if (!store.deleteProject(u.id, id)) throw new HttpError(404, "No such project.");
-      rmSync(projectDir(u, id), { recursive: true, force: true });
+      if (!workspace.remove(scope(u), id)) throw new HttpError(404, "No such project.");
       return { ok: true };
     },
     async uploadProjectFile(u: User, id: string, body: any) {
-      if (!store.project(u.id, id)) throw new HttpError(404, "No such project.");
+      if (!workspace.exists(scope(u), id)) throw new HttpError(404, "No such project.");
       const name = basename(String(body?.name ?? "")).replace(/[^\w.\- ()]+/g, "_");
       if (!name || typeof body?.content_base64 !== "string") throw new HttpError(400, "Expected {name, content_base64}.");
       const stored = `${randomUUID().slice(0, 8)}-${name}`;
-      const dir = projectDir(u, id);
-      mkdirSync(dir, { recursive: true });
       const buf = Buffer.from(body.content_base64, "base64");
-      writeFileSync(join(dir, stored), buf);
+      writeFileSync(join(workspace.inputs(scope(u), id), stored), buf);
       return { stored, bytes: buf.length };
     },
 
@@ -424,7 +477,9 @@ export function createApp(opts: ServerOptions = {}) {
       const { paths, readAs, dirPaths, files } = saveUploads(u, body);
       const stage = String(body?.stage ?? "launching") as "launching" | "starting" | "building";
       const launchDate = body?.launch_date ?? null;
-      if (body?.agent !== "devin") return { status: 200, data: await buildPlan(paths, readAs, dirPaths, files, stage, launchDate) };
+      const notes = await injectionNotes(paths.filter((p) => !dirPaths.includes(p)));
+      if (body?.agent === "folder") return { status: 200, data: await folderReading(u, String(body?.project ?? ""), paths, readAs, dirPaths, files, stage, launchDate, notes) };
+      if (body?.agent !== "devin") { const data: any = await buildPlan(paths, readAs, dirPaths, files, stage, launchDate); data.plan.warnings.unshift(...notes); return { status: 200, data }; }
       if (!devin) throw new HttpError(400, "Devin is not set up on this server (DEVIN_API_KEY). Ask your admin, or read without an agent.");
       const job: Job = { stage: 0, done: false, log: [] };
       const id = randomUUID();
@@ -434,7 +489,8 @@ export function createApp(opts: ServerOptions = {}) {
           const say = (l: string) => { job.log.push(l); log(`  ${l}`); if (/^Devin: Devin session /.test(l)) job.stage = 1; };
           const read = await readDocuments(u, paths, files, stage, say, (pct, detail) => { job.progress = pct; job.detail = detail; });
           job.stage = 2; job.progress = Math.max(job.progress ?? 0, 85); job.detail = "Checking every quote against your files";
-          const data = await buildPlan(paths, readAs, dirPaths, files, stage, launchDate, read.reading, read.signals);
+          const data: any = await buildPlan(paths, readAs, dirPaths, files, stage, launchDate, read.reading, read.signals);
+          data.plan.warnings.unshift(...notes); read.agent.warnings.unshift(...notes);
           job.result = { ...data, agent: read.agent }; job.stage = 3; job.progress = 100; job.detail = "Done"; job.done = true;
         } catch (e) {
           job.error = (e as Error).message ?? String(e); job.done = true;

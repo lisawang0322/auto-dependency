@@ -55,7 +55,7 @@ interface Props {
   target: ReleaseTarget | null; targetError: string | null; latestRun: Run | null; runs: RunSummary[];
   launch: string; setLaunch: (v: string) => void;
   choices: Record<string, TeamChoice>; setChoice: (team: string, c: TeamChoice | null) => void;
-  confirmed: boolean; runError?: string | null; onBack: () => void; onRun: () => void;
+  confirmed: boolean; runError?: string | null; onBack: () => void; /** Where Back goes, in words: the step before, or the overview. */ backLabel?: string; onRun: () => void;
   /** Above the title: the step while setting up, the place's name in a project's workspace. */
   eyebrow?: string;
 }
@@ -403,7 +403,7 @@ export function ConnectApps(p: Props) {
       <div className="between actions" style={{ gap: 16 }}>
         <span className="sm muted" style={{ maxWidth: 640 }}>{runText}</span>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <button type="button" className="btn" onClick={p.onBack}>Back</button>
+          <button type="button" className="btn" onClick={p.onBack}>{p.backLabel ? `‹ ${p.backLabel}` : "Back"}</button>
           <button type="button" className="btn primary" style={{ padding: "0 20px" }} disabled={runNotReady} onClick={p.onRun}>{p.confirmed ? `Re-run: ${RUN_LABEL[p.stage].toLowerCase()}` : RUN_LABEL[p.stage]}</button>
         </div>
       </div>

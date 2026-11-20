@@ -25,7 +25,7 @@ export function Running({ stage, projectStage, plan, epic, latestRun, runs, sign
   return (
     <div className="flow stack" style={{ maxWidth: 640 }}>
       <header className="stack-sm" style={{ gap: 8 }}>
-        <span className="eyebrow">Step 4 of 4 · working on it{rel && projectStage === "launching" ? ` · the ${fmtDate(rel.snapshot_label)} snapshot` : ""}</span>
+        <span className="eyebrow">Review · working on it{rel && projectStage === "launching" ? ` · the ${fmtDate(rel.snapshot_label)} snapshot` : ""}</span>
         <h1 className="flow-title">{projectStage === "starting" ? "Reading your PRD…" : "Reading your plan and Jira…"}</h1>
       </header>
       <div className="card" style={{ padding: "8px 20px", gap: 0 }} role="status" aria-live="polite">

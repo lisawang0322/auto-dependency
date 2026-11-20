@@ -51,7 +51,7 @@ export interface HistoryRecord {
   starter?: Starter; signalsOff?: Record<string, boolean>;
   launch?: { epic: string; runId: string; target: ReleaseTarget; plan: PlanDraft; planDates: Record<string, string>; launch: string };
 }
-export interface ProjectRecord { id: string; name: string; created_at: string; updated_at: string; data: ProjectData }
+export interface ProjectRecord { id: string; name: string; created_at: string; updated_at: string; data: ProjectData; /** Where the project lives on disk (live mode): a folder any coding agent can open. */ folder?: string }
 export interface ProjectStore {
   readonly kind: "server" | "browser";
   list(): Promise<ProjectRecord[]>;
@@ -110,7 +110,7 @@ export interface AgentRead {
 }
 /** How far along a reading is, from the server's job: 0–100 and what is happening. */
 export interface ReadProgress { pct: number; detail: string }
-export interface ExtractOptions { agent?: boolean; onProgress?: (s: AgentReadStage, progress?: ReadProgress) => void }
+export interface ExtractOptions { agent?: boolean; /** Use the reading a coding agent left in this project's folder instead. */ folder?: string; onProgress?: (s: AgentReadStage, progress?: ReadProgress) => void }
 
 /** Stage A's result. The early stages add the PRD's signals and the project name (release-starter). */
 export interface PlanExtract { plan: PlanDraft; signals: Signal[]; project: string | null; agent?: AgentRead | null }

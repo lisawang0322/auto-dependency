@@ -79,7 +79,7 @@ export class LiveBackend implements ReviewBackend {
   async extractPlan(files: UploadedFile[], stage: Stage, opts: ExtractOptions = {}): Promise<PlanExtract> {
     type PlanRes = { plan: unknown; signals?: unknown[]; project?: string; agent?: AgentRead | null };
     const useAgent = !!opts.agent && this.agent.available;
-    const first = await apiRaw<PlanRes & { job?: string }>("POST", "/api/plan", { files: await this.payload(files), stage, ...(useAgent ? { agent: "devin" } : {}) });
+    const first = await apiRaw<PlanRes & { job?: string }>("POST", "/api/plan", { files: await this.payload(files), stage, ...(opts.folder ? { agent: "folder", project: opts.folder } : useAgent ? { agent: "devin" } : {}) });
     let res: PlanRes = first.data;
     if (first.status === 202 && first.data.job) {
       opts.onProgress?.(0);

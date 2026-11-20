@@ -6,7 +6,9 @@ import { fmtDate } from "../model/dates";
 /** Step 2 (PRD R1–R3, R14): add plan files in any format, see what was read from them, fix dates, confirm. */
 
 /** The agent (Devin) that can read the uploads: whether the company set it up, the person's answer, and what it did. */
-export interface AgentPanel { info: AgentInfo; consent: AgentConsent; setConsent: (c: AgentConsent) => void; mode: string | null; setMode: (m: string | null) => void; stage: AgentReadStage | null; /** How far the reading is, from the server. */ progress: ReadProgress | null; /** A read of any kind is in flight. */ reading: boolean; read: AgentRead | null; /** Read (or re-read) the current files: with the agent, or with the rules alone. */ read_now: (withAgent: boolean) => void }
+export interface AgentPanel { info: AgentInfo; consent: AgentConsent; setConsent: (c: AgentConsent) => void; mode: string | null; setMode: (m: string | null) => void; stage: AgentReadStage | null; /** How far the reading is, from the server. */ progress: ReadProgress | null; /** A read of any kind is in flight. */ reading: boolean; read: AgentRead | null; /** Read (or re-read) the current files: with the agent, or with the rules alone. */ read_now: (withAgent: boolean) => void;
+  /** Live projects live in a folder: any coding agent can do the reading there, and the GUI takes it in. */
+  folder?: { path: string; use: () => void } }
 
 /** The Devin tier picker, shown only when the company lets people choose. */
 export function ModeSelect({ agent, id }: { agent: Pick<AgentPanel, "info" | "mode" | "setMode">; id: string }) {
@@ -44,7 +46,7 @@ interface Props {
   onRemove: (id: string) => void;
   onLoadSample: () => void;
   onSetDate: (id: string, value: string) => void;
-  onBack: () => void;
+  onBack: () => void; /** Where Back goes, in words: the step before, or the overview. */ backLabel?: string;
   onConfirm: () => void;
   /** Above the title: the step while setting up, the place's name in a project's workspace. */
   eyebrow?: string;
@@ -87,6 +89,8 @@ export function sourceLabel(plan: PlanDraft, file: string, locator: string): str
 export function PlanDocuments(p: Props) {
   const [over, setOver] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  /** The coding-agent instructions stay open once opened, across readings (the read panel re-renders after each). */
+  const [folderOpen, setFolderOpen] = useState(!p.agent.info.available);
   const filesOf = (k: FileKind) => p.files.filter((f) => f.kind === k);
   const planFiles = p.files.filter((f) => PLAN_KINDS.includes(f.kind));
   const hasPlan = planFiles.length > 0;
@@ -232,7 +236,7 @@ export function PlanDocuments(p: Props) {
             {p.plan && read?.status === "done" ? (
               <div className="stack-sm" style={{ gap: 4 }} data-testid="agent-result">
                 <span>
-                  <strong style={{ fontWeight: 600 }}>{agent.info.name}{read.mode ? ` (${read.mode})` : ""} read {readSummary(read)}</strong>
+                  <strong style={{ fontWeight: 600 }}>{read.name}{read.mode ? ` (${read.mode})` : ""} read {readSummary(read)}</strong>
                   {read.files_read.length > 0 && <> from {read.files_read.map((f) => f.name).join(", ")}</>}
                   {read.session_url && <> · <a href={read.session_url} target="_blank" rel="noreferrer">open the {agent.info.name} session</a></>}
                 </span>
@@ -292,6 +296,17 @@ export function PlanDocuments(p: Props) {
               )}
             </div>
           </div>
+          {agent.folder && (
+            <details className="small" data-testid="folder-agent" open={folderOpen} onToggle={(e) => setFolderOpen((e.currentTarget as HTMLDetailsElement).open)}>
+              <summary style={{ cursor: "pointer" }}>{agent.info.available ? "Or use your own coding agent (Claude Code, Codex, Cursor…)" : "Read with your coding agent (Claude Code, Codex, Cursor, Devin…)"}</summary>
+              <ol className="list sm" style={{ marginTop: 8, gap: 6 }}>
+                <li>Open this project's folder in your coding agent: <span className="mono" style={{ overflowWrap: "anywhere" }}>{agent.folder.path}</span></li>
+                <li>Ask it: <span className="mono">Read the files in inputs/ by AGENTS.md.</span> It writes one file, its reading, and nothing else.</li>
+                <li>Come back and use the reading. Every quote is checked against your files before you see it, and anything else the agent changed is undone.</li>
+              </ol>
+              <div style={{ marginTop: 8 }}><button type="button" className="btn" disabled={!docs.length} onClick={agent.folder.use} data-testid="folder-read">Use the reading</button></div>
+            </details>
+          )}
         </section>
       )}
       {agent.reading && agent.stage === null && (
@@ -427,7 +442,7 @@ export function PlanDocuments(p: Props) {
           {!hasPlan ? "Add something that describes what you're building to continue." : !p.plan ? (p.planError ? "Fix the file above, or read it as something else, to continue." : reading ? `${agent.info.name} is reading your files…` : agent.reading ? "Reading your files…" : "Read your files to continue.") : !launching && p.signals.length === 0 ? "No signals found yet; you can still continue." : "Looks good. Next, connect the apps your teams use."}
         </span>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <button type="button" className="btn" onClick={p.onBack}>Back</button>
+          <button type="button" className="btn" onClick={p.onBack}>{p.backLabel ? `‹ ${p.backLabel}` : "Back"}</button>
           <button type="button" className="btn primary" style={{ padding: "0 20px" }} disabled={notReady} onClick={p.onConfirm}>Confirm and connect apps</button>
         </div>
       </div>

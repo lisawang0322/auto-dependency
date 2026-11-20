@@ -14,8 +14,9 @@ export const STAGES: StageDef[] = [
 export const STAGE_SHORT: Record<Stage, string> = { starting: "Just starting", building: "Building", launching: "Preparing to launch" };
 
 type Need = "Required" | "Recommended" | "Optional";
-/** What to have ready, per stage. "plan" rows say what counts as a plan; the "directory" row shows the connection above. */
-interface PrepItem { label: string; why: string; need: Need; kind?: "plan" | "directory" }
+/** What to have ready, per stage. "plan" rows say what counts as a plan. "directory" and "jira" rows are connections,
+ *  not files: they are listed apart, so nobody goes looking for an export of their work tracker. */
+interface PrepItem { label: string; why: string; need: Need; kind?: "plan" | "directory" | "jira" }
 const PREP: Record<Stage, PrepItem[]> = {
   starting: [
     { label: "Your PRD or one-pager", why: "What you're building and for whom", need: "Required", kind: "plan" },
@@ -24,13 +25,13 @@ const PREP: Record<Stage, PrepItem[]> = {
   ],
   building: [
     { label: "Your plan (PRD, POR or brief)", why: "What should be happening", need: "Required", kind: "plan" },
-    { label: "Access to your work tracker", why: "Who is actually working on it", need: "Required" },
+    { label: "Jira", why: "Who is actually working on it. Connected in step 3, read-only", need: "Required", kind: "jira" },
     { label: "Employee directory or org chart", why: "Names for the teams you're missing", need: "Recommended", kind: "directory" },
     { label: "Company launch checklist", why: "Approvals your company expects", need: "Optional" },
   ],
   launching: [
     { label: "Plan of record (doc or slides)", why: "Dates, owners, dependencies, approvals", need: "Required", kind: "plan" },
-    { label: "Access to Jira and the release epic", why: "The work to check against the plan", need: "Required" },
+    { label: "Jira, and the release epic", why: "The work to check against the plan. Connected in step 3, read-only; you pick the epic there", need: "Required", kind: "jira" },
     { label: "Launch checklist", why: "Standard launch items", need: "Recommended" },
     { label: "Employee directory or team list", why: "Exact owners for each gap", need: "Recommended", kind: "directory" },
   ],
@@ -42,6 +43,8 @@ interface Props {
   directory: DirectoryState; live: boolean;
   /** Opened from a project's workspace (stage and organisation) rather than while setting it up. */
   workspace?: boolean;
+  /** Jira is already connected (the sign-in, or an earlier visit). */
+  jiraOn?: boolean;
 }
 
 /** Step 1 (PRD R14): who you are in the org (the directory, usually connected by the sign-in), where the project is, and what that stage needs. One column, read top to bottom. */
@@ -135,20 +138,25 @@ export function GetStarted(p: Props & DirectoryHandlers) {
         {picked ? (
           <div className="card prep-panel" data-testid="prep">
             <p className="prep-gets"><span className="eyebrow">You'll get</span><span>{picked.gets}</span></p>
-            <span className="eyebrow">Have these ready</span>
-            {PREP[picked.id].map((it) => {
-              const done = it.kind === "directory" && dirOn;
-              return (
-                <div key={it.label} className="prep-row">
-                  <span className={"prep-mark" + (done ? " done" : "")} aria-hidden="true">{done ? "✓" : ""}</span>
-                  <span className="prep-text">
-                    <span style={{ fontWeight: 500 }}>{it.label}</span>
-                    <span className="small muted">{it.why}{it.kind === "plan" ? ". Any format: a PRD, one-pager, POR deck, brief or roadmap export; no template" : ""}</span>
-                  </span>
-                  <span className={"prep-need " + (done ? "done" : it.need.toLowerCase())}>{done ? "Connected" : it.need}</span>
-                </div>
-              );
-            })}
+            {([["Files you add", PREP[picked.id].filter((it) => it.kind !== "directory" && it.kind !== "jira")],
+               ["Apps you connect: nothing to upload", PREP[picked.id].filter((it) => it.kind === "directory" || it.kind === "jira")]] as const).map(([title, list]) => list.length > 0 && (
+              <div key={title} className="stack-sm" style={{ gap: 0 }} data-testid={title.startsWith("Files") ? "prep-files" : "prep-apps"}>
+                <span className="eyebrow" style={{ marginBottom: 4 }}>{title}</span>
+                {list.map((it) => {
+                  const done = (it.kind === "directory" && dirOn) || (it.kind === "jira" && !!p.jiraOn);
+                  return (
+                    <div key={it.label} className="prep-row">
+                      <span className={"prep-mark" + (done ? " done" : "")} aria-hidden="true">{done ? "✓" : ""}</span>
+                      <span className="prep-text">
+                        <span style={{ fontWeight: 500 }}>{it.label}</span>
+                        <span className="small muted">{it.why}{it.kind === "plan" ? ". Any format: a PRD, one-pager, POR deck, brief or roadmap export; no template" : ""}</span>
+                      </span>
+                      <span className={"prep-need " + (done ? "done" : it.need.toLowerCase())}>{done ? "Connected" : it.need}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         ) : (
           <p className="sm muted">Pick one, and we'll ask only for what that stage needs. You can change it later.</p>
