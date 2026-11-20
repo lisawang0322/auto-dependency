@@ -52,6 +52,8 @@ async function signIn(page: import("@playwright/test").Page, keepDirectory = fal
   if (!keepDirectory) await page.request.delete("/api/directory/entra", { headers: { "Content-Type": "application/json" } });
   await page.reload();
   await expect(page.getByTestId("user-chip")).toHaveText("Lisa Wang");
+  // The portal opens on the projects home; each test starts its own project.
+  await page.getByRole("button", { name: "New project" }).first().click();
 }
 
 test("uploads real files, connects with a token and a directory export, reads Jira and reviews", async ({ page }) => {
@@ -228,8 +230,9 @@ test("the answer about Devin is kept on the server across reloads, and signing o
   await expect(page.getByTestId("agent-consent")).toContainText("Devin will read these files");
   await page.getByTestId("agent-read").click(); // the first read records the answer
   await expect(page.getByTestId("agent-result")).toBeVisible({ timeout: 20_000 });
-  await page.reload();
+  await page.goto("/?backend=live");
   await expect(page.getByTestId("user-chip")).toHaveText("Lisa Wang");
+  await page.getByRole("button", { name: "New project" }).first().click();
   await page.getByRole("radio", { name: /Preparing to launch/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Use sample files" }).click();

@@ -20,7 +20,12 @@ CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
 CREATE TABLE IF NOT EXISTS settings (user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(user_id, key));
 CREATE TABLE IF NOT EXISTS decisions (user_id TEXT NOT NULL, run_key TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(user_id, run_key));
 CREATE TABLE IF NOT EXISTS connections (user_id TEXT NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(user_id, kind));
+CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS projects_user ON projects(user_id);
 `;
+
+/** A project the person comes back to across its life: its name and everything the GUI keeps for it (files, readings, epic, results). */
+export interface ProjectRow { id: string; name: string; data: unknown; created_at: string; updated_at: string }
 
 const now = () => new Date().toISOString();
 
@@ -94,4 +99,24 @@ export class Store {
     this.db.prepare("INSERT INTO connections (user_id, kind, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, kind) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at").run(userId, kind, JSON.stringify(data), now());
   }
   deleteConnection(userId: string, kind: string) { this.db.prepare("DELETE FROM connections WHERE user_id = ? AND kind = ?").run(userId, kind); }
+
+  // ---- projects ----
+  private row(r: any): ProjectRow { return { id: r.id, name: r.name, data: JSON.parse(r.data), created_at: r.created_at, updated_at: r.updated_at }; }
+  projects(userId: string): ProjectRow[] {
+    return (this.db.prepare("SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC").all(userId) as any[]).map((r) => this.row(r));
+  }
+  project(userId: string, id: string): ProjectRow | null {
+    const r = this.db.prepare("SELECT * FROM projects WHERE user_id = ? AND id = ?").get(userId, id);
+    return r ? this.row(r) : null;
+  }
+  createProject(userId: string, id: string, name: string, data: unknown): ProjectRow {
+    const t = now();
+    this.db.prepare("INSERT INTO projects (id, user_id, name, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, userId, name, JSON.stringify(data), t, t);
+    return this.project(userId, id)!;
+  }
+  saveProject(userId: string, id: string, name: string, data: unknown): ProjectRow | null {
+    const r = this.db.prepare("UPDATE projects SET name = ?, data = ?, updated_at = ? WHERE user_id = ? AND id = ?").run(name, JSON.stringify(data), now(), userId, id);
+    return Number(r.changes) ? this.project(userId, id) : null;
+  }
+  deleteProject(userId: string, id: string): boolean { return Number(this.db.prepare("DELETE FROM projects WHERE user_id = ? AND id = ?").run(userId, id).changes) > 0; }
 }

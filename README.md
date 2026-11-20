@@ -248,6 +248,17 @@ apps step, which is structured data and stays with the directory reader. The GUI
 rules' result with a "Try again" button if the session fails. Every file's reading is cached by content, "read as"
 and tier under `out/agent-reads/`, so re-adding the same file spends nothing.
 
+## Projects: the portal
+
+The GUI opens on **Projects**: every project the person has, where each is in its life (just starting, building,
+preparing to launch), its latest status and open actions. A project keeps its files, Devin's reading, the epic, team
+choices, decisions and results, so opening it again lands on its overview with nothing read or uploaded again; the
+project is in the URL (`#/p/<id>`). Once reviewed, a project is a workspace: Overview (with a lifecycle bar to move it
+to the next stage, keeping its files and connections), Files and plan, Connections, Stage and organisation, History.
+In live mode projects live on the server per person (`GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/{id}`),
+and each file is uploaded once into the project (`POST /api/projects/{id}/files`) and read by name on every later run.
+Sample mode keeps projects in the browser.
+
 ## The employee directory
 
 Connected first, on **Get started**, in two layers that combine (PRD "Employee directory sources"):

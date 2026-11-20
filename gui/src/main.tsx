@@ -1,7 +1,8 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
-import { App } from "./App";
+import { Portal } from "./Portal";
+import { BrowserProjectStore, ServerProjectStore } from "./backend/projects";
 import { FixtureBackend, loadLocalConsent } from "./backend/fixtureBackend";
 import { StubJiraConnection } from "./backend/stubJira";
 import { LiveBackend, LiveJiraConnection, probeServer, signOut } from "./backend/liveBackend";
@@ -32,7 +33,8 @@ async function boot() {
   const user = live ? (health!.auth?.user ?? null) : null;
   root.render(
     <React.StrictMode>
-      <App backend={backend} jira={jira} store={store} user={user} initialConsent={initialConsent} initialMode={initialMode} onSignOut={live && health!.auth && health!.auth.mode !== "none" ? signOut : undefined} />
+      <Portal backend={backend} jira={jira} store={store} user={user} initialConsent={initialConsent} initialMode={initialMode} onSignOut={live && health!.auth && health!.auth.mode !== "none" ? signOut : undefined}
+        projects={live ? new ServerProjectStore() : new BrowserProjectStore()} />
     </React.StrictMode>,
   );
 }

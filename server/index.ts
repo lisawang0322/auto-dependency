@@ -145,6 +145,9 @@ export function createApp(opts: ServerOptions = {}) {
     runsRoot: join(runsRoot, "orgs", safeSeg(u.org)), uploadRoot: join(uploadRoot, "orgs", safeSeg(u.org)), cacheRoot: join(cacheRoot, "orgs", safeSeg(u.org)), agentCacheRoot: join(agentCacheRoot, "orgs", safeSeg(u.org)),
   };
 
+  /** Where a project's files are kept: per organisation, per project. */
+  const projectDir = (u: User, id: string) => join(rootsFor(u).uploadRoot, "projects", safeSeg(id));
+
   function envCreds(): RestCreds | null {
     const { JIRA_SITE, JIRA_EMAIL, JIRA_API_TOKEN } = process.env;
     return JIRA_SITE && JIRA_EMAIL && JIRA_API_TOKEN ? { site: JIRA_SITE, email: JIRA_EMAIL, token: JIRA_API_TOKEN } : null;
@@ -283,7 +286,13 @@ export function createApp(opts: ServerOptions = {}) {
       const name = basename(String(f.name ?? "")).replace(/[^\w.\- ()]+/g, "_");
       if (!name) throw new HttpError(400, "A file has no name.");
       let path: string;
-      if (f.via === "directory" && f.source === "server") {
+      if (typeof f.stored === "string" && typeof f.project === "string") {
+        // A file kept with a project: uploaded once, read on every later run without the browser sending it again.
+        if (!store.project(u.id, f.project)) throw new HttpError(404, "No such project.");
+        const stored = basename(f.stored);
+        path = join(projectDir(u, f.project), stored);
+        if (stored !== f.stored || !existsSync(path)) throw new HttpError(400, `${name} is no longer stored with this project; add it again.`);
+      } else if (f.via === "directory" && f.source === "server") {
         // The directory connected on Get started: the merged snapshot, written as a team list the reader takes as a file.
         const written = directory.writeFile(u, join(rootsFor(u).uploadRoot, "directory", u.id));
         if (!written) throw new HttpError(400, "No employee directory is connected. Connect one on Get started, or add an export.");
@@ -314,6 +323,36 @@ export function createApp(opts: ServerOptions = {}) {
     },
 
     async settings(u: User) { return settingsOf(u); },
+
+    // ---- projects: kept across the project's life, so nothing is uploaded twice ----
+    async projects(u: User) { return { projects: store.projects(u.id) }; },
+    async createProject(u: User, body: any) {
+      const name = String(body?.name ?? "").trim().slice(0, 120) || "Untitled project";
+      return store.createProject(u.id, randomUUID(), name, body?.data ?? {});
+    },
+    async getProject(u: User, id: string) { const r = store.project(u.id, id); if (!r) throw new HttpError(404, "No such project."); return r; },
+    async saveProject(u: User, id: string, body: any) {
+      if (!body || typeof body !== "object" || typeof body.data !== "object") throw new HttpError(400, "Expected {name, data}.");
+      const r = store.saveProject(u.id, id, String(body.name ?? "").trim().slice(0, 120) || "Untitled project", body.data);
+      if (!r) throw new HttpError(404, "No such project.");
+      return { id: r.id, updated_at: r.updated_at };
+    },
+    async deleteProject(u: User, id: string) {
+      if (!store.deleteProject(u.id, id)) throw new HttpError(404, "No such project.");
+      rmSync(projectDir(u, id), { recursive: true, force: true });
+      return { ok: true };
+    },
+    async uploadProjectFile(u: User, id: string, body: any) {
+      if (!store.project(u.id, id)) throw new HttpError(404, "No such project.");
+      const name = basename(String(body?.name ?? "")).replace(/[^\w.\- ()]+/g, "_");
+      if (!name || typeof body?.content_base64 !== "string") throw new HttpError(400, "Expected {name, content_base64}.");
+      const stored = `${randomUUID().slice(0, 8)}-${name}`;
+      const dir = projectDir(u, id);
+      mkdirSync(dir, { recursive: true });
+      const buf = Buffer.from(body.content_base64, "base64");
+      writeFileSync(join(dir, stored), buf);
+      return { stored, bytes: buf.length };
+    },
 
     // ---- the employee directory (two layers: Entra through the sign-in, Jira projects through the Jira connection) ----
     async directoryInfo(u: User) { return directory.info(u, !!credsFor(u)); },
@@ -525,6 +564,12 @@ export function createApp(opts: ServerOptions = {}) {
         if (p === "/api/settings" && req.method === "PUT") return send(200, await routes.saveSettings(u, body));
         if ((m = p.match(/^\/api\/decisions\/(.+)$/)) && req.method === "GET") return send(200, await routes.decisions(u, decodeURIComponent(m[1])));
         if ((m = p.match(/^\/api\/decisions\/(.+)$/)) && req.method === "PUT") return send(200, await routes.saveDecisions(u, decodeURIComponent(m[1]), body));
+        if (p === "/api/projects" && req.method === "GET") return send(200, await routes.projects(u));
+        if (p === "/api/projects" && req.method === "POST") return send(200, await routes.createProject(u, body));
+        if ((m = p.match(/^\/api\/projects\/([\w-]+)$/)) && req.method === "GET") return send(200, await routes.getProject(u, m[1]));
+        if ((m = p.match(/^\/api\/projects\/([\w-]+)$/)) && req.method === "PUT") return send(200, await routes.saveProject(u, m[1], body));
+        if ((m = p.match(/^\/api\/projects\/([\w-]+)$/)) && req.method === "DELETE") return send(200, await routes.deleteProject(u, m[1]));
+        if ((m = p.match(/^\/api\/projects\/([\w-]+)\/files$/)) && req.method === "POST") return send(200, await routes.uploadProjectFile(u, m[1], body));
         if (p === "/api/directory" && req.method === "GET") return send(200, await routes.directoryInfo(u));
         if (p === "/api/directory/jira" && req.method === "POST") return send(200, await routes.directoryFromJira(u));
         if ((m = p.match(/^\/api\/directory\/(\w+)$/)) && req.method === "DELETE") return send(200, await routes.directoryDisconnect(u, m[1]));

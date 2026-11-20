@@ -67,6 +67,9 @@ export class LiveBackend implements ReviewBackend {
       const via = f.via ? { via: f.via } : {};
       // A directory the server holds travels by name only; the server writes the merged team list itself.
       if (f.source === "server") { out.push({ name: f.name, kind: f.kind, via: "directory", source: "server" }); continue; }
+      // Kept with the project: the server reads its copy; nothing is sent again.
+      if (f.stored) { out.push({ name: f.name, kind: f.kind, project: f.stored.project, stored: f.stored.id, ...via }); continue; }
+      if (!f.sample && !f.file) throw new Error(`${f.name} is not kept with this project any more; remove it and add it again.`);
       if (f.sample || !f.file) out.push({ name: f.name, kind: f.kind, sample: true, ...via });
       else out.push({ name: f.name, kind: f.kind, content_base64: toBase64(await f.file.arrayBuffer()), ...via });
     }

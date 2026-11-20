@@ -13,6 +13,9 @@ interface Props {
   stage: Stage; store: DecisionStore; runs: RunSummary[]; runsById: Record<string, Run>; latestId: string;
   target: ReleaseTarget; launch: string; planIds: Set<string> | null; planDates: Record<string, string>; plan: PlanDraft; ownerSource: OwnerSource;
   onChangeStage: () => void; onAddFiles: () => void; onConnectApps: () => void;
+  /** What the projects home shows for this project: the latest run's status and open actions. */
+  onSummary?: (s: { status: string | null; open: number | null; detail: string | null }) => void;
+  eyebrow?: string;
 }
 
 const STATUS_LABEL: Record<TeamStatus, string> = { on_track: "On track", at_risk: "At risk", late: "Late" };
@@ -93,6 +96,7 @@ export function Review(p: Props) {
   const actions = nextActions(visibleFindings(latestLive, showWeak), latestDec.decisions);
   const actionsDone = latestDec.actionsDone ?? {};
   const openActions = actions.filter((a) => !actionsDone[a.id]).length;
+  useEffect(() => { if (isLatest) p.onSummary?.({ status: release, open: openActions, detail: `${openCount} open finding${openCount === 1 ? "" : "s"} · ${fmtDate(p.latestId)} run` }); }, [release, openActions, openCount, isLatest]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleAction = (id: string) => {
     const next: RunDecisions = { ...latestDec, actionsDone: { ...actionsDone, [id]: !actionsDone[id] } };
     setSaved((s) => ({ ...s, [p.latestId]: next }));
@@ -173,7 +177,7 @@ export function Review(p: Props) {
   return (
     <div className="flow stack">
       <header className="stack-sm" style={{ gap: 8 }}>
-        <span className="eyebrow">Step 4 of 4 · {STAGE_SHORT[p.stage]}</span>
+        <span className="eyebrow">{p.eyebrow ?? "Step 4 of 4"} · {STAGE_SHORT[p.stage]}</span>
         <h1 className="flow-title">Launch {fmtDate(p.launch)} · {daysOut} days out</h1>
         <p className="lead">{fmtDate(run.release.snapshot_label)} run{isLatest ? " (latest)" : ""} · {epic}, its linked tickets in {hopProjects.join(", ")}, and each team's project</p>
         <div className="run-row">

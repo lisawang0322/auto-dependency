@@ -15,6 +15,9 @@ interface Props {
   starter: Starter;
   signalsOff: Record<string, boolean>;
   store: DecisionStore;
+  /** What the projects home shows for this project. */
+  onSummary?: (s: { status: string | null; open: number | null; detail: string | null }) => void;
+  eyebrow?: string;
   launch: string | null;
   onChangeStage: () => void; onAddFiles: () => void; onConnectApps: () => void;
 }
@@ -45,6 +48,12 @@ export function EarlyResults(p: Props) {
   const starting = st.stage === "starting";
   const covered = coverage.filter((c) => c.state === "covered").length;
   const missing = coverage.filter((c) => c.state === "missing").length;
+  const openNow = (st.next_actions ?? []).filter((a) => !(saved.actionsDone ?? {})[a.id]).length;
+  useEffect(() => {
+    p.onSummary?.(st.stage === "starting"
+      ? { status: null, open: openNow, detail: `${st.teams.length} teams to involve` }
+      : { status: missing ? "Red" : coverage.some((c) => c.state === "unclear") ? "Amber" : "Green", open: openNow, detail: `${covered} of ${coverage.length} teams covered` });
+  }, [openNow, missing, covered]); // eslint-disable-line react-hooks/exhaustive-deps
   const unclear = coverage.filter((c) => c.state === "unclear").length;
   const notStarted = approvalStatus.filter((a) => a.state === "not_started").length;
   const personOf = (team: string, contact: string | null) => contact ?? `${team} lead — connect your directory for a name`;
@@ -52,7 +61,7 @@ export function EarlyResults(p: Props) {
   return (
     <div className="flow stack">
       <header className="stack-sm" style={{ gap: 8 }}>
-        <span className="eyebrow">Step 4 of 4 · {STAGE_SHORT[st.stage]}</span>
+        <span className="eyebrow">{p.eyebrow ?? "Step 4 of 4"} · {STAGE_SHORT[st.stage]}</span>
         <h1 className="flow-title">{starting ? "Who to involve, and what to do first" : "Who's missing, and what hasn't started"}</h1>
         <p className="lead">{starting
           ? `From ${st.files.filter((f) => f.read_as.includes("plan_items")).map((f) => f.name).join(", ")}${st.directory_given ? " and your directory" : ""} · ${teams.length} teams suggested`

@@ -40,6 +40,8 @@ interface Props {
   stage: Stage | null; onPick: (s: Stage) => void; onContinue: () => void;
   /** The employee directory comes first: it grounds every team the reading names in the real org. */
   directory: DirectoryState; live: boolean;
+  /** Opened from a project's workspace (stage and organisation) rather than while setting it up. */
+  workspace?: boolean;
 }
 
 /** Step 1 (PRD R14): who you are in the org (the directory, usually connected by the sign-in), where the project is, and what that stage needs. One column, read top to bottom. */
@@ -67,9 +69,9 @@ export function GetStarted(p: Props & DirectoryHandlers) {
   return (
     <div className="start stack">
       <header className="stack-sm" style={{ gap: 8 }}>
-        <span className="eyebrow">Step 1 of 4</span>
-        <h1 className="start-title">Let's set up your review</h1>
-        <p className="lead">Readiness Review reads your plan and the tools your teams use, then tells you who to involve, what's missing and what to do next. Bring whatever you have; there's no template.</p>
+        <span className="eyebrow">{p.workspace ? "Stage and organisation" : "Step 1 of 4"}</span>
+        <h1 className="start-title">{p.workspace ? "Where the project is" : "Let's set up your review"}</h1>
+        <p className="lead">{p.workspace ? "Change the stage as the project moves; your files and connections stay. Your organisation's directory grounds every team the reading names." : "Readiness Review reads your plan and the tools your teams use, then tells you who to involve, what's missing and what to do next. Bring whatever you have; there's no template."}</p>
       </header>
 
       <section className={"card org-card" + (dirOn ? " on" : "")} data-testid="start-directory" aria-labelledby="org-title">

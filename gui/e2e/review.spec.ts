@@ -31,6 +31,7 @@ async function connectJira(page: Page) {
 
 test("walks get started → your plan → connect apps (resolving SEC) → next steps", async ({ page }) => {
   await page.goto("/?fast=1&backend=sample");
+  await page.getByRole("button", { name: "New project" }).first().click();
   await pickLaunching(page);
 
   // Step 2: upload the POR and the checklist but no team list, so Security will be ambiguous.
@@ -99,7 +100,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   // Progress, then step 4.
   await expect(page.getByRole("heading", { name: "Reading your plan and Jira…" })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Launch Nov 20 · 7 days out/ })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Step 4 of 4 · Preparing to launch")).toBeVisible();
+  await expect(page.getByText("Overview · Preparing to launch")).toBeVisible(); // reviewed: the project is a workspace now
   await expect(page.getByTestId("release-status")).toHaveText("Amber");
   await expect(page.getByTestId("open-findings")).toHaveText("4");
 
@@ -172,12 +173,13 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   // The footer leads back to the earlier steps.
   await page.getByRole("button", { name: "Change stage" }).click();
   await expect(page.getByRole("heading", { name: "Where is your project right now?" })).toBeVisible();
-  await page.getByRole("button", { name: "4. Next steps" }).click();
+  await page.getByRole("button", { name: "Overview" }).click();
   await expect(page.getByRole("heading", { name: /7 days out/ })).toBeVisible();
 
   // Decisions and ticks survive a reload (localStorage), and the kept finding can be reopened.
   await page.reload();
   await page.goto("/?fast=1&backend=sample");
+  await page.getByRole("button", { name: "New project" }).first().click();
   await pickLaunching(page);
   await page.getByRole("button", { name: "Use sample files" }).click();
   await page.getByTestId("agent-read").click();
@@ -197,6 +199,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
 
 test("connecting the employee directory stands in for a team list, and disconnecting it undoes that", async ({ page }) => {
   await page.goto("/?fast=1&backend=sample");
+  await page.getByRole("button", { name: "New project" }).first().click();
   await pickLaunching(page);
   await page.locator("#plan-files").setInputFiles([POR]);
   await page.getByTestId("agent-read").click();
@@ -228,6 +231,7 @@ test("connecting the employee directory stands in for a team list, and disconnec
 test("works at phone width with no horizontal scroll", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/?fast=1&backend=sample");
+  await page.getByRole("button", { name: "New project" }).first().click();
   await pickLaunching(page);
   await page.getByRole("button", { name: "Use sample files" }).click();
   await page.getByTestId("agent-read").click();
@@ -245,6 +249,7 @@ test("works at phone width with no horizontal scroll", async ({ page }) => {
 
 test("the employee directory connects on step 1, before any document, and grounds the teams the reading names", async ({ page }) => {
   await page.goto("/?fast=1&backend=sample");
+  await page.getByRole("button", { name: "New project" }).first().click();
   await expect(page.getByTestId("start-directory-state")).toHaveText("Not connected");
   // Two layers from sign-ins the person already has, or an export; the demo simulates the first two.
   await expect(page.getByTestId("directory-sources").locator(".plain-row")).toHaveCount(3);
@@ -269,6 +274,7 @@ test("the employee directory connects on step 1, before any document, and ground
 
 test("an export can stand in for the directory on step 1, and removing it clears the connection", async ({ page }) => {
   await page.goto("/?fast=1&backend=sample");
+  await page.getByRole("button", { name: "New project" }).first().click();
   await page.getByRole("button", { name: "Upload an export" }).click();
   await expect(page.getByRole("dialog")).toContainText("Read names, titles, teams and reporting lines");
   await page.getByRole("button", { name: "Accept" }).click();

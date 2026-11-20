@@ -46,6 +46,8 @@ interface Props {
   onSetDate: (id: string, value: string) => void;
   onBack: () => void;
   onConfirm: () => void;
+  /** Above the title: the step while setting up, the place's name in a project's workspace. */
+  eyebrow?: string;
 }
 
 const KIND_LABEL: Record<string, string> = { deliverable: "Deliverable", dependency: "Dependency", approval: "Approval", checklist: "Checklist" };
@@ -147,7 +149,7 @@ export function PlanDocuments(p: Props) {
   return (
     <div className="flow stack">
       <header className="stack-sm" style={{ gap: 8 }}>
-        <span className="eyebrow">Step 2 of 4</span>
+        <span className="eyebrow">{p.eyebrow ?? "Step 2 of 4"}</span>
         <h1 className="flow-title">Add what you have</h1>
         <p className="lead">{PLAN_INTRO[p.stage]}</p>
       </header>

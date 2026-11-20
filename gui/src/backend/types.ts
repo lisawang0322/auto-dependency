@@ -24,6 +24,30 @@ export interface UploadedFile {
   via?: "directory";
   /** A directory the server holds (Microsoft Entra ID, Jira projects): no content travels; the server writes the merged team list. */
   source?: "server";
+  /** Kept with a project on the server: uploaded once, read by name on every later run. */
+  stored?: { project: string; id: string };
+}
+
+// ---------- projects: what a person comes back to across the project's life ----------
+export interface ProjectEvent { at: string; text: string }
+/** What the projects home shows for a project: its latest status and open actions. */
+export interface ProjectSummary { status: string | null; open: number | null; detail: string | null; at: string }
+/** Everything the GUI keeps for a project between visits. Files keep their name, kind and stored copy, never the browser File. */
+export interface ProjectData {
+  stage?: Stage | null; files?: UploadedFile[]; plan?: PlanDraft | null; signals?: Signal[]; signalsOff?: Record<string, boolean>; project?: string | null;
+  planDates?: Record<string, string>; planConfirmed?: boolean; epic?: string; launch?: string; choices?: Record<string, string>;
+  confirmed?: boolean; runId?: string | null; starter?: Starter | null; agentRead?: AgentRead | null; lastRead?: boolean | null; jiraOn?: boolean;
+  events?: ProjectEvent[]; summary?: ProjectSummary | null;
+}
+export interface ProjectRecord { id: string; name: string; created_at: string; updated_at: string; data: ProjectData }
+export interface ProjectStore {
+  readonly kind: "server" | "browser";
+  list(): Promise<ProjectRecord[]>;
+  create(name: string, data?: ProjectData): Promise<ProjectRecord>;
+  save(id: string, name: string, data: ProjectData): Promise<void>;
+  remove(id: string): Promise<void>;
+  /** Keep a file with the project; null when this store does not keep contents (sample data). */
+  uploadFile(id: string, file: File): Promise<string | null>;
 }
 
 /** One connected directory layer, as the server reports it. */

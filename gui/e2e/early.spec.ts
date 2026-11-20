@@ -7,6 +7,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 async function pickStage(page: Page, name: RegExp) {
   await page.goto("/?fast=1&backend=sample");
+  await page.getByRole("button", { name: "New project" }).first().click();
   await page.getByRole("radio", { name }).check();
   await page.getByRole("button", { name: "Continue" }).click();
 }
@@ -46,7 +47,7 @@ test("just starting: PRD signals → who to involve, then a directory adds names
 
   // Step 4: next actions, stakeholder map, teams to involve, approvals; Privacy and Legal are gone with their signal.
   await expect(page.getByRole("heading", { name: "Who to involve, and what to do first" })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Step 4 of 4 · Just starting")).toBeVisible();
+  await expect(page.getByText("Overview · Just starting")).toBeVisible(); // reviewed: the project is a workspace now
   await expect(page.getByText("Connect your employee directory to see who to contact on each team.")).toBeVisible();
   await expect(page.getByTestId("teams-to-involve").locator(".card")).toHaveCount(7);
   await expect(page.getByTestId("involve-Privacy")).toHaveCount(0);

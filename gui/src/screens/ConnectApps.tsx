@@ -56,6 +56,8 @@ interface Props {
   launch: string; setLaunch: (v: string) => void;
   choices: Record<string, TeamChoice>; setChoice: (team: string, c: TeamChoice | null) => void;
   confirmed: boolean; runError?: string | null; onBack: () => void; onRun: () => void;
+  /** Above the title: the step while setting up, the place's name in a project's workspace. */
+  eyebrow?: string;
 }
 
 const MATCH_LABEL: Record<string, string> = {
@@ -266,7 +268,7 @@ export function ConnectApps(p: Props) {
   return (
     <div className="flow stack">
       <header className="stack-sm" style={{ gap: 8 }}>
-        <span className="eyebrow">Step 3 of 4</span>
+        <span className="eyebrow">{p.eyebrow ?? "Step 3 of 4"}</span>
         <h1 className="flow-title">Connect the tools your teams use</h1>
         <p className="lead">{needsJira ? "Jira is required for your stage: it is how we see who is doing the work." : "Nothing is required at your stage; a directory turns team names into people."} Every connection is read-only.</p>
       </header>
