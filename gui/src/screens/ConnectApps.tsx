@@ -264,22 +264,22 @@ export function ConnectApps(p: Props) {
     : (dirOn ? "Ready." : "You can continue now. Connecting your directory turns team suggestions into names.");
 
   return (
-    <div className="stack">
-      <div className="stack-sm">
-        <span className="small muted">Step 3 · connect your apps</span>
-        <h1>Connect the tools your teams use</h1>
-        <p className="lead" style={{ maxWidth: 720 }}>{needsJira ? "Jira is required for your stage: it is how we see who is doing the work." : "Nothing is required at your stage; a directory turns team names into people."} Every connection is read-only.</p>
-      </div>
+    <div className="flow stack">
+      <header className="stack-sm" style={{ gap: 8 }}>
+        <span className="eyebrow">Step 3 of 4</span>
+        <h1 className="flow-title">Connect the tools your teams use</h1>
+        <p className="lead">{needsJira ? "Jira is required for your stage: it is how we see who is doing the work." : "Nothing is required at your stage; a directory turns team names into people."} Every connection is read-only.</p>
+      </header>
 
       {/* The connection the stage needs most, first and full width; what it unlocks follows right under it, and its consent opens beneath it. */}
       <section className="stack" style={{ gap: 10 }}>
-        <h2 style={{ fontSize: 16 }}>{primaryId === "jira" ? "Where the work is tracked" : "Who's who"}</h2>
+        <h2 className="numbered">{needsJira && <span className="step-num" aria-hidden="true">1</span>}{primaryId === "jira" ? "Where the work is tracked" : "Who's who"}</h2>
         {renderCard(primary, true)}
         {consentFor === primaryId && dialogs}
       </section>
       {needsJira && on && (
         <section className="card">
-          <h2>Which work in Jira is this?</h2>
+          <h2 className="numbered"><span className="step-num" aria-hidden="true">2</span>Which work in Jira is this?</h2>
           {sites && sites.sites.length > 1 && (
             <div className="stack-sm" style={{ gap: 4, maxWidth: 420 }}>
               <label htmlFor="jira-site-pick" className="label">Jira site</label>
@@ -322,7 +322,7 @@ export function ConnectApps(p: Props) {
       {building && on && p.target && (
         <section className="card" style={{ gap: 8 }} data-testid="needed-teams">
           <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
-            <h2>Teams your plan needs</h2>
+            <h2 className="numbered"><span className="step-num" aria-hidden="true">3</span>Teams your plan needs</h2>
             <span className="small muted">{p.target.projects.filter((t) => t.jira_project).length} of {p.target.projects.length} have a Jira project</span>
           </div>
           <p className="sm muted">From the signals in your PRD. A team with a Jira project is checked by project and assignee; the others by assignee only, through your directory.</p>
@@ -337,7 +337,7 @@ export function ConnectApps(p: Props) {
       {needsJira && !building && on && p.target && (
         <section className="card">
           <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
-            <h2>Teams → Jira projects</h2>
+            <h2 className="numbered"><span className="step-num" aria-hidden="true">3</span>Teams → Jira projects</h2>
             <span className="small muted">{p.target.projects.filter((t) => isResolved(t, p.choices[t.team])).length} of {p.target.projects.length} teams resolved</span>
           </div>
           <p className="sm muted">Each team's project is searched for work that isn't linked to the epic. Unresolved teams need your choice.</p>

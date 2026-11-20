@@ -99,7 +99,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   // Progress, then step 4.
   await expect(page.getByRole("heading", { name: "Reading your plan and Jira…" })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Launch Nov 20 · 7 days out/ })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Step 4 · next steps · Preparing to launch")).toBeVisible();
+  await expect(page.getByText("Step 4 of 4 · Preparing to launch")).toBeVisible();
   await expect(page.getByTestId("release-status")).toHaveText("Amber");
   await expect(page.getByTestId("open-findings")).toHaveText("4");
 
@@ -121,8 +121,8 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
 
   // Keep the security finding: it stays in the actions, marked kept; the detail shows its suggested next action.
   await page.getByRole("button", { name: /Approval still open: Security review approved/ }).click();
-  await expect(page.getByRole("heading", { name: /Approval still open: Security review approved/ })).toBeVisible();
   const detail = page.getByRole("region", { name: "Finding detail" });
+  await expect(detail.getByRole("heading", { name: /Approval still open: Security review approved/ })).toBeAttached(); // for screen readers; the row above shows it
   await expect(detail.getByTestId("suggested-action")).toContainText("Ask Security to get SEC-881 approved");
   await expect(detail.getByText("SEC-881", { exact: true })).toBeVisible();
   await expect(detail.getByText(/In Review · due 2026-11-14 · linked to INGEST-142 \(is blocked by\)/)).toBeVisible();

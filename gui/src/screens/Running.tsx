@@ -23,11 +23,11 @@ export function Running({ stage, projectStage, plan, epic, latestRun, runs, sign
     ["Status", prev ? `Rolled findings up per team and compared with the ${prev} run.` : "Rolled findings up per team."],
   ];
   return (
-    <div className="stack" style={{ maxWidth: 640 }}>
-      <div className="stack-sm">
-        <span className="small muted">Working on it{rel && projectStage === "launching" ? ` · the ${fmtDate(rel.snapshot_label)} snapshot` : ""}</span>
-        <h1>{projectStage === "starting" ? "Reading your PRD…" : "Reading your plan and Jira…"}</h1>
-      </div>
+    <div className="flow stack" style={{ maxWidth: 640 }}>
+      <header className="stack-sm" style={{ gap: 8 }}>
+        <span className="eyebrow">Step 4 of 4 · working on it{rel && projectStage === "launching" ? ` · the ${fmtDate(rel.snapshot_label)} snapshot` : ""}</span>
+        <h1 className="flow-title">{projectStage === "starting" ? "Reading your PRD…" : "Reading your plan and Jira…"}</h1>
+      </header>
       <div className="card" style={{ padding: "8px 20px", gap: 0 }} role="status" aria-live="polite">
         {steps.map(([name, detail], i) => {
           const st = i < stage ? "done" : i === stage ? "running" : "waiting";

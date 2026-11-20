@@ -145,15 +145,12 @@ export function PlanDocuments(p: Props) {
   ];
 
   return (
-    <div className="stack">
-      <div className="between" style={{ alignItems: "flex-end", gap: 16 }}>
-        <div className="stack-sm">
-          <span className="small muted">Step 2 · your plan</span>
-          <h1>Add what you have</h1>
-          <p className="lead">{PLAN_INTRO[p.stage]}</p>
-        </div>
-        <button type="button" className="btn" onClick={p.onLoadSample}>Use sample files</button>
-      </div>
+    <div className="flow stack">
+      <header className="stack-sm" style={{ gap: 8 }}>
+        <span className="eyebrow">Step 2 of 4</span>
+        <h1 className="flow-title">Add what you have</h1>
+        <p className="lead">{PLAN_INTRO[p.stage]}</p>
+      </header>
 
       {p.notice && (
         <div className="notice-grey between" role="status" data-testid="plan-notice" style={{ gap: 12 }}>
@@ -161,68 +158,71 @@ export function PlanDocuments(p: Props) {
           <button type="button" className="btn" style={{ minHeight: 32, padding: "0 10px" }} aria-label="Dismiss this note" onClick={p.onDismissNotice}>OK</button>
         </div>
       )}
-      <div className="row">
-        <section className="card" style={{ flex: "1.4 1 440px", gap: 16 }}>
-          <div
-            className={"drop" + (over ? " over" : "")}
-            onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-            onDragLeave={() => setOver(false)}
-            onDrop={(e) => { e.preventDefault(); setOver(false); p.onAddFiles(e.dataTransfer?.files ?? null); }}
-          >
-            <span style={{ fontWeight: 500 }}>Drop any files here</span>
-            <span className="small muted">Docs, slides, spreadsheets, PDFs, CSV or YAML — any format</span>
-            <label htmlFor="plan-files" className="btn" style={{ cursor: "pointer" }}>Choose files</label>
-            <input id="plan-files" className="sr-only" type="file" multiple onChange={(e) => { p.onAddFiles(e.target.files); e.target.value = ""; }} />
-          </div>
-          {p.files.length > 0 && (
-            <div className="stack-sm" style={{ gap: 8 }}>
-              {p.files.map((f) => {
-                const entry = p.plan?.files.find((x) => x.name === f.name);
-                const used = f.kind !== "other" && entry && entry.read_as.length > 0;
-                return (
-                  <div key={f.id} className="file-row">
-                    <div className="meta">
-                      <span className="name">{f.name}</span>
-                      <span className="small muted">{f.size}{f.via === "directory" ? " · via Employee directory" : ""}</span>
-                      <span className={"sm " + (used ? "ok" : "muted")} title={entry?.notes}>{f.kind === "other" ? "Nothing used from this file" : !launching && f.kind === "checks" ? "Launch checks are used when preparing to launch" : entry ? fileSummary(entry) : readingAny ? (reading ? `${agent.info.name} is reading…` : "Reading…") : hasPlan ? "Ready to read" : "Waiting for a plan file"}</span>
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 8 }}>
-                      <div className="stack-sm" style={{ gap: 2 }}>
-                        <label htmlFor={`kind-${f.id}`} className="label">Read as</label>
-                        <select id={`kind-${f.id}`} className="input" style={{ width: "auto", minWidth: 190, height: 44 }} value={f.kind} disabled={f.via === "directory"} onChange={(e) => p.onSetKind(f.id, e.target.value as FileKind)}>
-                          <option value="prd">PRD or one-pager</option>
-                          <option value="plan">Plan of record</option>
-                          <option value="checks">Launch checklist</option>
-                          <option value="teams">Team list or org chart</option>
-                          <option value="other">Not used</option>
-                        </select>
-                      </div>
-                      {f.via !== "directory" && <button type="button" className="btn" aria-label={`Remove ${f.name}`} onClick={() => p.onRemove(f.id)}>Remove</button>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {p.planError && <div className="notice-grey" role="alert">{p.planError}</div>}
-        </section>
 
-        <section className="card tight" style={{ flex: "1 1 320px", padding: 20 }}>
-          <h2 style={{ marginBottom: 6 }}>What we'll look for</h2>
-          {needs.map((n) => (
-            <div key={n.label} className="need">
-              <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
-                <span style={{ fontWeight: 600 }}>{n.label}</span>
-                <span className="small" style={{ whiteSpace: "nowrap", fontWeight: n.required ? 600 : 400, color: n.required ? "var(--ink)" : "var(--muted)", fontSize: 12 }}>{n.required ? "Required" : "Optional"}</span>
+      <section className="card" style={{ gap: 14 }} aria-labelledby="files-title">
+        <div className="between" style={{ gap: 12, alignItems: "center" }}>
+          <h2 id="files-title" className="h3">Your files</h2>
+          <button type="button" className="linkbtn" onClick={p.onLoadSample}>Use sample files</button>
+        </div>
+        <div
+          className={"drop compact" + (over ? " over" : "")}
+          onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => { e.preventDefault(); setOver(false); p.onAddFiles(e.dataTransfer?.files ?? null); }}
+        >
+          <span className="stack-sm" style={{ gap: 2, textAlign: "left" }}>
+            <span style={{ fontWeight: 500 }}>Drop files here</span>
+            <span className="small muted">Docs, slides, spreadsheets, PDFs, CSV or YAML. Any format.</span>
+          </span>
+          <label htmlFor="plan-files" className="btn" style={{ cursor: "pointer", flex: "none" }}>Choose files</label>
+          <input id="plan-files" className="sr-only" type="file" multiple onChange={(e) => { p.onAddFiles(e.target.files); e.target.value = ""; }} />
+        </div>
+        {p.files.length > 0 && (
+          <div className="file-list">
+            {p.files.map((f) => {
+              const entry = p.plan?.files.find((x) => x.name === f.name);
+              const used = f.kind !== "other" && entry && entry.read_as.length > 0;
+              return (
+                <div key={f.id} className="file-row">
+                  <div className="meta">
+                    <span className="name">{f.name}</span>
+                    <span className="small muted">{f.size}{f.via === "directory" ? " · via Employee directory" : ""}</span>
+                    <span className={"sm " + (used ? "ok" : "muted")} title={entry?.notes}>{f.kind === "other" ? "Nothing used from this file" : !launching && f.kind === "checks" ? "Launch checks are used when preparing to launch" : entry ? fileSummary(entry) : readingAny ? (reading ? `${agent.info.name} is reading…` : "Reading…") : hasPlan ? "Ready to read" : "Waiting for a plan file"}</span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                    <label htmlFor={`kind-${f.id}`} className="sr-only">Read as</label>
+                    <select id={`kind-${f.id}`} aria-label="Read as" className="input" style={{ width: "auto", minWidth: 190, height: 40 }} value={f.kind} disabled={f.via === "directory"} onChange={(e) => p.onSetKind(f.id, e.target.value as FileKind)}>
+                      <option value="prd">PRD or one-pager</option>
+                      <option value="plan">Plan of record</option>
+                      <option value="checks">Launch checklist</option>
+                      <option value="teams">Team list or org chart</option>
+                      <option value="other">Not used</option>
+                    </select>
+                    {f.via !== "directory" && <button type="button" className="linkbtn" aria-label={`Remove ${f.name}`} onClick={() => p.onRemove(f.id)}>Remove</button>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {p.planError && <div className="notice-grey" role="alert">{p.planError}</div>}
+        <div className="stack-sm" style={{ gap: 10, borderTop: "1px solid var(--line-soft)", paddingTop: 14 }} data-testid="needs">
+          <span className="eyebrow">What we look for</span>
+          {needs.map((n) => {
+            const done = n.found.length > 0;
+            return (
+              <div key={n.label} className="prep-row">
+                <span className={"prep-mark" + (done ? " done" : "")} aria-hidden="true">{done ? "✓" : ""}</span>
+                <span className="prep-text">
+                  <span style={{ fontWeight: 500 }}>{n.label}</span>
+                  <span className={"small " + (done ? "ok" : n.required ? "muted" : "warn")} style={{ overflowWrap: "anywhere" }}>{done ? `Found in ${n.found.map((f) => f.name).join(", ")}` : n.required ? `Not found yet. ${n.desc}` : `Not found — ${n.without}`}</span>
+                </span>
+                <span className={"prep-need " + (done ? "done" : n.required ? "required" : "")}>{done ? "Found" : n.required ? "Required" : "Optional"}</span>
               </div>
-              <span className="sm text2">{n.desc}</span>
-              <span className={"small " + (n.found.length ? "ok" : "warn")} style={{ overflowWrap: "anywhere" }}>
-                {n.found.length ? `Found in ${n.found.map((f) => f.name).join(", ")}` : n.required ? "Not found yet" : `Not found — ${n.without}`}
-              </span>
-            </div>
-          ))}
-        </section>
-      </div>
+            );
+          })}
+        </div>
+      </section>
 
       {docs.length > 0 && !readingAny && (
         <section className={"card" + (read?.status === "done" ? " agent-done" : "")} data-testid={p.plan ? "agent-panel" : devinOffer ? "agent-consent" : "agent-panel"} style={{ gap: 10 }}>
@@ -406,7 +406,7 @@ export function PlanDocuments(p: Props) {
           <div className="tiles">
             {stakeholders.map(({ t, grounded, owns }) => (
               <div key={t.name} className="tile stack-sm" style={{ gap: 6 }} data-testid={`stk-${t.name}`}>
-                <div className="between" style={{ gap: 8, alignItems: "baseline" }}>
+                <div className="stack-sm" style={{ gap: 4, alignItems: "flex-start" }}>
                   <span style={{ fontWeight: 600 }}>{t.name}</span>
                   {grounded ? <span className="small ok">In your {viaDirectory ? "directory" : "team list"}</span> : <span className="inferred-tag" title="No directory or team list names this team; it is taken from the document's wording">named in the plan only</span>}
                 </div>

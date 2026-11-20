@@ -50,14 +50,14 @@ export function EarlyResults(p: Props) {
   const personOf = (team: string, contact: string | null) => contact ?? `${team} lead — connect your directory for a name`;
 
   return (
-    <div className="stack" style={{ gap: 22 }}>
-      <div className="stack-sm" style={{ gap: 4 }}>
-        <span className="small muted">Step 4 · next steps · {STAGE_SHORT[st.stage]}</span>
-        <h1>{starting ? "Who to involve, and what to do first" : "Who's missing, and what hasn't started"}</h1>
-        <span className="muted">{starting
+    <div className="flow stack">
+      <header className="stack-sm" style={{ gap: 8 }}>
+        <span className="eyebrow">Step 4 of 4 · {STAGE_SHORT[st.stage]}</span>
+        <h1 className="flow-title">{starting ? "Who to involve, and what to do first" : "Who's missing, and what hasn't started"}</h1>
+        <p className="lead">{starting
           ? `From ${st.files.filter((f) => f.read_as.includes("plan_items")).map((f) => f.name).join(", ")}${st.directory_given ? " and your directory" : ""} · ${teams.length} teams suggested`
-          : `From your plan and ${st.epic} in Jira · the ${fmtDate(st.snapshot_label)} snapshot`}</span>
-      </div>
+          : `From your plan and ${st.epic} in Jira · the ${fmtDate(st.snapshot_label)} snapshot`}</p>
+      </header>
 
       <section className="card" style={{ gap: 6, borderColor: "var(--accent)" }} data-testid="next-actions">
         <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
@@ -87,47 +87,34 @@ export function EarlyResults(p: Props) {
               <button type="button" className="btn outline-accent" style={{ padding: "0 14px" }} onClick={p.onConnectApps}>Connect directory</button>
             </div>
           )}
-          <section className="stack" style={{ gap: 12 }}>
-            <h2>Stakeholder map</h2>
-            <div className="map-grid" data-testid="stakeholder-map">
-              {(["core", "consult", "approve", "inform"] as InvolveRole[]).map((role) => (
-                <div key={role} className="card" style={{ padding: 16, gap: 8 }}>
-                  <div className="stack-sm" style={{ gap: 2 }}>
+          {/* One map: the teams grouped by how closely to involve them, each with why, when and who. */}
+          <section className="stack" style={{ gap: 16 }} data-testid="stakeholder-map" aria-labelledby="involve-title">
+            <h2 id="involve-title">Who to involve</h2>
+            <div className="stack" style={{ gap: 20 }} data-testid="teams-to-involve">
+              {(["core", "consult", "approve", "inform"] as InvolveRole[]).filter((role) => teams.some((t) => t.role === role)).map((role) => (
+                <div key={role} className="role-group" data-testid={`role-${role}`}>
+                  <div className="role-head">
                     <span style={{ fontWeight: 600 }}>{role === "approve" ? "Approve" : ROLE_LABEL[role]}</span>
                     <span className="small muted">{ROLE_DESC[role]}</span>
                   </div>
-                  {teams.filter((t) => t.role === role).map((t) => (
-                    <div key={t.team} className="map-item">
-                      <span style={{ fontWeight: 500, fontSize: 14 }}>{t.team}</span>
-                      <span className="small muted">{t.contact ?? "Name needs a directory"}</span>
-                    </div>
-                  ))}
-                  {teams.filter((t) => t.role === role).length === 0 && <span className="small muted">—</span>}
+                  <div className="engage-grid">
+                    {teams.filter((t) => t.role === role).map((t) => {
+                      const done = !!contacted[t.team];
+                      return (
+                        <div key={t.team} className="card" style={{ padding: 16, gap: 8 }} data-testid={`involve-${t.team}`}>
+                          <span style={{ fontWeight: 600, fontSize: 16 }}>{t.team}</span>
+                          <span className="sm text2">{t.why}</span>
+                          <span className="small muted">Involve: <strong style={{ fontWeight: 500, color: "var(--ink)" }}>{t.when}</strong></span>
+                          <div className="contact-row">
+                            <span className={"sm" + (t.contact ? "" : " muted")}>{personOf(t.team, t.contact)}</span>
+                            <button type="button" className={"btn" + (done ? " contacted" : "")} style={{ padding: "0 12px", fontSize: 14 }} aria-pressed={done} onClick={() => persist({ ...saved, contacted: { ...contacted, [t.team]: !done } })}>{done ? "Contacted" : "Mark contacted"}</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
-            </div>
-          </section>
-
-          <section className="stack" style={{ gap: 12 }}>
-            <h2>Teams to involve</h2>
-            <div className="engage-grid" data-testid="teams-to-involve">
-              {teams.map((t) => {
-                const done = !!contacted[t.team];
-                return (
-                  <div key={t.team} className="card" style={{ padding: 16, gap: 10 }} data-testid={`involve-${t.team}`}>
-                    <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
-                      <span style={{ fontWeight: 600, fontSize: 16 }}>{t.team}</span>
-                      <span className="pill type">{ROLE_LABEL[t.role]}</span>
-                    </div>
-                    <span className="sm text2">{t.why}</span>
-                    <span className="small muted">Involve: <strong style={{ fontWeight: 500, color: "var(--ink)" }}>{t.when}</strong></span>
-                    <div className="between" style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 10, gap: 8 }}>
-                      <span className="sm">{personOf(t.team, t.contact)}</span>
-                      <button type="button" className={"btn" + (done ? " contacted" : "")} style={{ padding: "0 12px", fontSize: 14 }} aria-pressed={done} onClick={() => persist({ ...saved, contacted: { ...contacted, [t.team]: !done } })}>{done ? "Contacted" : "Mark contacted"}</button>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </section>
 
@@ -196,15 +183,9 @@ export function EarlyResults(p: Props) {
 
       {st.warnings.length > 0 && <div className="notice-grey">{st.warnings.join(" ")}</div>}
 
-      <section className="stack" style={{ gap: 10 }}>
-        <h2>What this review can't see</h2>
-        <div className="card sm text2" style={{ padding: "16px 18px", maxWidth: 560 }}>
-          <ul className="list" style={{ gap: 6 }}>
-            <li>Anything agreed only in meetings, chat or email</li>
-            <li>Approvals tracked in apps that aren't connected</li>
-            <li>Whether the technical work itself is adequate</li>
-          </ul>
-        </div>
+      <section className="limits" aria-labelledby="limits-title">
+        <h2 id="limits-title" className="h3">What this review can't see</h2>
+        <p className="sm muted">Anything agreed only in meetings, chat or email; approvals tracked in apps that aren't connected; and whether the technical work itself is adequate.</p>
       </section>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>

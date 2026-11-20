@@ -46,13 +46,14 @@ test("just starting: PRD signals → who to involve, then a directory adds names
 
   // Step 4: next actions, stakeholder map, teams to involve, approvals; Privacy and Legal are gone with their signal.
   await expect(page.getByRole("heading", { name: "Who to involve, and what to do first" })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Step 4 · next steps · Just starting")).toBeVisible();
+  await expect(page.getByText("Step 4 of 4 · Just starting")).toBeVisible();
   await expect(page.getByText("Connect your employee directory to see who to contact on each team.")).toBeVisible();
   await expect(page.getByTestId("teams-to-involve").locator(".card")).toHaveCount(7);
   await expect(page.getByTestId("involve-Privacy")).toHaveCount(0);
-  await expect(page.getByTestId("involve-Data Platform")).toContainText("Work with closely");
+  await expect(page.getByTestId("role-core").getByTestId("involve-Data Platform")).toBeVisible(); // grouped under "Work with closely"
+  await expect(page.getByTestId("role-core")).toContainText("Work with closely");
   await expect(page.getByTestId("involve-Data Platform")).toContainText("Data Platform lead — connect your directory for a name");
-  await expect(page.getByTestId("stakeholder-map")).toContainText("Name needs a directory");
+  await expect(page.getByTestId("stakeholder-map")).toContainText("connect your directory for a name");
   await expect(page.getByTestId("approvals")).toContainText("Security review");
   await expect(page.getByTestId("approvals")).not.toContainText("Privacy review");
   await expect(page.getByTestId("actions-count")).toHaveText("7 open · 0 done");

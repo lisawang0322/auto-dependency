@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Finding, PlanDraft, ReleaseTarget, Run, TeamStatus } from "@rrr/schemas";
 import type { DecisionStore, RunSummary, RunDecisions, Stage } from "../backend/types";
 import { fmtDate, daysBetween, clock, prettyDates } from "../model/dates";
@@ -112,15 +112,71 @@ export function Review(p: Props) {
     .concat([{ date: p.launch, key: "LAUNCH", item: "Go-live", flag: "Go/no-go Friday", cls: "launch" }])
     .sort((a, b) => (a.date ?? "9999").localeCompare(b.date ?? "9999"));
 
-  return (
-    <div className="stack" style={{ gap: 22 }}>
-      <div className="between" style={{ alignItems: "flex-end", gap: 16 }}>
-        <div className="stack-sm" style={{ gap: 4 }}>
-          <span className="small muted">Step 4 · next steps · {STAGE_SHORT[p.stage]}</span>
-          <h1>Launch {fmtDate(p.launch)} · {daysOut} days out</h1>
-          <span className="muted">{fmtDate(run.release.snapshot_label)} run{isLatest ? " (latest)" : ""} · {epic}, its linked tickets in {hopProjects.join(", ")}, and each team's project</span>
+  /** The selected finding's evidence and your call, shown under the finding itself. */
+  const detailNode = selected ? (
+    <section aria-label="Finding detail" className="detail-inline">
+            <div className="stack" style={{ gap: 16 }}>
+        <div className="stack-sm" style={{ gap: 8 }}>
+          {/* The finding's title and tags are on the row just above; the detail starts with who owns it. */}
+          <h2 className="sr-only">{selected.title}</h2>
+          <span className="muted">Owner: {selected.owner} <span className="small">{selected.owner_source === "team_list" && p.ownerSource !== "inferred" ? (p.ownerSource === "directory" ? "(from your directory)" : "(from your team list)") : "(inferred from Jira assignee)"}</span></span>
         </div>
-        <div className="stack-sm">
+        <div className="notice" style={{ display: "flex", flexDirection: "column", gap: 2 }} data-testid="suggested-action">
+          <span className="eyebrow" style={{ color: "var(--blue-text)" }}>Suggested next action</span>
+          <span>{prettyDates(selected.next_action?.action ?? selected.ask ?? selected.title)}</span>
+          {selected.next_action && <span className="small">{selected.next_action.who} · {prettyDates(selected.next_action.by_when)}</span>}
+        </div>
+        <div className="box">
+          <span className="eyebrow">Expected (plan)</span>
+          <span>{planItem?.text ?? selected.plan_item_id}{planDue ? ` by ${fmtDate(planDue)}` : ""}</span>
+          {planItem && <span className="small muted">Source: {sourceLabel(p.plan, planItem.source.file, planItem.source.locator)} · “{planItem.source.quote}”</span>}
+        </div>
+        <div className="box" style={{ gap: 8 }}>
+          <span className="eyebrow">Found in Jira</span>
+          {selected.evidence.length === 0 && (<><span>None found</span><span className="small muted">Searched {searchedProjects.join(", ").replace(/, ([^,]*)$/, " and $1")} for a matching ticket or linked doc.</span></>)}
+          {selected.evidence.map((ev, i) => (
+            <span key={i} className="stack-sm" style={{ gap: 2 }}>
+              <span><span className="key">{ev.key}</span> {ev.text}</span>
+              <span className="small muted">{ev.meta}</span>
+            </span>
+          ))}
+        </div>
+        <div className="sm text2">{selected.why}</div>
+        {selected.linkage && (
+          <div className="notice">Not linked: <span className="mono">{selected.linkage.from}</span> isn't linked to <span className="mono">{selected.linkage.to}</span> in Jira. Suggested link: <strong style={{ fontWeight: 500 }}>{selected.linkage.suggested_type}</strong></div>
+        )}
+        <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: 16, gap: 12 }}>
+          <h3>Your call</h3>
+          {selDec && (
+            <div className="decided">
+              <span className="sm">{selDec.kind === "kept" ? "Kept — in your next actions" : `Dismissed — ${selDec.reason}`}</span>
+              <button type="button" className="btn" onClick={() => reopen(selected)}>Reopen</button>
+            </div>
+          )}
+          {!selDec && (
+            <div className="stack-sm" style={{ gap: 10 }}>
+              <button type="button" className="btn primary" style={{ alignSelf: "flex-start" }} onClick={() => decide(selected, "kept")}>Keep — add to my actions</button>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 10 }}>
+                <div className="stack-sm" style={{ gap: 4, flex: "1 1 200px" }}>
+                  <label htmlFor="dismiss-reason" className="label">Reason for dismissing (required, logged)</label>
+                  <input id="dismiss-reason" type="text" className="input" value={reason} placeholder="e.g. Doesn't apply to this release" onChange={(e) => setReason(e.target.value)} />
+                </div>
+                <button type="button" className="btn outline-ink" style={{ padding: "0 18px" }} disabled={!reason.trim()} onClick={() => decide(selected, "dismissed")}>Dismiss</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  ) : null;
+
+  return (
+    <div className="flow stack">
+      <header className="stack-sm" style={{ gap: 8 }}>
+        <span className="eyebrow">Step 4 of 4 · {STAGE_SHORT[p.stage]}</span>
+        <h1 className="flow-title">Launch {fmtDate(p.launch)} · {daysOut} days out</h1>
+        <p className="lead">{fmtDate(run.release.snapshot_label)} run{isLatest ? " (latest)" : ""} · {epic}, its linked tickets in {hopProjects.join(", ")}, and each team's project</p>
+        <div className="run-row">
           <span id="run-label" className="small muted">Status by run</span>
           <div role="group" aria-labelledby="run-label" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {p.runs.map((r) => (
@@ -130,7 +186,7 @@ export function Review(p: Props) {
             ))}
           </div>
         </div>
-      </div>
+      </header>
 
       <section className="card" style={{ gap: 6, borderColor: "var(--accent)" }} data-testid="next-actions">
         <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
@@ -166,8 +222,8 @@ export function Review(p: Props) {
         {decs.length > 0 && <div className="tile"><div className="small muted">Your calls</div><div className="big">{decs.filter((d) => d.kind === "kept").length} · {decs.filter((d) => d.kind === "dismissed").length}</div><div className="small muted">kept · dismissed</div></div>}
       </div>
 
-      <div className="row">
-        <section aria-label="Teams and findings" className="stack" style={{ flex: "1.3 1 520px", minWidth: 0, gap: 12 }}>
+      <div>
+        <section aria-label="Teams and findings" className="stack" style={{ gap: 12 }}>
           <div className="between" style={{ gap: 10 }}>
             <h2>Teams and findings</h2>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -184,74 +240,10 @@ export function Review(p: Props) {
           {rows.length === 0 && <div className="card sm muted">No teams match this filter.</div>}
           {rows.map((t) => <TeamCard key={t.team} t={t} prev={prevTeams?.find((x) => x.team === t.team) ?? null} prevLabel={prevSummary?.label ?? null} isLatest={isLatest}
             findingsById={findingsById} shownIds={shownIds} showWeak={showWeak} selId={selected?.id ?? null} decisions={dec.decisions}
-            expanded={!collapsed[t.team]} onToggle={() => setCollapsed((c) => ({ ...c, [t.team]: !c[t.team] }))} onOpen={(id) => { setSel(id); setReason(""); }} />)}
+            expanded={!collapsed[t.team]} onToggle={() => setCollapsed((c) => ({ ...c, [t.team]: !c[t.team] }))} onOpen={(id) => { setSel(id); setReason(""); }} detail={detailNode} />)}
+          {isLatest && !selected && rows.length > 0 && <p className="small muted">Open a finding to see its evidence and make your call.</p>}
         </section>
 
-        <section aria-label="Finding detail" className="card" style={{ flex: "1 1 400px", padding: 22, gap: 16 }}>
-          {!selected && (
-            <div className="stack-sm">
-              <h2>Finding detail</h2>
-              <p className="sm muted">{isLatest ? "Pick a finding in a team to see its evidence." : `Findings are reviewed on the latest run. Switch to ${fmtDate(p.latestId)} to open one.`}</p>
-            </div>
-          )}
-          {selected && (
-            <div className="stack" style={{ gap: 16 }}>
-              <div className="stack-sm" style={{ gap: 8 }}>
-                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }} className="small">
-                  <span className={"pill " + selected.strength} style={{ padding: "2px 8px" }} title={STRENGTH_TECH[selected.strength]}>{STRENGTH_LABEL[selected.strength]}</span>
-                  <span className="pill type" style={{ padding: "2px 8px" }} title={TYPE_TECH[selected.gap_type]}>{TYPE_LABEL[selected.gap_type]}</span>
-                </div>
-                <h2 style={{ fontSize: 22, lineHeight: 1.25 }}>{selected.title}</h2>
-                <span className="muted">Owner: {selected.owner} <span className="small">{selected.owner_source === "team_list" && p.ownerSource !== "inferred" ? (p.ownerSource === "directory" ? "(from your directory)" : "(from your team list)") : "(inferred from Jira assignee)"}</span></span>
-              </div>
-              <div className="notice" style={{ display: "flex", flexDirection: "column", gap: 2 }} data-testid="suggested-action">
-                <span className="eyebrow" style={{ color: "var(--blue-text)" }}>Suggested next action</span>
-                <span>{prettyDates(selected.next_action?.action ?? selected.ask ?? selected.title)}</span>
-                {selected.next_action && <span className="small">{selected.next_action.who} · {prettyDates(selected.next_action.by_when)}</span>}
-              </div>
-              <div className="box">
-                <span className="eyebrow">Expected (plan)</span>
-                <span>{planItem?.text ?? selected.plan_item_id}{planDue ? ` by ${fmtDate(planDue)}` : ""}</span>
-                {planItem && <span className="small muted">Source: {sourceLabel(p.plan, planItem.source.file, planItem.source.locator)} · “{planItem.source.quote}”</span>}
-              </div>
-              <div className="box" style={{ gap: 8 }}>
-                <span className="eyebrow">Found in Jira</span>
-                {selected.evidence.length === 0 && (<><span>None found</span><span className="small muted">Searched {searchedProjects.join(", ").replace(/, ([^,]*)$/, " and $1")} for a matching ticket or linked doc.</span></>)}
-                {selected.evidence.map((ev, i) => (
-                  <span key={i} className="stack-sm" style={{ gap: 2 }}>
-                    <span><span className="key">{ev.key}</span> {ev.text}</span>
-                    <span className="small muted">{ev.meta}</span>
-                  </span>
-                ))}
-              </div>
-              <div className="sm text2">{selected.why}</div>
-              {selected.linkage && (
-                <div className="notice">Not linked: <span className="mono">{selected.linkage.from}</span> isn't linked to <span className="mono">{selected.linkage.to}</span> in Jira. Suggested link: <strong style={{ fontWeight: 500 }}>{selected.linkage.suggested_type}</strong></div>
-              )}
-              <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: 16, gap: 12 }}>
-                <h3>Your call</h3>
-                {selDec && (
-                  <div className="decided">
-                    <span className="sm">{selDec.kind === "kept" ? "Kept — in your next actions" : `Dismissed — ${selDec.reason}`}</span>
-                    <button type="button" className="btn" onClick={() => reopen(selected)}>Reopen</button>
-                  </div>
-                )}
-                {!selDec && (
-                  <div className="stack-sm" style={{ gap: 10 }}>
-                    <button type="button" className="btn primary" style={{ alignSelf: "flex-start" }} onClick={() => decide(selected, "kept")}>Keep — add to my actions</button>
-                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 10 }}>
-                      <div className="stack-sm" style={{ gap: 4, flex: "1 1 200px" }}>
-                        <label htmlFor="dismiss-reason" className="label">Reason for dismissing (required, logged)</label>
-                        <input id="dismiss-reason" type="text" className="input" value={reason} placeholder="e.g. Doesn't apply to this release" onChange={(e) => setReason(e.target.value)} />
-                      </div>
-                      <button type="button" className="btn outline-ink" style={{ padding: "0 18px" }} disabled={!reason.trim()} onClick={() => decide(selected, "dismissed")}>Dismiss</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </section>
       </div>
 
       <section className="stack" style={{ gap: 10 }}>
@@ -269,8 +261,8 @@ export function Review(p: Props) {
         ))}
       </section>
 
-      <div className="row">
-        <section className="stack" style={{ flex: "1.4 1 420px", minWidth: 0, gap: 10 }}>
+      <div className="stack" style={{ gap: 28 }}>
+        <section className="stack" style={{ gap: 10 }}>
           <h2>Upcoming plan dates</h2>
           <div className="card" style={{ padding: "6px 18px", gap: 0 }}>
             {upcoming.map((u, i) => (
@@ -281,16 +273,6 @@ export function Review(p: Props) {
                 <span className={u.cls === "launch" ? "sm" : "flag " + u.cls} style={u.cls === "launch" ? { fontWeight: 500 } : undefined}>{plainNote(u.flag)}</span>
               </div>
             ))}
-          </div>
-        </section>
-        <section className="stack" style={{ flex: "1 1 300px", minWidth: 0, gap: 10 }}>
-          <h2>What this review can't see</h2>
-          <div className="card sm text2" style={{ padding: "16px 18px" }}>
-            <ul className="list" style={{ gap: 6 }}>
-              <li>Anything agreed only in meetings, chat or email</li>
-              <li>Approvals tracked in apps that aren't connected</li>
-              <li>Whether the technical work itself is adequate</li>
-            </ul>
           </div>
         </section>
       </div>
@@ -304,6 +286,11 @@ export function Review(p: Props) {
         </section>
       )}
 
+      <section className="limits" aria-labelledby="limits-title">
+        <h2 id="limits-title" className="h3">What this review can't see</h2>
+        <p className="sm muted">Anything agreed only in meetings, chat or email; approvals tracked in apps that aren't connected; and whether the technical work itself is adequate.</p>
+      </section>
+
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
         <button type="button" className="btn" onClick={p.onChangeStage}>Change stage</button>
         <button type="button" className="btn" onClick={p.onAddFiles}>Add more files</button>
@@ -316,6 +303,7 @@ export function Review(p: Props) {
 function TeamCard(p: {
   t: TeamView; prev: TeamView | null; prevLabel: string | null; isLatest: boolean; findingsById: Record<string, Finding>; shownIds: string[]; showWeak: boolean;
   selId: string | null; decisions: Record<string, { kind: string; reason: string }>; expanded: boolean; onToggle: () => void; onOpen: (id: string) => void;
+  /** The open finding's detail, placed right under it. */ detail: ReactNode;
 }) {
   const { t } = p;
   const openItems = t.items.filter((i) => i.effective === "gap" || i.effective === "late");
@@ -348,7 +336,8 @@ function TeamCard(p: {
             if (f && p.shownIds.includes(f.id)) {
               const d = p.decisions[f.id];
               return (
-                <button key={i.plan_item_id} type="button" className={"finding-row" + (d?.kind === "dismissed" ? " dismissed" : "")} aria-pressed={p.selId === f.id} onClick={() => p.onOpen(f.id)}>
+                <Fragment key={i.plan_item_id}>
+                <button type="button" className={"finding-row" + (d?.kind === "dismissed" ? " dismissed" : "")} aria-pressed={p.selId === f.id} aria-expanded={p.selId === f.id} onClick={() => p.onOpen(f.id)}>
                   <span className="between" style={{ alignItems: "baseline", gap: 8 }}>
                     <span style={{ fontWeight: 500 }}>{f.title}</span>
                     <span className="small" style={{ whiteSpace: "nowrap", fontSize: 12, color: d ? "var(--muted)" : "var(--amber-text)", fontWeight: d ? 400 : 500 }}>{!d ? "Open" : d.kind === "kept" ? "Kept" : "Dismissed"}</span>
@@ -360,6 +349,8 @@ function TeamCard(p: {
                     {f.linkage && <span style={{ color: "var(--accent)" }}>· not linked to the epic</span>}
                   </span>
                 </button>
+                {p.selId === f.id && p.detail}
+                </Fragment>
               );
             }
             return (
