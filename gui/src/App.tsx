@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@rrr/schemas";
-import { PLAN_KINDS, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage, type AgentConsent, type AgentRead, type AgentReadStage, type ReadProgress, type UserInfo, type DirectoryInfo, type DirectorySourceId, type ProjectRecord, type ProjectStore, type ProjectData, type ProjectEvent, type ProjectSummary } from "./backend/types";
+import { PLAN_KINDS, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage, type AgentConsent, type AgentRead, type AgentReadStage, type ReadProgress, type UserInfo, type DirectoryInfo, type DirectorySourceId, type ProjectRecord, type ProjectStore, type ProjectData, type ProjectEvent, type ProjectSummary, type HistoryRecord } from "./backend/types";
 import { storableFiles } from "./backend/projects";
 import { LIFECYCLE } from "./screens/Projects";
 import { sampleFilesFor, SAMPLE_DIRECTORY } from "./backend/fixtureBackend";
@@ -41,6 +41,10 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
   const [name, setName] = useState(saved?.name ?? "New project");
   const [events, setEvents] = useState<ProjectEvent[]>(d.events ?? []);
   const [summary, setSummary] = useState<ProjectSummary | null>(d.summary ?? null);
+  /** Every review, kept so it can be opened after the project moves on or is re-run. The current one takes the summary. */
+  const [records, setRecords] = useState<HistoryRecord[]>(d.records ?? []);
+  const [currentRecord, setCurrentRecord] = useState<string | null>(d.records?.length ? d.records[d.records.length - 1].id : null);
+  const addRecord = useCallback((r: HistoryRecord) => { setRecords((cur) => (cur.some((x) => x.id === r.id) ? cur : [...cur, r])); setCurrentRecord(r.id); }, []);
   const logEvent = useCallback((text: string) => setEvents((e) => [...e, { at: new Date().toISOString(), text }]), []);
   const [stage, setStageChoice] = useState<Stage | null>(d.stage ?? null);
   const [files, setFiles] = useState<UploadedFile[]>(d.files ?? []);
@@ -279,6 +283,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
         const exclude = signals.filter((g) => signalsOff[g.id]).map((g) => g.id);
         const result = await backend.runStarter({ stage, files, excludeSignals: exclude, epic: stage === "building" ? epicVal : null }, setProgress);
         setStarter(result);
+        addRecord({ id: `${result.stage}:${Date.now().toString(36)}`, at: new Date().toISOString(), stage: result.stage, title: result.stage === "starting" ? "Who to involve" : `Team coverage · ${result.epic ?? ""}`.trim(), summary: null, files: files.filter((f) => f.kind !== "other").map((f) => f.name), starter: result, signalsOff });
         logEvent(stage === "starting" ? `Found ${result.teams.length} teams to involve` : `Checked team coverage and approvals for ${epicVal}`);
       }
       setScreen("results");
@@ -289,11 +294,23 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
     }
   }, [backend, stage, plan, target, launch, planDates, choices, runsById, signals, signalsOff, files, epicVal]);
 
+  useEffect(() => {
+    if (stage !== "launching" || !runId || !target || !plan || !confirmed) return;
+    addRecord({ id: `launch:${target.epic.key}:${runId}`, at: new Date().toISOString(), stage: "launching", title: `Launch review · ${fmtDate(runId)} run`, summary: null,
+      files: files.filter((f) => f.kind !== "other").map((f) => f.name),
+      launch: { epic: target.epic.key, runId, target: { ...target, projects: applyChoices(target.projects, choices) }, plan, planDates, launch: launch || target.release_window.end } });
+  }, [stage, runId, target?.epic.key, confirmed]); // eslint-disable-line react-hooks/exhaustive-deps
+  // An early review from before records existed is recorded when the project opens.
+  useEffect(() => {
+    if (starter && confirmed && stage !== "launching" && !records.some((r) => r.starter && r.starter.label === starter.label && r.stage === starter.stage))
+      addRecord({ id: `${starter.stage}:${starter.label}`, at: starter.analyzed_at, stage: starter.stage, title: starter.stage === "starting" ? "Who to involve" : `Team coverage · ${starter.epic ?? ""}`.trim(), summary: null, files: starter.files.map((f) => f.name), starter, signalsOff });
+  }, [starter]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // The project saves itself as it changes (shortly after, so typing does not write on every key).
   const snapshot: ProjectData = useMemo(() => ({
     stage, files: storableFiles(files), plan, signals, signalsOff, project, planDates, planConfirmed, epic, launch, choices: choices as Record<string, string>,
-    confirmed, runId, starter, agentRead, lastRead: lastRead.current, jiraOn: jiraState === "on", events, summary,
-  }), [stage, files, plan, signals, signalsOff, project, planDates, planConfirmed, epic, launch, choices, confirmed, runId, starter, agentRead, jiraState, events, summary]);
+    confirmed, runId, starter, agentRead, lastRead: lastRead.current, jiraOn: jiraState === "on", events, summary, records,
+  }), [stage, files, plan, signals, signalsOff, project, planDates, planConfirmed, epic, launch, choices, confirmed, runId, starter, agentRead, jiraState, events, summary, records]);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "failed">("saved");
   const firstSave = useRef(true);
   useEffect(() => {
@@ -303,7 +320,33 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
     const t = setTimeout(() => { projectStore.save(saved.id, name.trim() || "Untitled project", snapshot).then(() => setSaveState("saved")).catch(() => setSaveState("failed")); }, 400);
     return () => clearTimeout(t);
   }, [snapshot, name]); // eslint-disable-line react-hooks/exhaustive-deps
-  const onSummary = useCallback((s: Omit<ProjectSummary, "at">) => setSummary((cur) => (cur && cur.status === s.status && cur.open === s.open && cur.detail === s.detail ? cur : { ...s, at: new Date().toISOString() })), []);
+  const onSummary = useCallback((s: Omit<ProjectSummary, "at">) => {
+    setSummary((cur) => (cur && cur.status === s.status && cur.open === s.open && cur.detail === s.detail ? cur : { ...s, at: new Date().toISOString() }));
+    // The current review's record carries the same summary, so History shows what each review found.
+    setRecords((cur) => cur.map((r) => (r.id === currentRecordRef.current && (r.summary?.status !== s.status || r.summary?.open !== s.open || r.summary?.detail !== s.detail) ? { ...r, summary: { ...s } } : r)));
+  }, []);
+  const currentRecordRef = useRef(currentRecord);
+  currentRecordRef.current = currentRecord;
+  // A record can be made just after its review reported (a launch review is recorded once its release is known): fill it in.
+  useEffect(() => {
+    if (!currentRecord || !summary) return;
+    setRecords((cur) => cur.map((r) => (r.id === currentRecord && !r.summary ? { ...r, summary: { status: summary.status, open: summary.open, detail: summary.detail } } : r)));
+  }, [currentRecord, summary]);
+
+  /** A past record opened from History, with the runs it needs (launch reviews read their run back from the server or the sample). */
+  const [openRecord, setOpenRecord] = useState<HistoryRecord | null>(null);
+  const [recordRuns, setRecordRuns] = useState<{ runs: RunSummary[]; byId: Record<string, Run> } | null>(null);
+  const [recordError, setRecordError] = useState<string | null>(null);
+  const showRecord = async (r: HistoryRecord) => {
+    setOpenRecord(r); setRecordRuns(null); setRecordError(null); window.scrollTo(0, 0);
+    if (!r.launch) return;
+    try {
+      const list = (await backend.listRuns(r.launch.epic)).filter((x) => x.id <= r.launch!.runId);
+      const byId: Record<string, Run> = {};
+      for (const x of list) byId[x.id] = await backend.loadRun(r.launch.epic, x.id);
+      setRecordRuns({ runs: list, byId });
+    } catch (e) { setRecordError(`This review's run could not be loaded: ${(e as Error).message}`); }
+  };
 
   /** Moving the project along its life: the files and connections stay; the new stage asks for what it needs next. */
   const nextStage = stage ? LIFECYCLE[LIFECYCLE.findIndex((l) => l.id === stage) + 1]?.id ?? null : null;
@@ -311,6 +354,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
     logEvent(`Moved from ${STAGE_SHORT[stage!]} to ${STAGE_SHORT[s]}`);
     setStageChoice(s);
     setSummary(null);
+    setCurrentRecord(null); // the last review stays in History as a record of the stage the project has left
     setPlanNotice(`Now ${STAGE_SHORT[s].toLowerCase()}. Your files and connections are kept. Check each file's "Read as", add anything this stage needs, and read again.`);
     setScreen("plan");
   };
@@ -363,13 +407,13 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
         </div>
         <nav className="wrap steps" aria-label={workspace ? "Project" : "Steps"}>
           {tabs.map((t) => (
-            <button key={t.id} type="button" aria-current={t.active ? "page" : "false"} disabled={t.disabled} onClick={() => !t.disabled && setScreen(t.id)}>{t.label}</button>
+            <button key={t.id} type="button" aria-current={t.active ? "page" : "false"} disabled={t.disabled} onClick={() => { if (t.disabled) return; setOpenRecord(null); setScreen(t.id); }}>{t.label}</button>
           ))}
         </nav>
       </header>
       <main className="wrap page">
         {screen === "start" && (
-          <GetStarted stage={stage} onPick={(s) => { if (stage && s !== stage && workspace) logEvent(`Moved from ${STAGE_SHORT[stage]} to ${STAGE_SHORT[s]}`); if (stage && s !== stage && files.some((f) => f.via !== "directory")) setPlanNotice(`Stage changed to ${STAGE_SHORT[s]}. Your files are kept; check each file's "Read as" for this stage.`); setStageChoice(s); }} onContinue={() => { if (stage) setScreen("plan"); }} workspace={workspace}
+          <GetStarted stage={stage} onPick={(s) => { if (stage && s !== stage && workspace) { logEvent(`Moved from ${STAGE_SHORT[stage]} to ${STAGE_SHORT[s]}`); setCurrentRecord(null); setSummary(null); } if (stage && s !== stage && files.some((f) => f.via !== "directory")) setPlanNotice(`Stage changed to ${STAGE_SHORT[s]}. Your files are kept; check each file's "Read as" for this stage.`); setStageChoice(s); }} onContinue={() => { if (stage) setScreen("plan"); }} workspace={workspace}
             directory={directoryState} live={live} {...directoryHandlers} />
         )}
         {screen === "plan" && stage && (
@@ -436,19 +480,59 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
             onChangeStage={() => setScreen("start")} onAddFiles={() => setScreen("plan")} onConnectApps={() => setScreen("apps")}
           />
         )}
-        {screen === "history" && (
+        {screen === "history" && !openRecord && (
           <div className="flow stack">
             <header className="stack-sm" style={{ gap: 8 }}>
-              <span className="eyebrow">{name}</span>
-              <h1 className="flow-title">History</h1>
-              <p className="lead">What happened to this project and when: files added, readings, reviews and stage moves. Decisions on findings are kept with each review.</p>
+              <span className="eyebrow">History</span>
+              <h1 className="flow-title">Everything this project has been through</h1>
+              <p className="lead">Each review is kept as it was, at the stage it was run. Open one to see what it found then; the files added, readings and stage moves sit between them.</p>
             </header>
-            {events.length === 0 ? <p className="sm muted">Nothing yet.</p> : (
-              <ol className="history" data-testid="history">
-                {[...events].reverse().map((e, i) => (
-                  <li key={i}><span className="small muted mono">{fmtDate(e.at.slice(0, 10))} {e.at.slice(11, 16)}</span><span>{e.text}</span></li>
-                ))}
-              </ol>
+            {records.length === 0 && events.length === 0 && <p className="sm muted">Nothing yet.</p>}
+            <ol className="timeline" data-testid="history">
+              {[
+                ...records.map((r) => ({ at: r.at, rec: r as HistoryRecord | null, text: "" })),
+                ...events.filter((e) => !/^Ran the launch review|^Found \d+ teams to involve|^Checked team coverage/.test(e.text)).map((e) => ({ at: e.at, rec: null as HistoryRecord | null, text: e.text })),
+              ].sort((x, y) => y.at.localeCompare(x.at)).map((item, i) => item.rec ? (
+                <li key={item.rec.id} className="tl-record" data-testid={`record-${item.rec.stage}`}>
+                  <span className="tl-dot rec" aria-hidden="true" />
+                  <div className="card tl-card">
+                    <div className="between" style={{ gap: 12, alignItems: "flex-start" }}>
+                      <div className="stack-sm" style={{ gap: 4, minWidth: 0 }}>
+                        <span className="small muted">{fmtDate(item.at.slice(0, 10))} · {STAGE_SHORT[item.rec.stage]}{item.rec.id === currentRecord ? " · current" : ""}</span>
+                        <span style={{ fontWeight: 600 }}>{item.rec.title}</span>
+                        <span className="small muted">{item.rec.files.length ? `From ${item.rec.files.join(", ")}` : ""}</span>
+                      </div>
+                      <div className="project-status">
+                        {item.rec.summary?.status && <span className={"status-pill " + item.rec.summary.status.toLowerCase()}>{item.rec.summary.status}</span>}
+                        {item.rec.summary?.open != null && <span className="sm">{item.rec.summary.open} open action{item.rec.summary.open === 1 ? "" : "s"}</span>}
+                        {item.rec.summary?.detail && <span className="small muted">{item.rec.summary.detail}</span>}
+                      </div>
+                    </div>
+                    <div><button type="button" className="btn" onClick={() => (item.rec!.id === currentRecord ? setScreen("results") : void showRecord(item.rec!))}>{item.rec.id === currentRecord ? "Open the overview" : "Open this review"}</button></div>
+                  </div>
+                </li>
+              ) : (
+                <li key={`e${i}`} className="tl-event"><span className="tl-dot" aria-hidden="true" /><span className="small muted mono">{fmtDate(item.at.slice(0, 10))} {item.at.slice(11, 16)}</span><span className="sm">{item.text}</span></li>
+              ))}
+            </ol>
+          </div>
+        )}
+        {screen === "history" && openRecord && (
+          <div className="stack" style={{ gap: 16 }} data-testid="record-view">
+            <div className="record-bar" role="note">
+              <button type="button" className="linkbtn" onClick={() => setOpenRecord(null)}>‹ History</button>
+              <span className="sm"><strong style={{ fontWeight: 600 }}>{openRecord.title}</strong> · {fmtDate(openRecord.at.slice(0, 10))} · {STAGE_SHORT[openRecord.stage]}. A past review, shown as it was; nothing here can be changed.</span>
+            </div>
+            {recordError && <div className="notice-grey" role="alert">{recordError}</div>}
+            {openRecord.starter && (
+              <EarlyResults readOnly eyebrow="History" starter={openRecord.starter} signalsOff={openRecord.signalsOff ?? {}} store={store} launch={null}
+                onChangeStage={() => {}} onAddFiles={() => {}} onConnectApps={() => {}} />
+            )}
+            {openRecord.launch && !recordRuns && !recordError && <p className="sm muted">Loading the run…</p>}
+            {openRecord.launch && recordRuns && recordRuns.byId[openRecord.launch.runId] && (
+              <Review readOnly eyebrow="History" stage="launching" store={store} runs={recordRuns.runs} runsById={recordRuns.byId} latestId={openRecord.launch.runId} target={openRecord.launch.target}
+                launch={openRecord.launch.launch} planIds={new Set(openRecord.launch.plan.items.map((i) => i.id))} planDates={openRecord.launch.planDates} plan={openRecord.launch.plan} ownerSource={ownerSource}
+                onChangeStage={() => {}} onAddFiles={() => {}} onConnectApps={() => {}} />
             )}
           </div>
         )}

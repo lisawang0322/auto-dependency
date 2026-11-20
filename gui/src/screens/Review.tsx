@@ -16,6 +16,8 @@ interface Props {
   /** What the projects home shows for this project: the latest run's status and open actions. */
   onSummary?: (s: { status: string | null; open: number | null; detail: string | null }) => void;
   eyebrow?: string;
+  /** A past record opened from History: everything is shown, nothing can be decided or ticked. */
+  readOnly?: boolean;
 }
 
 const STATUS_LABEL: Record<TeamStatus, string> = { on_track: "On track", at_risk: "At risk", late: "Late" };
@@ -96,7 +98,7 @@ export function Review(p: Props) {
   const actions = nextActions(visibleFindings(latestLive, showWeak), latestDec.decisions);
   const actionsDone = latestDec.actionsDone ?? {};
   const openActions = actions.filter((a) => !actionsDone[a.id]).length;
-  useEffect(() => { if (isLatest) p.onSummary?.({ status: release, open: openActions, detail: `${openCount} open finding${openCount === 1 ? "" : "s"} · ${fmtDate(p.latestId)} run` }); }, [release, openActions, openCount, isLatest]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isLatest && !p.readOnly) p.onSummary?.({ status: release, open: openActions, detail: `${openCount} open finding${openCount === 1 ? "" : "s"} · ${fmtDate(p.latestId)} run` }); }, [release, openActions, openCount, isLatest]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleAction = (id: string) => {
     const next: RunDecisions = { ...latestDec, actionsDone: { ...actionsDone, [id]: !actionsDone[id] } };
     setSaved((s) => ({ ...s, [p.latestId]: next }));
@@ -150,6 +152,7 @@ export function Review(p: Props) {
           <div className="notice">Not linked: <span className="mono">{selected.linkage.from}</span> isn't linked to <span className="mono">{selected.linkage.to}</span> in Jira. Suggested link: <strong style={{ fontWeight: 500 }}>{selected.linkage.suggested_type}</strong></div>
         )}
         <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: 16, gap: 12 }}>
+          {p.readOnly ? <p className="sm muted">A past record: decisions are made on the project's current review.</p> : <>
           <h3>Your call</h3>
           {selDec && (
             <div className="decided">
@@ -169,6 +172,7 @@ export function Review(p: Props) {
               </div>
             </div>
           )}
+          </>}
         </div>
       </div>
     </section>
@@ -202,7 +206,7 @@ export function Review(p: Props) {
           const done = !!actionsDone[a.id];
           return (
             <div key={a.id} className="action-row">
-              <input id={`act-${a.id}`} type="checkbox" checked={done} onChange={() => toggleAction(a.id)} />
+              <input id={`act-${a.id}`} type="checkbox" checked={done} disabled={p.readOnly} onChange={() => toggleAction(a.id)} />
               <label htmlFor={`act-${a.id}`}>
                 <span className={done ? "done" : ""} style={done ? undefined : { fontWeight: 500 }}>{prettyDates(a.text)}</span>
                 <span className="small muted"><strong style={{ fontWeight: 500, color: "var(--text-2)" }}>{a.who}</strong> · {prettyDates(a.when)} · {prettyDates(a.why)}{a.kept ? " · kept" : ""}</span>
@@ -295,11 +299,11 @@ export function Review(p: Props) {
         <p className="sm muted">Anything agreed only in meetings, chat or email; approvals tracked in apps that aren't connected; and whether the technical work itself is adequate.</p>
       </section>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+      {!p.readOnly && <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
         <button type="button" className="btn" onClick={p.onChangeStage}>Change stage</button>
         <button type="button" className="btn" onClick={p.onAddFiles}>Add more files</button>
         <button type="button" className="btn" onClick={p.onConnectApps}>Connect more apps</button>
-      </div>
+      </div>}
     </div>
   );
 }

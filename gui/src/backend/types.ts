@@ -38,6 +38,18 @@ export interface ProjectData {
   planDates?: Record<string, string>; planConfirmed?: boolean; epic?: string; launch?: string; choices?: Record<string, string>;
   confirmed?: boolean; runId?: string | null; starter?: Starter | null; agentRead?: AgentRead | null; lastRead?: boolean | null; jiraOn?: boolean;
   events?: ProjectEvent[]; summary?: ProjectSummary | null;
+  /** Every review the project has had, oldest first. */
+  records?: HistoryRecord[];
+}
+/** One review, kept as it was: what was run, at which stage, what it found, and the result itself, so it can be opened later
+ *  after the project has moved on or been re-run. Launch reviews keep their run id (the run is on the server or in the
+ *  sample data) and the release they were checked against. */
+export interface HistoryRecord {
+  id: string; at: string; stage: Stage; title: string;
+  summary: { status: string | null; open: number | null; detail: string | null } | null;
+  files: string[];
+  starter?: Starter; signalsOff?: Record<string, boolean>;
+  launch?: { epic: string; runId: string; target: ReleaseTarget; plan: PlanDraft; planDates: Record<string, string>; launch: string };
 }
 export interface ProjectRecord { id: string; name: string; created_at: string; updated_at: string; data: ProjectData }
 export interface ProjectStore {

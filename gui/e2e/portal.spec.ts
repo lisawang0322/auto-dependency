@@ -41,10 +41,14 @@ test("a project is kept across visits: home, reopen without re-reading, history,
   await expect(page.getByTestId("agent-reading")).toHaveCount(0);
   await expect(page).toHaveURL(/#\/p\/p\w+$/);
 
-  // History: what happened, newest first.
+  // History: the review kept as a record, with what it found, among the events; newest first.
   await nav.getByRole("button", { name: "History" }).click();
   const history = page.getByTestId("history");
-  await expect(history.locator("li").first()).toContainText("Found 9 teams to involve");
+  const record = page.getByTestId("record-starting");
+  await expect(record).toContainText("Who to involve");
+  await expect(record).toContainText("9 open actions");
+  await expect(record).toContainText("9 teams to involve");
+  await expect(record).toContainText("current");
   await expect(history).toContainText("Devin read 1 file");
   await expect(history.locator("li").last()).toContainText("Project created");
 
@@ -55,6 +59,19 @@ test("a project is kept across visits: home, reopen without re-reading, history,
   await expect(page.getByTestId("stage-chip")).toHaveText("Stage: Building");
   await expect(page.locator(".file-row .name")).toHaveText(["ingestion-service-PRD.md"]); // the file is kept
   await expect(page.getByRole("heading", { name: "What we read in your PRD" })).toHaveCount(0); // its reading was for the last stage
+
+  // The just-starting review is still there, as it was, and opens read-only.
+  await nav.getByRole("button", { name: "History" }).click();
+  await expect(record).not.toContainText("current");
+  await expect(history).toContainText("Moved from Just starting to Building");
+  await record.getByRole("button", { name: "Open this review" }).click();
+  const view = page.getByTestId("record-view");
+  await expect(view).toContainText("A past review, shown as it was");
+  await expect(view.getByRole("heading", { name: "Who to involve, and what to do first" })).toBeVisible();
+  await expect(view.getByTestId("involve-Data Platform").getByRole("button", { name: "Mark contacted" })).toBeDisabled();
+  await expect(view.getByRole("button", { name: "Change stage" })).toHaveCount(0);
+  await view.getByRole("button", { name: "‹ History" }).click();
+  await expect(page.getByTestId("record-view")).toHaveCount(0);
   await expect(page.getByTestId("save-state")).toHaveText("Saved");
   await page.getByRole("button", { name: "‹ All projects" }).click();
   await expect(card).toContainText("Building");
@@ -65,4 +82,36 @@ test("a project is kept across visits: home, reopen without re-reading, history,
   await expect(card).toContainText("This cannot be undone");
   await card.getByRole("button", { name: "Delete" }).click();
   await expect(page.getByTestId("no-projects")).toBeVisible();
+});
+
+test("a launch review is kept as a record with its status, and opens read-only after the stage changes", async ({ page }) => {
+  await page.goto("/?fast=1&backend=sample");
+  await page.getByRole("button", { name: "New project" }).first().click();
+  await page.getByRole("radio", { name: /Preparing to launch/ }).check();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Use sample files" }).click();
+  await page.getByTestId("agent-read").click();
+  await expect(page.getByRole("heading", { name: "Plan we read" })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Confirm and connect apps" }).click();
+  await page.getByRole("button", { name: "Connect Jira" }).click();
+  await page.getByRole("button", { name: "Accept" }).click();
+  await page.getByRole("button", { name: "Run readiness review" }).click();
+  await expect(page.getByRole("heading", { name: /Launch Nov 20/ })).toBeVisible({ timeout: 15_000 });
+  const nav = page.getByRole("navigation", { name: "Project" });
+  await nav.getByRole("button", { name: "History" }).click();
+  const record = page.getByTestId("record-launching");
+  await expect(record).toContainText("Launch review · Nov 13 run");
+  await expect(record).toContainText("Amber");
+  await expect(record).toContainText("4 open actions");
+  // Back a stage from the stage tab: the launch review stays, as it was.
+  await nav.getByRole("button", { name: "Stage and organisation" }).click();
+  await page.getByRole("radio", { name: /Team forming/ }).check();
+  await nav.getByRole("button", { name: "History" }).click();
+  await record.getByRole("button", { name: "Open this review" }).click();
+  const view = page.getByTestId("record-view");
+  await expect(view.getByRole("heading", { name: /Launch Nov 20/ })).toBeVisible();
+  await view.getByRole("button", { name: /Approval still open: Security review approved/ }).click();
+  await expect(view.getByRole("region", { name: "Finding detail" })).toContainText("A past record");
+  await expect(view.getByRole("button", { name: "Keep — add to my actions" })).toHaveCount(0);
+  await expect(view.getByTestId("next-actions").getByRole("checkbox").first()).toBeDisabled();
 });

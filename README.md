@@ -255,6 +255,8 @@ preparing to launch), its latest status and open actions. A project keeps its fi
 choices, decisions and results, so opening it again lands on its overview with nothing read or uploaded again; the
 project is in the URL (`#/p/<id>`). Once reviewed, a project is a workspace: Overview (with a lifecycle bar to move it
 to the next stage, keeping its files and connections), Files and plan, Connections, Stage and organisation, History.
+Every review is kept as a record in History (its stage, date, status, open actions, the files it used and the
+result itself), so a review from an earlier stage, or before a re-run, opens later exactly as it was, read-only.
 In live mode projects live on the server per person (`GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/{id}`),
 and each file is uploaded once into the project (`POST /api/projects/{id}/files`) and read by name on every later run.
 Sample mode keeps projects in the browser.

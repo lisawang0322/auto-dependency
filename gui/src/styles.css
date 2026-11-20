@@ -287,3 +287,15 @@ h2.numbered { display: flex; align-items: center; gap: 10px; }
 .history { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .history li { display: grid; grid-template-columns: 120px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; }
 @media (max-width: 560px) { .history li { grid-template-columns: 1fr; gap: 2px; } .name-input { width: 16ch; } }
+
+/* ---- history: reviews kept as records, events between them ---- */
+.timeline { list-style: none; margin: 0; padding: 0 0 0 22px; position: relative; display: flex; flex-direction: column; gap: 6px; }
+.timeline::before { content: ""; position: absolute; left: 6px; top: 8px; bottom: 8px; width: 2px; background: var(--line); }
+.timeline li { position: relative; }
+.tl-dot { position: absolute; left: -21px; top: 8px; width: 10px; height: 10px; border-radius: 50%; background: var(--paper); border: 2px solid var(--line-strong); box-sizing: border-box; }
+.tl-dot.rec { top: 18px; width: 12px; height: 12px; left: -22px; background: var(--accent); border-color: var(--accent); }
+.tl-event { display: grid; grid-template-columns: 116px 1fr; gap: 10px; padding: 4px 0; align-items: baseline; }
+.tl-record { padding: 6px 0; }
+.tl-card { gap: 12px; padding: 14px 16px; }
+.record-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 14px; border-radius: 8px; background: var(--grey-bg); max-width: 960px; }
+@media (max-width: 560px) { .tl-event { grid-template-columns: 1fr; gap: 0; } }

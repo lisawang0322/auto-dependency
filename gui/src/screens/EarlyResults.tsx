@@ -18,6 +18,8 @@ interface Props {
   /** What the projects home shows for this project. */
   onSummary?: (s: { status: string | null; open: number | null; detail: string | null }) => void;
   eyebrow?: string;
+  /** A past record opened from History: shown as it was, nothing can be ticked or marked. */
+  readOnly?: boolean;
   launch: string | null;
   onChangeStage: () => void; onAddFiles: () => void; onConnectApps: () => void;
 }
@@ -50,6 +52,7 @@ export function EarlyResults(p: Props) {
   const missing = coverage.filter((c) => c.state === "missing").length;
   const openNow = (st.next_actions ?? []).filter((a) => !(saved.actionsDone ?? {})[a.id]).length;
   useEffect(() => {
+    if (p.readOnly) return;
     p.onSummary?.(st.stage === "starting"
       ? { status: null, open: openNow, detail: `${st.teams.length} teams to involve` }
       : { status: missing ? "Red" : coverage.some((c) => c.state === "unclear") ? "Amber" : "Green", open: openNow, detail: `${covered} of ${coverage.length} teams covered` });
@@ -78,7 +81,7 @@ export function EarlyResults(p: Props) {
           const done = !!actionsDone[a.id];
           return (
             <div key={a.id} className="action-row">
-              <input id={`act-${a.id}`} type="checkbox" checked={done} onChange={() => persist({ ...saved, actionsDone: { ...actionsDone, [a.id]: !done } })} />
+              <input id={`act-${a.id}`} type="checkbox" checked={done} disabled={p.readOnly} onChange={() => persist({ ...saved, actionsDone: { ...actionsDone, [a.id]: !done } })} />
               <label htmlFor={`act-${a.id}`}>
                 <span className={done ? "done" : ""} style={done ? undefined : { fontWeight: 500 }}>{prettyDates(a.text)}</span>
                 <span className="small muted"><strong style={{ fontWeight: 500, color: "var(--text-2)" }}>{a.who}</strong> · {a.when} · {a.why}</span>
@@ -116,7 +119,7 @@ export function EarlyResults(p: Props) {
                           <span className="small muted">Involve: <strong style={{ fontWeight: 500, color: "var(--ink)" }}>{t.when}</strong></span>
                           <div className="contact-row">
                             <span className={"sm" + (t.contact ? "" : " muted")}>{personOf(t.team, t.contact)}</span>
-                            <button type="button" className={"btn" + (done ? " contacted" : "")} style={{ padding: "0 12px", fontSize: 14 }} aria-pressed={done} onClick={() => persist({ ...saved, contacted: { ...contacted, [t.team]: !done } })}>{done ? "Contacted" : "Mark contacted"}</button>
+                            <button type="button" className={"btn" + (done ? " contacted" : "")} style={{ padding: "0 12px", fontSize: 14 }} aria-pressed={done} disabled={p.readOnly} onClick={() => persist({ ...saved, contacted: { ...contacted, [t.team]: !done } })}>{done ? "Contacted" : "Mark contacted"}</button>
                           </div>
                         </div>
                       );
@@ -197,11 +200,11 @@ export function EarlyResults(p: Props) {
         <p className="sm muted">Anything agreed only in meetings, chat or email; approvals tracked in apps that aren't connected; and whether the technical work itself is adequate.</p>
       </section>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+      {!p.readOnly && <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
         <button type="button" className="btn" onClick={p.onChangeStage}>Change stage</button>
         <button type="button" className="btn" onClick={p.onAddFiles}>Add more files</button>
         <button type="button" className="btn" onClick={p.onConnectApps}>Connect more apps</button>
-      </div>
+      </div>}
     </div>
   );
 }
