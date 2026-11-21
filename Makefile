@@ -1,4 +1,4 @@
-# Release Readiness Review: helper targets. See README.md.
+# Throughline: helper targets. See README.md.
 
 .PHONY: devin-skills test py-setup start
 

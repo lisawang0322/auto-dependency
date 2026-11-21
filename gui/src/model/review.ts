@@ -1,5 +1,5 @@
 /** Pure review logic: status roll-up, weak filter, 10-finding cap, the "all teams resolved" gate. */
-import type { Finding, Team, TeamItem, TeamStatus, TeamProject } from "@rrr/schemas";
+import type { Finding, Team, TeamItem, TeamStatus, TeamProject } from "@throughline/schemas";
 import type { Decisions } from "../backend/types";
 
 export const FINDING_CAP = 10;

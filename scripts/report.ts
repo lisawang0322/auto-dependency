@@ -9,7 +9,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { Run } from "@rrr/schemas";
+import { Run } from "@throughline/schemas";
 import { renderReport } from "./lib/report.js";
 
 const argv = process.argv.slice(2);

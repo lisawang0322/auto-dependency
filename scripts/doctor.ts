@@ -7,8 +7,8 @@
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
-import { pythonExe } from "../skills/release-reader/scripts/lib/files.js";
-import { JiraRest, JiraAuthError, type RestCreds } from "../skills/release-reader/scripts/lib/jira-rest.js";
+import { pythonExe } from "../skills/throughline-reader/scripts/lib/files.js";
+import { JiraRest, JiraAuthError, type RestCreds } from "../skills/throughline-reader/scripts/lib/jira-rest.js";
 
 export type Level = "ok" | "warn" | "fail";
 export interface Check { name: string; level: Level; detail: string }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
+import type { PlanDraft, ReleaseTarget, Run } from "@throughline/schemas";
 import type { JiraConnection, JiraState, UploadedFile, RunSummary, JiraCredentials, Stage, AgentInfo, AgentConsent } from "../backend/types";
 import { fmtDate } from "../model/dates";
 import { allTeamsResolved, isResolved, type TeamChoice } from "../model/review";
@@ -64,7 +64,7 @@ const MATCH_LABEL: Record<string, string> = {
   team_list: "From your team list", explicit: "Named in the plan", linked: "Linked from the epic", name: "Name match", unresolved: "Unresolved — pick one",
 };
 
-export const RUN_LABEL: Record<Stage, string> = { starting: "Find who to involve", building: "Check my team and approvals", launching: "Run readiness review" };
+export const RUN_LABEL: Record<Stage, string> = { starting: "Find who to involve", building: "Check my team and approvals", launching: "Check what's missing for launch" };
 
 export function ConnectApps(p: Props) {
   const [consentFor, setConsentFor] = useState<AppId | null>(null);
@@ -194,7 +194,7 @@ export function ConnectApps(p: Props) {
       {consentDef?.id === "jira" && oauth && (
         <div className="consent accent" role="dialog" aria-labelledby="atl-title">
           <span className="eyebrow">Jira · Sign in with Atlassian</span>
-          <h2 id="atl-title">Readiness Review wants read-only access to Jira</h2>
+          <h2 id="atl-title">Throughline wants read-only access to Jira</h2>
           <p className="sm muted" style={{ margin: 0 }}>Atlassian's own sign-in page opens in a new window. You sign in there, approve the access below, and come back here. No token to paste; access can be withdrawn from your Atlassian account at any time.</p>
           <Scopes can={p.jira.scopes.can} cannot={p.jira.scopes.cannot} />
           {connectError && <div className="notice-grey" role="alert">{connectError}</div>}
@@ -232,7 +232,7 @@ export function ConnectApps(p: Props) {
       {consentDef?.id === "jira" && !live && !oauth && (
         <div className="consent accent" role="dialog" aria-labelledby="consent-title">
           <span className="eyebrow">Jira · sample sign-in</span>
-          <h2 id="consent-title">Readiness Review wants read-only access to Jira</h2>
+          <h2 id="consent-title">Throughline wants read-only access to Jira</h2>
           <div className="stack-sm" style={{ gap: 4 }}><span className="label">Site</span><span className="mono" style={{ fontSize: 14 }}>{p.jira.site}</span></div>
           <Scopes can={p.jira.scopes.can} cannot={p.jira.scopes.cannot} />
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -244,7 +244,7 @@ export function ConnectApps(p: Props) {
       {consentDef?.id === "devin" && (
         <div className="consent accent" role="dialog" aria-labelledby="agent-title">
           <span className="eyebrow">{consentDef.name} · set up by your company</span>
-          <h2 id="agent-title">Readiness Review wants {consentDef.name} to read your plan files</h2>
+          <h2 id="agent-title">Throughline wants {consentDef.name} to read your plan files</h2>
           <p className="sm muted" style={{ margin: 0 }}>No key or sign-in is needed from you: your company's {consentDef.name} account does the reading, and the server holds the key. You confirm every item before it is used.</p>
           <Scopes can={consentDef.scopes} cannot={["Change your files", "See your Jira connection or token", "Create, edit or comment on anything in Jira", "Keep working once the reading is done"]} />
           <ModeSelect agent={p.agent} id="agent-mode-connect" />

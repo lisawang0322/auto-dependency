@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeIdp, type FakeIdp } from "./tests/fake-idp.js";
-import { startFakeJira, type FakeJira } from "../skills/release-reader/tests/fake-jira.js";
+import { startFakeJira, type FakeJira } from "../skills/throughline-reader/tests/fake-jira.js";
 import { startServer } from "./index.js";
 import { Store } from "./store.js";
 import { safeNext } from "./auth.js";

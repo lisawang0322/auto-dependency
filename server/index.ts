@@ -18,7 +18,7 @@
  *   POST /api/jira/connect            {site, email, token} → checks /myself, keeps the credentials
  *   POST /api/jira/disconnect
  *   POST /api/plan                    {files:[{name, kind, content_base64 | sample}], launch_date?, stage?} → {plan}
- *                                     stage starting|building adds {signals, project} (release-starter)
+ *                                     stage starting|building adds {signals, project} (throughline-starter)
  *                                     agent: "devin" → 202 {job}; the job's result is the same plus {agent}: Devin
  *                                     reads the plan documents (not csv/yaml) and its items go through Stage A's
  *                                     quote check; each file's reading is cached by content, so a re-read is free
@@ -33,19 +33,19 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, statSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { PlanDraft, ReleaseTarget, ReadAs } from "@rrr/schemas";
-import { JiraRest, JiraAuthError, type RestCreds } from "../skills/release-reader/scripts/lib/jira-rest.js";
+import { PlanDraft, ReleaseTarget, ReadAs } from "@throughline/schemas";
+import { JiraRest, JiraAuthError, type RestCreds } from "../skills/throughline-reader/scripts/lib/jira-rest.js";
 import { stageA, stageB, stageC, analyzeStep, statusStep, previousRun, saveRun, listRunLabels, loadRun, todayLabel, readStarterInputs, starterSignals, starterPlan, runStarter, type SourceSpec, type AgentReading } from "../scripts/lib/pipeline.js";
-import { loadRules } from "../skills/release-starter/scripts/lib/config.js";
-import type { AgentItem, AgentTeam, AgentLaunchDate } from "../skills/release-reader/scripts/lib/plan-extract.js";
-import type { AgentSignal } from "../skills/release-starter/scripts/lib/signals.js";
+import { loadRules } from "../skills/throughline-starter/scripts/lib/config.js";
+import type { AgentItem, AgentTeam, AgentLaunchDate } from "../skills/throughline-reader/scripts/lib/plan-extract.js";
+import type { AgentSignal } from "../skills/throughline-starter/scripts/lib/signals.js";
 import { DevinClient, devinFromEnv, readWithDevin, itemRules, signalRuleLines, type DevinOptions, type ReadingOutcome, type DevinMode, type FileRole } from "./devin.js";
-import { loadFile } from "../skills/release-reader/scripts/lib/files.js";
+import { loadFile } from "../skills/throughline-reader/scripts/lib/files.js";
 import { DirectoryHub, directoryFromEnv, type DirectoryOptions, type DirectorySourceId } from "./directory.js";
 import { Workspace, INBOX, storedPath } from "./workspace.js";
 import { agentsMd, scanForInjection } from "./agent-folder.js";
 import { parseReading } from "./devin.js";
-import { loadDirectory } from "../skills/release-starter/scripts/lib/directory.js";
+import { loadDirectory } from "../skills/throughline-starter/scripts/lib/directory.js";
 import { createHash } from "node:crypto";
 import { Store, type User } from "./store.js";
 import { Auth, authFromEnv, LOCAL_USER, type AuthConfig } from "./auth.js";
@@ -500,7 +500,7 @@ export function createApp(opts: ServerOptions = {}) {
       return { status: 202, data: { job: id } };
     },
 
-    /** Early stages (release-starter): a job whose result is the Starter output. Jira only for building. */
+    /** Early stages (throughline-starter): a job whose result is the Starter output. Jira only for building. */
     async startStarter(u: User, body: any) {
       const stage = String(body?.stage ?? "");
       if (stage !== "starting" && stage !== "building") throw new HttpError(400, "stage must be starting or building.");
@@ -691,7 +691,7 @@ if (isMain) {
   startServer().then(async (s) => {
     const devinWhoami = s.app.devinWhoami;
     const j = s.app.jiraInfo();
-    console.error(`Release Readiness Review server on ${s.url}`);
+    console.error(`Throughline server on ${s.url}`);
     console.error(j.fixture ? `  Jira: demo mode, reading ${j.site}` : j.connected ? `  Jira: ${j.site} (from environment)` : j.oauth ? "  Jira: Sign in with Atlassian on the Connect step (ATLASSIAN_CLIENT_ID set)" : "  Jira: not connected; the GUI's Connect step asks for a site, email and API token (set ATLASSIAN_CLIENT_ID and ATLASSIAN_CLIENT_SECRET for Sign in with Atlassian)");
     const a = s.app.agentInfo();
     console.error(s.app.auth.mode === "oidc" ? "  Sign-in: with your identity provider (OIDC_ISSUER)" : s.app.auth.mode === "demo" ? "  Sign-in: demo (AUTH=demo); a Sample Co sign-in page with people to sign in as, and a demo directory" : "  Sign-in: off (AUTH=none); set OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET and APP_URL to require it");

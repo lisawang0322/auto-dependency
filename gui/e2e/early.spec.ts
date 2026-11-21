@@ -1,7 +1,7 @@
 /**
  * The early stages in sample mode: "Just starting" (PRD → teams, contacts, approvals, actions) and
  * "Team forming, work underway" (PRD + Jira → team coverage and approval status). The sample outputs
- * were built from the same release-starter code the live server runs.
+ * were built from the same throughline-starter code the live server runs.
  */
 import { test, expect, type Page } from "@playwright/test";
 

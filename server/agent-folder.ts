@@ -14,7 +14,7 @@
  *   6. a document with text addressed to an AI is flagged to the PM, with the line, so they can check what it influenced.
  */
 import { itemRules, readingPrompt, signalRuleLines, type FileRole } from "./devin.js";
-import { loadRules } from "../skills/release-starter/scripts/lib/config.js";
+import { loadRules } from "../skills/throughline-starter/scripts/lib/config.js";
 import { INBOX } from "./workspace.js";
 
 const ROLE: Record<string, FileRole> = { prd: "plan", plan: "plan", checks: "checks", teams: "teams" };
@@ -37,7 +37,7 @@ export function agentsMd(d: Record<string, any>): string {
   return [
     `# Instructions for coding agents`,
     ``,
-    `This folder is a Readiness Review project. A product or program manager works on it in the Readiness Review GUI; you`,
+    `This folder is a Throughline project. A product or program manager works on it in the Throughline GUI; you`,
     `are asked to read its documents. Any coding agent may do this (Devin, Claude Code, Codex, Cursor, Copilot).`,
     ``,
     `## Rules`,

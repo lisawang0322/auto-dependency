@@ -2,7 +2,7 @@
  * Devin as the reader behind the GUI's upload step (PRD "How it works", Oct 31 direction).
  *
  * The person uploads plan files in the GUI; this module hands them to a Devin session, with the same
- * reading instructions the release-review skill gives an agent, and waits for the items Devin wrote as the
+ * reading instructions the throughline skill gives an agent, and waits for the items Devin wrote as the
  * session's structured output. The items then go through Stage A's quote check like any agent items.
  *
  * Billing is the Devin account's (ACUs), capped per session with max_acu_limit. The key is a company
@@ -20,9 +20,9 @@ import { readFileSync, existsSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { PlanItemKind } from "@rrr/schemas";
-import type { AgentItem, AgentTeam, AgentLaunchDate } from "../skills/release-reader/scripts/lib/plan-extract.js";
-import type { AgentSignal } from "../skills/release-starter/scripts/lib/signals.js";
+import { PlanItemKind } from "@throughline/schemas";
+import type { AgentItem, AgentTeam, AgentLaunchDate } from "../skills/throughline-reader/scripts/lib/plan-extract.js";
+import type { AgentSignal } from "../skills/throughline-starter/scripts/lib/signals.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -148,9 +148,9 @@ const ITEM_RULES_FALLBACK = `A plan item is something a team must deliver, a dep
 - source.file is the file's name exactly as given; locator is "§4", "slide 9", "slide 9 (notes)" or "page 3"; quote is one sentence or one table row copied word for word. For a deck the quote must be on that slide.
 - One item per commitment. If the same commitment appears twice, quote the more specific one.`;
 
-/** The item rules, taken from the release-review skill so the GUI path and the agent path read by the same words. */
+/** The item rules, taken from the throughline skill so the GUI path and the agent path read by the same words. */
 export function itemRules(): string {
-  const skill = resolve(ROOT, "skills/release-review/SKILL.md");
+  const skill = resolve(ROOT, "skills/throughline/SKILL.md");
   if (!existsSync(skill)) return ITEM_RULES_FALLBACK;
   const text = readFileSync(skill, "utf8");
   const start = text.indexOf("A plan item is");
@@ -376,7 +376,7 @@ export async function readWithDevin(client: DevinClient, req: { files: { path: s
     for (const [i, f] of req.files.entries()) { files.push({ name: basename(f.path), role: f.role, url: await client.uploadAttachment(basename(f.path), readFileSync(f.path)) }); log(`uploaded ${basename(f.path)}`); progress(Math.round(5 + 15 * (i + 1) / req.files.length), "Uploading your files"); }
     const v3 = client.api === "v3";
     const prompt = readingPrompt({ files, stage: req.stage, rules: req.rules, signalRules: req.signalRules, user: req.user, inlineAttachments: !v3, orgTeams: req.orgTeams });
-    session = await client.createSession({ prompt, title: `Readiness Review: read ${names.join(", ")}${req.user ? ` for ${req.user}` : ""}`, tags: ["readiness-review"], attachmentUrls: files.map((f) => f.url), outputSchema: v3 ? OUTPUT_SCHEMA : undefined, mode });
+    session = await client.createSession({ prompt, title: `Throughline: read ${names.join(", ")}${req.user ? ` for ${req.user}` : ""}`, tags: ["throughline"], attachmentUrls: files.map((f) => f.url), outputSchema: v3 ? OUTPUT_SCHEMA : undefined, mode });
     log(`Devin session ${session.session_id} ${session.url}${mode ? ` (${mode})` : ""}`);
     progress(25, "Devin has started");
     const startedAt = Date.now();

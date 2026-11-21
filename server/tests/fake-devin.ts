@@ -11,10 +11,10 @@ import { Readable } from "node:stream";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkApplies, splitSections } from "../../skills/release-reader/scripts/lib/plan-extract.js";
-import { loadFile, type LoadedFile } from "../../skills/release-reader/scripts/lib/files.js";
-import { readSignals } from "../../skills/release-starter/scripts/lib/signals.js";
-import { loadRules } from "../../skills/release-starter/scripts/lib/config.js";
+import { checkApplies, splitSections } from "../../skills/throughline-reader/scripts/lib/plan-extract.js";
+import { loadFile, type LoadedFile } from "../../skills/throughline-reader/scripts/lib/files.js";
+import { readSignals } from "../../skills/throughline-starter/scripts/lib/signals.js";
+import { loadRules } from "../../skills/throughline-starter/scripts/lib/config.js";
 
 export interface FakeDevinSession { id: string; prompt: string; title: string | null; max_acu_limit: number | null; polls: number; attachments: { name: string; text: string; data: Buffer }[]; messages: string[]; api: "v1" | "v3"; output_schema: unknown; devin_mode: string | null }
 const ORG = "org-fake";
@@ -59,7 +59,7 @@ export async function startFakeDevin(opts: FakeDevinOptions = {}): Promise<FakeD
     if (req.headers.authorization !== `Bearer ${apiKey}`) return json(res, 403, { detail: "Unauthorized" });
     try {
       // ---- v3 (organisation-scoped) ----
-      if (p === "/v3/self" && req.method === "GET") return json(res, 200, { principal_type: "service_user", user_name: "Readiness Review bot", org_id: ORG, devin_sessions_org_id: ORG });
+      if (p === "/v3/self" && req.method === "GET") return json(res, 200, { principal_type: "service_user", user_name: "Throughline bot", org_id: ORG, devin_sessions_org_id: ORG });
       let v3 = p.match(/^\/v3\/organizations\/([^/]+)\/(attachments|sessions)(?:\/([^/]+))?$/);
       if (v3 && v3[1] !== ORG) return json(res, 404, { title: "Not Found", detail: "unknown organization" });
       if (v3 && v3[2] === "attachments" && req.method === "POST") {

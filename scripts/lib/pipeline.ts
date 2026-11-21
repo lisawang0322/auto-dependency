@@ -6,16 +6,16 @@
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { PlanDraft, ReleaseTarget, Release, Findings, Status, Run, ReadAs, type Team } from "@rrr/schemas";
-import { loadFile } from "../../skills/release-reader/scripts/lib/files.js";
-import { type AgentItem, type AgentTeam, type AgentLaunchDate, containsQuote, extractPlan } from "../../skills/release-reader/scripts/lib/plan-extract.js";
-import { FixtureSource, type JiraSource } from "../../skills/release-reader/scripts/lib/jira-source.js";
-import { JiraRest, runRestLoop, type RestCreds } from "../../skills/release-reader/scripts/lib/jira-rest.js";
-import { resolveRelease } from "../../skills/release-reader/scripts/lib/resolve.js";
-import { readJira } from "../../skills/release-reader/scripts/lib/read.js";
-import { analyze } from "../../skills/release-analyzer/scripts/lib/analyze.js";
-import { loadTemplates, loadPhrases } from "../../skills/release-analyzer/scripts/lib/config.js";
-import { computeStatus } from "../../skills/release-status/scripts/lib/status.js";
+import { PlanDraft, ReleaseTarget, Release, Findings, Status, Run, ReadAs, type Team } from "@throughline/schemas";
+import { loadFile } from "../../skills/throughline-reader/scripts/lib/files.js";
+import { type AgentItem, type AgentTeam, type AgentLaunchDate, containsQuote, extractPlan } from "../../skills/throughline-reader/scripts/lib/plan-extract.js";
+import { FixtureSource, type JiraSource } from "../../skills/throughline-reader/scripts/lib/jira-source.js";
+import { JiraRest, runRestLoop, type RestCreds } from "../../skills/throughline-reader/scripts/lib/jira-rest.js";
+import { resolveRelease } from "../../skills/throughline-reader/scripts/lib/resolve.js";
+import { readJira } from "../../skills/throughline-reader/scripts/lib/read.js";
+import { analyze } from "../../skills/throughline-analyzer/scripts/lib/analyze.js";
+import { loadTemplates, loadPhrases } from "../../skills/throughline-analyzer/scripts/lib/config.js";
+import { computeStatus } from "../../skills/throughline-status/scripts/lib/status.js";
 
 export type SourceSpec =
   | { kind: "fixture"; dir: string }
@@ -114,7 +114,7 @@ export interface ReviewInput {
   resume?: boolean;
   readAs?: Record<string, ReadAs[]>;
   launchDate?: string | null;
-  /** Items the agent extracted by reading the plan files itself (release-reader/SKILL.md); each must quote its file or it is dropped. */
+  /** Items the agent extracted by reading the plan files itself (throughline-reader/SKILL.md); each must quote its file or it is dropped. */
   agentItems?: AgentItem[];
   epicKey: string | null;
   source: SourceSpec;
@@ -194,16 +194,16 @@ export function applyProjectChoices(target: ReleaseTarget, choices: Record<strin
 
 export type { Team };
 
-// ---------- early stages: skills/release-starter ----------
+// ---------- early stages: skills/throughline-starter ----------
 
-import { Starter, type Signal, type PlanFile } from "@rrr/schemas";
-import { type LoadedFile } from "../../skills/release-reader/scripts/lib/files.js";
-import { classifyFile } from "../../skills/release-reader/scripts/lib/plan-extract.js";
-import { loadRules, DEFAULT_RULES, type SignalRules } from "../../skills/release-starter/scripts/lib/config.js";
-import { addAgentSignals, type AgentSignal, readSignals, projectName } from "../../skills/release-starter/scripts/lib/signals.js";
-import { loadDirectory, findTeam, type DirectoryEntry , directoryFromAgentTeams } from "../../skills/release-starter/scripts/lib/directory.js";
-import { suggest } from "../../skills/release-starter/scripts/lib/starter.js";
-import { coverage, readApprovalTickets } from "../../skills/release-starter/scripts/lib/coverage.js";
+import { Starter, type Signal, type PlanFile } from "@throughline/schemas";
+import { type LoadedFile } from "../../skills/throughline-reader/scripts/lib/files.js";
+import { classifyFile } from "../../skills/throughline-reader/scripts/lib/plan-extract.js";
+import { loadRules, DEFAULT_RULES, type SignalRules } from "../../skills/throughline-starter/scripts/lib/config.js";
+import { addAgentSignals, type AgentSignal, readSignals, projectName } from "../../skills/throughline-starter/scripts/lib/signals.js";
+import { loadDirectory, findTeam, type DirectoryEntry , directoryFromAgentTeams } from "../../skills/throughline-starter/scripts/lib/directory.js";
+import { suggest } from "../../skills/throughline-starter/scripts/lib/starter.js";
+import { coverage, readApprovalTickets } from "../../skills/throughline-starter/scripts/lib/coverage.js";
 
 export type StarterStage = "signals" | "suggest" | "people" | "target" | "release" | "coverage" | "saved";
 
@@ -215,7 +215,7 @@ export interface StarterInput {
   directoryFiles?: string[];
   rulesPath?: string;
   excludeSignals?: string[];
-  /** Sentences the agent found by reading the PRD itself, each with the rule ids it is an instance of (release-starter/SKILL.md). */
+  /** Sentences the agent found by reading the PRD itself, each with the rule ids it is an instance of (throughline-starter/SKILL.md). */
   agentSignals?: AgentSignal[];
   /** Building only. */
   epicKey?: string | null;

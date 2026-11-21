@@ -3,7 +3,7 @@
  * no server) and live mode (liveBackend.ts, talking to server/index.ts, which runs the real stages against
  * Jira). Decisions live in localStorage either way (decisionStore.ts).
  */
-import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@rrr/schemas";
+import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@throughline/schemas";
 
 /** What a file is read as. "prd" and "plan" both feed Stage A's plan items; a PRD is the early stages' plan. */
 export type FileKind = "prd" | "plan" | "checks" | "teams" | "other";
@@ -112,7 +112,7 @@ export interface AgentRead {
 export interface ReadProgress { pct: number; detail: string }
 export interface ExtractOptions { agent?: boolean; /** Use the reading a coding agent left in this project's folder instead. */ folder?: string; onProgress?: (s: AgentReadStage, progress?: ReadProgress) => void }
 
-/** Stage A's result. The early stages add the PRD's signals and the project name (release-starter). */
+/** Stage A's result. The early stages add the PRD's signals and the project name (throughline-starter). */
 export interface PlanExtract { plan: PlanDraft; signals: Signal[]; project: string | null; agent?: AgentRead | null }
 
 export interface StarterRunInput { stage: "starting" | "building"; files: UploadedFile[]; excludeSignals: string[]; epic: string | null }
@@ -131,7 +131,7 @@ export interface ReviewBackend {
   loadRun(epicKey: string, runId: string): Promise<Run>;
   /** reader → analyzer → status; resolves to the saved run id. Sample: animated, then the latest saved run. */
   runReview(plan: PlanDraft, target: ReleaseTarget, onProgress: (stage: ProgressStage) => void): Promise<string>;
-  /** The early stages (release-starter): signals → teams, contacts, approvals, actions; building adds Jira coverage. */
+  /** The early stages (throughline-starter): signals → teams, contacts, approvals, actions; building adds Jira coverage. */
   runStarter(input: StarterRunInput, onProgress: (stage: ProgressStage) => void): Promise<Starter>;
 }
 

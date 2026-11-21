@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score release-starter outputs against the early-stage answer key (PRD success metric: suggested teams in
+"""Score throughline-starter outputs against the early-stage answer key (PRD success metric: suggested teams in
 the key ≥ 80%; building coverage and approvals as expected).
 
     python3 eval/score_starter.py --key eval/answer-key.starter.ingest-142.json runs/<slug>/<date>.starting.json [runs/<EPIC>/<date>.building.json ...]

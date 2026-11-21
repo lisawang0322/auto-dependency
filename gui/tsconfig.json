@@ -22,6 +22,6 @@
     "src",
     "e2e",
     "playwright.config.ts",
-    "../skills/release-reader/scripts/lib/ambient.d.ts"
+    "../skills/throughline-reader/scripts/lib/ambient.d.ts"
   ]
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { PlanDraft, Signal } from "@rrr/schemas";
+import type { PlanDraft, Signal } from "@throughline/schemas";
 import { PLAN_KINDS, type UploadedFile, type FileKind, type Stage, type AgentInfo, type AgentConsent, type AgentRead, type AgentReadStage, type ReadProgress } from "../backend/types";
 import { fmtDate } from "../model/dates";
 

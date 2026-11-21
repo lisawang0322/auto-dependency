@@ -3,7 +3,7 @@
  * status stages. Jira is read with credentials the server holds in memory; the browser never sees a token
  * again after the connect form.
  */
-import { PlanDraft, ReleaseTarget, Run, Signal, Starter, type Stage } from "@rrr/schemas";
+import { PlanDraft, ReleaseTarget, Run, Signal, Starter, type Stage } from "@throughline/schemas";
 import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, JiraConnection, JiraCredentials, JiraState, PlanExtract, StarterRunInput, AgentInfo, AgentRead, AgentReadStage, ExtractOptions, Settings, UserInfo, DirectoryConnection, DirectoryInfo, DirectorySourceId } from "./types";
 import { fmtDate } from "../model/dates";
 

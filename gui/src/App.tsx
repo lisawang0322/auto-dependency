@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@rrr/schemas";
+import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@throughline/schemas";
 import { PLAN_KINDS, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage, type AgentConsent, type AgentRead, type AgentReadStage, type ReadProgress, type UserInfo, type DirectoryInfo, type DirectorySourceId, type ProjectRecord, type ProjectStore, type ProjectData, type ProjectEvent, type ProjectSummary, type HistoryRecord } from "./backend/types";
 import { storableFiles } from "./backend/projects";
 import { LIFECYCLE } from "./screens/Projects";
@@ -460,7 +460,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
       <header className="top">
         <div className="wrap top-row">
           <div className="brand">
-            {leave ? <button type="button" className="linkbtn home-link" onClick={() => void leave()}>‹ All projects</button> : <span className="name">Readiness Review</span>}
+            {leave ? <button type="button" className="linkbtn home-link" onClick={() => void leave()}>‹ All projects</button> : <span className="name">Throughline</span>}
             {saved ? (
               <>
                 <label htmlFor="project-name" className="sr-only">Project name</label>

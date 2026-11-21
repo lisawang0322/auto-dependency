@@ -1,13 +1,13 @@
 /**
  * Rebuild the two sample runs, runs/INGEST-142/<snapshot>.json, from the fixture files:
- * plan/target/release from the reader, findings from the analyzer, teams from release-status
+ * plan/target/release from the reader, findings from the analyzer, teams from throughline-status
  * (the Nov 13 run is compared with Nov 10 for its change notes).
  *
  *   npx tsx scripts/build-runs.ts
  */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { PlanDraft, ReleaseTarget, Release, Findings, Run, Status } from "@rrr/schemas";
-import { computeStatus } from "../skills/release-status/scripts/lib/status.js";
+import { PlanDraft, ReleaseTarget, Release, Findings, Run, Status } from "@throughline/schemas";
+import { computeStatus } from "../skills/throughline-status/scripts/lib/status.js";
 
 const EPIC = "INGEST-142";
 const FX = "fixtures/ingest-142";

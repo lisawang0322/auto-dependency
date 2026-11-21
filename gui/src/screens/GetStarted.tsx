@@ -74,7 +74,7 @@ export function GetStarted(p: Props & DirectoryHandlers) {
       <header className="stack-sm" style={{ gap: 8 }}>
         <span className="eyebrow">{p.workspace ? "Stage and organisation" : "Step 1 of 4"}</span>
         <h1 className="start-title">{p.workspace ? "Where the project is" : "Let's set up your review"}</h1>
-        <p className="lead">{p.workspace ? "Change the stage as the project moves; your files and connections stay. Your organisation's directory grounds every team the reading names." : "Readiness Review reads your plan and the tools your teams use, then tells you who to involve, what's missing and what to do next. Bring whatever you have; there's no template."}</p>
+        <p className="lead">{p.workspace ? "Change the stage as the project moves; your files and connections stay. Your organisation's directory grounds every team the reading names." : "Throughline reads your plan and the tools your teams use, then tells you who to involve, what's missing and what to do next. Bring whatever you have; there's no template."}</p>
       </header>
 
       <section className={"card org-card" + (dirOn ? " on" : "")} data-testid="start-directory" aria-labelledby="org-title">

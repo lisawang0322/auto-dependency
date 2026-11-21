@@ -47,17 +47,17 @@ Three skills plus an orchestrator, each usable alone in a Devin session. The uni
 
 | Skill | Job | Input → output | Works alone? |
 | --- | --- | --- | --- |
-| **release-reader** | Reads the POR and extracts a Plan (deliverables, owners, dates, declared dependencies, approvals, assumptions) for the TPM to confirm; loads the launch checklist; pulls the epic or fix version with child stories, links, components, comments and meeting notes | POR + epic key → Plan + checklist + Release | "What does the plan for the Q4 ingestion launch say?" |
-| **release-analyzer** | Compares expected (Plan + checklist) with found (Release) and reports six gap types: coverage, date, process, commitment, ownership, assumption drift. Tags each with Stray's dependency type and an owner from the org map | Plan + checklist + Release + org map → Findings | "What doesn't match the plan?" |
+| **throughline-reader** | Reads the POR and extracts a Plan (deliverables, owners, dates, declared dependencies, approvals, assumptions) for the TPM to confirm; loads the launch checklist; pulls the epic or fix version with child stories, links, components, comments and meeting notes | POR + epic key → Plan + checklist + Release | "What does the plan for the Q4 ingestion launch say?" |
+| **throughline-analyzer** | Compares expected (Plan + checklist) with found (Release) and reports six gap types: coverage, date, process, commitment, ownership, assumption drift. Tags each with Stray's dependency type and an owner from the org map | Plan + checklist + Release + org map → Findings | "What doesn't match the plan?" |
 | **readiness-brief** | Rolls findings up for one audience (TPM, eng lead, product lead) and answers follow-up questions about a finding using only its cited evidence | Findings → brief, or a question → answer | "Brief the eng lead" · "Why is Data Platform on this list?" |
 
-If no POR exists, release-reader falls back to the epic description and the checklist, and release-analyzer reports "no plan of record" as a finding. The review cannot judge whether technical work is adequate, see Slack or DMs, or tell whether "Done" is really done; the brief says so.
+If no POR exists, throughline-reader falls back to the epic description and the checklist, and throughline-analyzer reports "no plan of record" as a finding. The review cannot judge whether technical work is adequate, see Slack or DMs, or tell whether "Done" is really done; the brief says so.
 
-The shared format means release-analyzer can later split into gap-check, dep-finder and org-context without touching the other skills. Only release-reader calls Jira tools; the other two work on data handed to them. Each `SKILL.md` stays short, with checklists, the Stray taxonomy and worked examples in reference files beside it.
+The shared format means throughline-analyzer can later split into gap-check, dep-finder and org-context without touching the other skills. Only throughline-reader calls Jira tools; the other two work on data handed to them. Each `SKILL.md` stays short, with checklists, the Stray taxonomy and worked examples in reference files beside it.
 
-**Meeting notes as a second source.** The top AI capability respondents asked for was extracting dependencies from meetings, messages and docs (62.5%). release-reader takes meeting notes from Confluence meeting pages (through the Atlassian MCP) or, in the study, from sample text files. Slack and email stay out of scope: no confirmed access through Devin, and meeting notes cover the same "said but not tracked" signal.
+**Meeting notes as a second source.** The top AI capability respondents asked for was extracting dependencies from meetings, messages and docs (62.5%). throughline-reader takes meeting notes from Confluence meeting pages (through the Atlassian MCP) or, in the study, from sample text files. Slack and email stay out of scope: no confirmed access through Devin, and meeting notes cover the same "said but not tracked" signal.
 
-**Org map, built by someone else.** release-analyzer reads an `org-map.yaml` (teams, owners, components, approvers). To avoid testing data against itself, a classmate or colleague builds it from a realistic org chart before you write the sample releases; seeded dependencies follow their ownership map, not yours. A Glean or Confluence source can replace the file later without changing the output. The pitch no longer says "Glean-style"; the org map is named as a limitation.
+**Org map, built by someone else.** throughline-analyzer reads an `org-map.yaml` (teams, owners, components, approvers). To avoid testing data against itself, a classmate or colleague builds it from a realistic org chart before you write the sample releases; seeded dependencies follow their ownership map, not yours. A Glean or Confluence source can replace the file later without changing the output. The pitch no longer says "Glean-style"; the org map is named as a limitation.
 
 ## Shared contract
 
@@ -111,7 +111,7 @@ Two more rules, both aimed at the survey's top distrust driver (irrelevant alert
 
 ## Orchestrator and GUI
 
-The orchestrator is a thin fourth skill (`review-release`) that runs release-reader, pauses for the TPM to confirm the extracted Plan (in the GUI; the Jira-label path uses the unconfirmed Plan and says so), then runs release-analyzer → readiness-brief; the GUI is a separate web app that starts Devin sessions by API and is where the conversation happens.
+The orchestrator is a thin fourth skill (`review-release`) that runs throughline-reader, pauses for the TPM to confirm the extracted Plan (in the GUI; the Jira-label path uses the unconfirmed Plan and says so), then runs throughline-analyzer → readiness-brief; the GUI is a separate web app that starts Devin sessions by API and is where the conversation happens.
 
 **Two ways in, same skills:**
 
@@ -128,7 +128,7 @@ The orchestrator is a thin fourth skill (`review-release`) that runs release-rea
 
 **Fallbacks if Phase 0 fails:**
 
-- If a skill can't reliably run other skills, the GUI's prompt names them in order ("run `@skills:release-reader`, then …"); `review-release` becomes a prompt template, not a skill.
+- If a skill can't reliably run other skills, the GUI's prompt names them in order ("run `@skills:throughline-reader`, then …"); `review-release` becomes a prompt template, not a skill.
 - If structured output updates too unpredictably, `readiness-brief` ends by posting the findings as one JSON message, which the GUI parses when the session finishes.
 
 Accept/dismiss and follow-up questions are logged by the GUI; that log doubles as study data on precision and on what users want explained.
@@ -153,7 +153,7 @@ Phase 0 runs first in Week 6 because approvals run on other people's schedules a
    - In Devin: fetch one epic with its child stories, links and components through the Atlassian MCP (pass = 5 of 5 runs). Confirm the `devin` label trigger and comment posting.
    - Test whether one skill can run another, and whether structured output updates reliably. Each has a fallback (see Orchestrator and GUI).
    - Re-check Atlassian Rovo and Teamwork Graph (\~1 h) and update the differentiator if needed.
-2. **Phase 1 (Week 6).** release-reader + release-analyzer on sample data.
+2. **Phase 1 (Week 6).** throughline-reader + throughline-analyzer on sample data.
 3. **Phase 2 (Week 7, Oct 12–18).** readiness-brief, `review-release`, and the GUI with the follow-up box.
 4. **Phase 3 (end of Week 7).** Run Devin three times per sample release, freeze one run, seed the errors, pilot with one person.
 5. **Week 8 (Oct 19–25).** Usability testing on the frozen set.

@@ -14,16 +14,16 @@
   },
   "include": [
     "packages/schemas/src",
-    "skills/release-reader/scripts",
-    "skills/release-reader/tests",
-    "skills/release-analyzer/scripts",
-    "skills/release-analyzer/tests",
+    "skills/throughline-reader/scripts",
+    "skills/throughline-reader/tests",
+    "skills/throughline-analyzer/scripts",
+    "skills/throughline-analyzer/tests",
     "scripts",
     "fixtures/ingest-142/jira/generate.ts",
-    "skills/release-status/scripts",
-    "skills/release-status/tests",
-    "skills/release-starter/scripts",
-    "skills/release-starter/tests",
+    "skills/throughline-status/scripts",
+    "skills/throughline-status/tests",
+    "skills/throughline-starter/scripts",
+    "skills/throughline-starter/tests",
     "server"
   ]
 }

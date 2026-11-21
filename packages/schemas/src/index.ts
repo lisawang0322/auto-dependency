@@ -1,8 +1,8 @@
 /**
- * Shared contracts for the Release Readiness Review.
+ * Shared contracts for Throughline.
  *
- * The release-reader skill writes PlanDraft, ReleaseTarget and Release.
- * The release-analyzer writes Findings (findings.json); the release-status skill writes
+ * The throughline-reader skill writes PlanDraft, ReleaseTarget and Release.
+ * The throughline-analyzer writes Findings (findings.json); the throughline-status skill writes
  * Status (status.json). The GUI validates every file it loads against these.
  */
 import { z } from "zod";
@@ -200,7 +200,7 @@ export const Release = z.object({
 });
 export type Release = z.infer<typeof Release>;
 
-// ---------- Analyzer output: findings.json (skills/release-analyzer) ----------
+// ---------- Analyzer output: findings.json (skills/throughline-analyzer) ----------
 export const GapType = z.enum(["process", "cross_team_date", "commitment"]);
 export type GapType = z.infer<typeof GapType>;
 export const Strength = z.enum(["strong", "moderate", "weak"]);
@@ -294,7 +294,7 @@ export const Findings = z.object({
 });
 export type Findings = z.infer<typeof Findings>;
 
-// ---------- Status output: status.json (skills/release-status) ----------
+// ---------- Status output: status.json (skills/throughline-status) ----------
 export const TeamStatus = z.enum(["on_track", "at_risk", "late"]);
 export type TeamStatus = z.infer<typeof TeamStatus>;
 
@@ -345,7 +345,7 @@ export const Run = z.object({
 });
 export type Run = z.infer<typeof Run>;
 
-// ---------- Early stages: skills/release-starter (PRD R17 "just starting", R18 "building") ----------
+// ---------- Early stages: skills/throughline-starter (PRD R17 "just starting", R18 "building") ----------
 export const Stage = z.enum(["starting", "building", "launching"]);
 export type Stage = z.infer<typeof Stage>;
 
@@ -425,7 +425,7 @@ export const StarterAction = z.object({
 });
 export type StarterAction = z.infer<typeof StarterAction>;
 
-/** Output of the release-starter skill for either early stage; the GUI's "Next steps" for those stages. */
+/** Output of the throughline-starter skill for either early stage; the GUI's "Next steps" for those stages. */
 export const Starter = z.object({
   schema_version: z.literal(1),
   stage: z.enum(["starting", "building"]),

@@ -4,7 +4,7 @@ export function SignIn({ loginUrl, next, demo = false }: { loginUrl: string; nex
   return (
     <div>
       <header className="top">
-        <div className="wrap top-row"><div className="brand"><span className="name">Readiness Review</span></div></div>
+        <div className="wrap top-row"><div className="brand"><span className="name">Throughline</span></div></div>
       </header>
       <main className="wrap page">
         <div className="stack" style={{ maxWidth: 520, marginTop: 24 }}>

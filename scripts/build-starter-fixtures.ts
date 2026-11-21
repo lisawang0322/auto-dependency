@@ -1,6 +1,6 @@
 /**
  * Build the early-stage sample outputs the GUI's sample mode loads, from the sample PRD, directory and
- * Jira snapshot, with the real release-starter code (so sample output = real output):
+ * Jira snapshot, with the real throughline-starter code (so sample output = real output):
  *   fixtures/ingest-142/starter/starting.json             just starting, PRD + directory
  *   fixtures/ingest-142/starter/starting.no-directory.json just starting, PRD only
  *   fixtures/ingest-142/starter/building.2026-11-13.json  building, PRD + directory + INGEST-142 on the Nov 13 snapshot
@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runStarter, readStarterInputs, starterSignals, starterPlan, stageB } from "./lib/pipeline.js";
-import { loadRules } from "../skills/release-starter/scripts/lib/config.js";
+import { loadRules } from "../skills/throughline-starter/scripts/lib/config.js";
 
 const DOCS = "fixtures/ingest-142/docs";
 const OUT = "fixtures/ingest-142/starter";

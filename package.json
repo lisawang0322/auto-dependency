@@ -1,8 +1,8 @@
 {
-  "name": "release-readiness-review",
+  "name": "throughline",
   "private": true,
   "version": "0.1.0",
-  "description": "Release Readiness Review: release-reader skill, fixtures and GUI (CMU independent study prototype)",
+  "description": "Throughline: skills, fixtures and GUI (CMU independent study prototype)",
   "workspaces": [
     "packages/*",
     "skills/*",
@@ -11,10 +11,10 @@
   "scripts": {
     "test": "vitest run",
     "test:reader": "vitest run --project reader",
-    "reader:a": "tsx skills/release-reader/scripts/extract-plan.ts",
-    "reader:b": "tsx skills/release-reader/scripts/resolve-release.ts",
-    "reader:c": "tsx skills/release-reader/scripts/read-jira.ts",
-    "analyzer": "tsx skills/release-analyzer/scripts/analyze.ts",
+    "reader:a": "tsx skills/throughline-reader/scripts/extract-plan.ts",
+    "reader:b": "tsx skills/throughline-reader/scripts/resolve-release.ts",
+    "reader:c": "tsx skills/throughline-reader/scripts/read-jira.ts",
+    "analyzer": "tsx skills/throughline-analyzer/scripts/analyze.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:runs": "tsx scripts/build-runs.ts",
     "build:jira-fixtures": "tsx fixtures/ingest-142/jira/generate.ts",
@@ -23,13 +23,13 @@
     "gui:e2e": "npm run e2e -w gui",
     "gui:build": "npm run build -w gui",
     "test:all": "vitest run && npm run test -w gui && npm run e2e -w gui",
-    "status": "tsx skills/release-status/scripts/status.ts",
+    "status": "tsx skills/throughline-status/scripts/status.ts",
     "review": "tsx scripts/review.ts",
     "server": "tsx server/index.ts",
     "start": "npm run gui:build && tsx server/index.ts",
     "doctor": "tsx scripts/doctor.ts",
     "report": "tsx scripts/report.ts",
-    "starter": "tsx skills/release-starter/scripts/starter.ts",
+    "starter": "tsx skills/throughline-starter/scripts/starter.ts",
     "build:starter-fixtures": "tsx scripts/build-starter-fixtures.ts"
   },
   "devDependencies": {

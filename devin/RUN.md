@@ -1,4 +1,4 @@
-# Devin run: release-reader against a sandbox Jira through the Atlassian MCP
+# Devin run: throughline-reader against a sandbox Jira through the Atlassian MCP
 
 One run of the reader, stages A → B → C, in Devin, reading a sandbox Jira Cloud site that holds the
 fixture's Nov 13 snapshot. The result is recorded next to the fixture-mode output. Jira is read-only
@@ -59,8 +59,8 @@ default workflow may map "Open" to "To Do", "In Review" to "In Progress" and "Cl
 - [ ] Add this repository to Devin (Settings → Repositories). In the repo setup, the install
       command is `npm install`; Node 22+. Python is not needed for the run (the POR is passed as
       markdown).
-- [ ] `make devin-skills` and commit `.agents/` so Devin sees `.agents/skills/release-reader/SKILL.md`.
-- [ ] Confirm Devin lists the `release-reader` skill (it is `triggers: ["user"]`, so you invoke it
+- [ ] `make devin-skills` and commit `.agents/` so Devin sees `.agents/skills/throughline-reader/SKILL.md`.
+- [ ] Confirm Devin lists the `throughline-reader` skill (it is `triggers: ["user"]`, so you invoke it
       by name).
 
 ## 2. The prompt
@@ -69,7 +69,7 @@ Paste this into a new Devin session. Replace `<EPIC>` with the sandbox key of IN
 `key-map.json`, and `<label>` with a run label such as `sandbox-2026-11-02-run1`.
 
 ```
-Use the release-reader skill (.agents/skills/release-reader/SKILL.md) in this repository.
+Use the throughline-reader skill (.agents/skills/throughline-reader/SKILL.md) in this repository.
 
 Jira is READ-ONLY. Use only these Atlassian MCP tools: getAccessibleAtlassianResources,
 getVisibleJiraProjects, getJiraIssue, searchJiraIssuesUsingJql. Never create, edit, comment on,
@@ -79,7 +79,7 @@ Setup: run `npm install`, then `mkdir -p out .mcp-cache/<label>`. Keep a log of 
 you make (tool, arguments, whether it succeeded, the error text if not) in out/mcp-calls.md.
 
 Stage A (no Jira):
-  npx tsx skills/release-reader/scripts/extract-plan.ts \
+  npx tsx skills/throughline-reader/scripts/extract-plan.ts \
     --files fixtures/ingest-142/docs/Ingestion-service-POR-v3.md \
             fixtures/ingest-142/docs/launch-checklist.csv \
             fixtures/ingest-142/docs/team-list.yaml \
@@ -89,7 +89,7 @@ Then STOP and wait for me to say "ok".
 
 Stage B (Jira, read-only):
   Call getAccessibleAtlassianResources once and take the cloudId of the sandbox site.
-  npx tsx skills/release-reader/scripts/resolve-release.ts --plan out/plan-draft.json \
+  npx tsx skills/throughline-reader/scripts/resolve-release.ts --plan out/plan-draft.json \
     --source mcp --dir .mcp-cache/<label> --cloud-id <cloudId> --epic <EPIC> \
     --out out/release-target.json
   When it exits with code 3, open .mcp-cache/<label>/requests.json: for each entry call that tool
@@ -100,7 +100,7 @@ Show me the teams → projects table (team, project, match, evidence) and the wa
 Then STOP and wait for "ok".
 
 Stage C (Jira, read-only):
-  npx tsx skills/release-reader/scripts/read-jira.ts --plan out/plan-draft.json \
+  npx tsx skills/throughline-reader/scripts/read-jira.ts --plan out/plan-draft.json \
     --target out/release-target.json --source mcp --dir .mcp-cache/<label> \
     --cloud-id <cloudId> --label <label> --out out/release.json
   Same request loop as Stage B.

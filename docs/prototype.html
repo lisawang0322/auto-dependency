@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Readiness Review: stage-aware clickable prototype source (exported Oct 30, 2026; replaces the
+  Throughline: stage-aware clickable prototype source (exported Oct 30, 2026; replaces the
   Oct 17 launch-only prototype).
 
   This is the prototype's full source, read as a SPEC for the GUI in gui/. It will not render if
@@ -18,7 +18,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Readiness Review</title>
+<title>Throughline</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -39,7 +39,7 @@ button:disabled{cursor:not-allowed}
 <header style="background: #FFFFFF; border-bottom: 1px solid #E2E2DC">
 <div style="max-width: 1240px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
 <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px">
-<span style="font-weight: 600; font-size: 16px">Readiness Review</span>
+<span style="font-weight: 600; font-size: 16px">Throughline</span>
 <span style="color: #5B616B">{{headerProject}}</span>
 </div>
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
@@ -63,7 +63,7 @@ button:disabled{cursor:not-allowed}
 <div style="display: flex; flex-direction: column; gap: 10px; max-width: 760px">
 <span style="font-size: 13px; color: #5B616B">Step 1 · get started</span>
 <h1 style="margin: 0; font-size: 32px; font-weight: 600; line-height: 1.15">Find out who your project needs and what's missing — before it's late.</h1>
-<p style="margin: 0; color: #2E3440; font-size: 16px">Readiness Review reads your plan and the tools your teams already use. Then it tells you who to involve, which approvals you'll need, what's at risk, and what to do next. Bring whatever you have — there's no template.</p>
+<p style="margin: 0; color: #2E3440; font-size: 16px">Throughline reads your plan and the tools your teams already use. Then it tells you who to involve, which approvals you'll need, what's at risk, and what to do next. Bring whatever you have — there's no template.</p>
 </div>
 
 <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
@@ -271,7 +271,7 @@ button:disabled{cursor:not-allowed}
 <sc-if value="{{hasConsent}}" hint-placeholder-val="{{false}}">
 <section aria-label="Authorize app" style="display: flex; flex-direction: column; gap: 14px; background: #FFFFFF; border: 1px solid #1F4FBF; border-radius: 8px; padding: 20px; max-width: 620px">
 <span style="font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: #5B616B">{{consent.name}} · authorization (simulated)</span>
-<h2 style="margin: 0; font-size: 18px; font-weight: 600">Readiness Review wants read-only access to {{consent.name}}</h2>
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">Throughline wants read-only access to {{consent.name}}</h2>
 <div style="display: flex; flex-direction: column; gap: 6px; font-size: 14px">
 <span style="font-weight: 500">It will be able to</span>
 <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px">
@@ -1174,7 +1174,7 @@ class Component extends DCLogic {
     });
 
     const runNotReady = needsJira ? !(jiraOn && epicOk) : false;
-    const runLabel = stage === 'starting' ? 'Find who to involve' : stage === 'building' ? 'Check my team and approvals' : 'Run readiness review';
+    const runLabel = stage === 'starting' ? 'Find who to involve' : stage === 'building' ? 'Check my team and approvals' : 'Check what\'s missing for launch';
     const runText = needsJira
       ? (!jiraOn ? 'Connect Jira to continue — it’s how we see who is doing the work.' : !epicOk ? 'Pick the epic for this work to continue.' : (dirOn ? 'Ready.' : 'Ready. Connecting your directory adds names to every suggestion.'))
       : (dirOn ? 'Ready.' : 'You can continue now. Connecting your directory turns team suggestions into names.');

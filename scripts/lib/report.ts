@@ -2,7 +2,7 @@
  * One self-contained HTML page for a saved run: the review as a file that can be attached, mailed or
  * kept. Same input, same bytes; no scripts, no network, inline CSS only.
  */
-import type { Run, Finding, Team } from "@rrr/schemas";
+import type { Run, Finding, Team } from "@throughline/schemas";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const fmt = (iso: string | null | undefined) => { const m = iso?.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}, ${m[1]}` : iso ?? "—"; };
@@ -56,7 +56,7 @@ export function renderReport(run: Run, opts: ReportOptions = {}): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Release review ${esc(epic.key)} · ${esc(fmt(snapDate))}</title>
+<title>Throughline · ${esc(epic.key)} · ${esc(fmt(snapDate))}</title>
 <style>
 :root{--bg:#fff;--ink:#1b1f24;--muted:#5c6570;--line:#e3e6ea;--card:#f7f8fa;--green:#1f7a3d;--amber:#9a6400;--red:#b4232c;--accent:#1f5fbf;--pillbg:#eef1f5}
 @media (prefers-color-scheme:dark){:root{--bg:#121417;--ink:#e6e8eb;--muted:#9aa3ad;--line:#2a2f36;--card:#1a1e23;--green:#5fc27a;--amber:#e3b341;--red:#f08089;--accent:#7fb0ff;--pillbg:#262b32}}
@@ -76,7 +76,7 @@ table{width:100%;border-collapse:collapse;margin:8px 0 16px;font-size:14px}th,td
 </head>
 <body><main>
 <header>
-<p class="muted small">Release Readiness Review · snapshot ${esc(fmt(snapDate))}${opts.comparedWith ? ` · compared with ${esc(fmt(opts.comparedWith))}` : " · first run"}</p>
+<p class="muted small">Throughline · snapshot ${esc(fmt(snapDate))}${opts.comparedWith ? ` · compared with ${esc(fmt(opts.comparedWith))}` : " · first run"}</p>
 <h1>${esc(epic.summary)} <code>${esc(epic.key)}</code></h1>
 <p><span class="status ${amber ? "amber" : "green"}">${amber ? "Amber" : "Green"}</span> &nbsp; ${launch ? `Launch ${esc(fmt(launch))}${out !== null ? ` · ${out} days out` : ""}` : "No launch date"}${opts.goNoGo ? ` · go/no-go ${esc(fmt(opts.goNoGo))}` : ""}${epic.fix_version ? ` · fix version ${esc(epic.fix_version)}` : ""} · epic ${esc(epic.status)}</p>
 <p class="muted">${shown.length} finding${shown.length === 1 ? "" : "s"} to act on${weak.length ? `, ${weak.length} weak hidden below` : ""}, ${otherGaps.length} other linkage gap${otherGaps.length === 1 ? "" : "s"}. ${run.release.stories.length} stories read, ${run.release.related.length} related tickets, ${run.release.search_candidates.length} search candidates across ${esc(run.release.projects_searched.map((p) => p.jira_project).join(", ") || "no projects")}.${owners.length ? ` Owners to chase: ${esc(owners.join(", "))}.` : ""}</p>

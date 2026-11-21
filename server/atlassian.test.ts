@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startFakeJira, type FakeJira } from "../skills/release-reader/tests/fake-jira.js";
+import { startFakeJira, type FakeJira } from "../skills/throughline-reader/tests/fake-jira.js";
 import { startServer } from "./index.js";
 import { TokenBox } from "./crypto.js";
 

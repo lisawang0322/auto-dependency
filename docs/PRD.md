@@ -1,4 +1,4 @@
-# PRD — Release Readiness Review Skills
+# PRD — Throughline
 
 Oct 25, 2026 · @Lisa
 
@@ -8,7 +8,9 @@ An agent that reads a project's plan and the tools its teams already use, then t
 
 **Revised Oct 25** after Professor Prayaga's review of the prototype: added onboarding, plan files in any format, "Connect your apps" in place of Jira-only, a stage-aware flow, and next actions on every result.
 
-**Revised Oct 30** (repo copy): the early-stage path (R17) and the building-stage path (R18) were built ahead of plan as the `release-starter` skill, on placeholder sample data (a PRD, a directory export) with their own answer key. Both are rule-based (`skills/release-starter/templates/signals.yaml`); the employee directory is a file export, not a live connector.
+**Revised Nov 21** (repo copy): renamed from Release Readiness Review to **Throughline**: the PM's view of a project from PRD to launch, keeping the plan and the tickets telling the same story, with a coding agent such as Devin doing the reading. The skills are now `throughline` (the entry skill) and `throughline-reader`, `-analyzer`, `-status`, `-starter`.
+
+**Revised Oct 30** (repo copy): the early-stage path (R17) and the building-stage path (R18) were built ahead of plan as the `throughline-starter` skill, on placeholder sample data (a PRD, a directory export) with their own answer key. Both are rule-based (`skills/throughline-starter/templates/signals.yaml`); the employee directory is a file export, not a live connector.
 
 ## Problem
 

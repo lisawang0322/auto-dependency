@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Finding, PlanDraft, ReleaseTarget, Run, TeamStatus } from "@rrr/schemas";
+import type { Finding, PlanDraft, ReleaseTarget, Run, TeamStatus } from "@throughline/schemas";
 import type { DecisionStore, RunSummary, RunDecisions, Stage } from "../backend/types";
 import { fmtDate, daysBetween, clock, prettyDates } from "../model/dates";
 import { rollup, releaseStatus, visibleFindings, openFindingCount, nextActions, type TeamView, type Effective } from "../model/review";
@@ -222,7 +222,7 @@ export function Review(p: Props) {
       <div className="tiles">
         <div className={"tile " + (release === "Green" ? "green" : "amber")}>
           <div className="small">Release status</div>
-          <div className="big" data-testid="release-status">{release}</div>
+          <div className="big" data-testid="throughline-status">{release}</div>
           <div className="small">{lateTeams > 0 ? `${lateTeams} team${lateTeams > 1 ? "s" : ""} with a date after launch` : release === "Green" ? "No open gaps" : "Open gaps, no late dates"}</div>
         </div>
         <div className="tile"><div className="small muted">Teams at risk or late</div><div className="big">{riskCount} of {viewTeams.length}</div></div>

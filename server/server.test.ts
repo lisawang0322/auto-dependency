@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startFakeJira, type FakeJira } from "../skills/release-reader/tests/fake-jira.js";
+import { startFakeJira, type FakeJira } from "../skills/throughline-reader/tests/fake-jira.js";
 import { startServer } from "./index.js";
 import { startFakeDevin, naiveReader, type FakeDevin } from "./tests/fake-devin.js";
 import { readingPrompt, parseReading, itemRules } from "./devin.js";
@@ -192,7 +192,7 @@ describe("Devin reads the uploads (agent: \"devin\")", () => {
     expect(devin.sessions[0].attachments.map((a) => a.name)).toEqual(["Ingestion-service-POR-v3.md", "launch-checklist.csv", "team-list.yaml"]);
     expect((devin.sessions[0].output_schema as any)?.required).toEqual(["done", "items", "files_read"]);
     expect(Object.keys((devin.sessions[0].output_schema as any)?.properties)).toEqual(expect.arrayContaining(["teams", "launch_date", "epic_keys"]));
-    expect(devin.sessions[0].title).toBe("Readiness Review: read Ingestion-service-POR-v3.md, launch-checklist.csv, team-list.yaml");
+    expect(devin.sessions[0].title).toBe("Throughline: read Ingestion-service-POR-v3.md, launch-checklist.csv, team-list.yaml");
     expect((await api("GET", "/api/health")).data.agent.api).toBe("v3");
   });
 

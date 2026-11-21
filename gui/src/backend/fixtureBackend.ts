@@ -1,4 +1,4 @@
-import { PlanDraft, ReleaseTarget, Run, Starter, Signal, type Stage } from "@rrr/schemas";
+import { PlanDraft, ReleaseTarget, Run, Starter, Signal, type Stage } from "@throughline/schemas";
 import type { ReviewBackend, UploadedFile, RunSummary, ProgressStage, PlanExtract, StarterRunInput, AgentInfo, AgentRead, ExtractOptions, Settings, AgentConsent, DirectoryConnection, DirectoryInfo, DirectorySourceId } from "./types";
 
 const CONSENT_KEY = "rrr.agent.consent";

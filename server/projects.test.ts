@@ -51,7 +51,7 @@ describe("projects are folders: one per project, readable by people and any codi
 
     // The files a person (or an agent) would open.
     const y = YAML.parse(readFileSync(join(dir, "project.yaml"), "utf8"));
-    expect(y).toMatchObject({ schema: "readiness-project/1", name: "Ingestion service", stage: "launching", epic: "INGEST-142", launch: "2026-11-20", state: { choices: { Security: "SEC" }, confirmed: true, runId: "2026-11-13" } });
+    expect(y).toMatchObject({ schema: "throughline-project/1", name: "Ingestion service", stage: "launching", epic: "INGEST-142", launch: "2026-11-20", state: { choices: { Security: "SEC" }, confirmed: true, runId: "2026-11-13" } });
     expect(JSON.parse(readFileSync(join(dir, "readings", "launching", "plan.json"), "utf8")).plan.items.length).toBe(plan.items.length);
     expect(existsSync(join(dir, "reviews", "launch_INGEST-142_2026-11-13", "review.json"))).toBe(true);
     expect(readFileSync(join(dir, "reviews", "launch_INGEST-142_2026-11-13", "summary.md"), "utf8")).toMatch(/Status: Amber/);

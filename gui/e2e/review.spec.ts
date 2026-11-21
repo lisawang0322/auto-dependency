@@ -79,7 +79,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await expect(page.getByTestId("app-asana").getByTestId("app-state")).toHaveText("Not enabled by your company");
   await expect(page.getByTestId("app-confluence").getByTestId("app-state")).toHaveText("Not available yet");
   await expect(page.getByTestId("app-confluence").getByRole("button")).toHaveCount(0);
-  const run = page.getByRole("button", { name: "Run readiness review" });
+  const run = page.getByRole("button", { name: "Check what's missing for launch" });
   await expect(run).toBeDisabled();
   await expect(page.getByText("Connect Jira to continue")).toBeVisible();
   await connectJira(page);
@@ -104,7 +104,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await expect(page.getByRole("heading", { name: "Reading your plan and Jira…" })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Launch Nov 20 · 7 days out/ })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Review · Preparing to launch")).toBeVisible();
-  await expect(page.getByTestId("release-status")).toHaveText("Amber");
+  await expect(page.getByTestId("throughline-status")).toHaveText("Amber");
   await expect(page.getByTestId("open-findings")).toHaveText("4");
 
   // Next actions (R16): one per shown finding, tickable, with who / when / why.
@@ -191,7 +191,7 @@ test("walks get started → your plan → connect apps (resolving SEC) → next 
   await expect(page.getByTestId("app-directory").getByTestId("app-state")).toHaveText("Covered by team-list.yaml from your files");
   // The plan names one epic, so the field is filled in already.
   await expect(page.getByText("From your team list").first()).toBeVisible();
-  await page.getByRole("button", { name: "Run readiness review" }).click();
+  await page.getByRole("button", { name: "Check what's missing for launch" }).click();
   await expect(page.getByRole("heading", { name: /7 days out/ })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("actions-count")).toHaveText("2 open · 1 done");
   await page.getByRole("button", { name: /Approval still open: Security review approved/ }).click();

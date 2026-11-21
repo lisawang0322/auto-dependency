@@ -7,7 +7,7 @@ import { test, expect } from "@playwright/test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { startFakeJira, type FakeJira } from "../../skills/release-reader/tests/fake-jira";
+import { startFakeJira, type FakeJira } from "../../skills/throughline-reader/tests/fake-jira";
 import { startServer } from "../../server/index";
 import { startFakeDevin, naiveReader, type FakeDevin } from "../../server/tests/fake-devin";
 import { startFakeIdp, type FakeIdp } from "../../server/tests/fake-idp";
@@ -92,8 +92,10 @@ test("uploads real files, connects with a token and a directory export, reads Ji
   await expect(page.getByText("4 of 4 teams resolved")).toBeVisible();
   await expect(page.getByText("From your team list").first()).toBeVisible();
 
-  // Run: Stage C over REST, analyzer, status, saved run.
-  await page.getByRole("button", { name: "Run readiness review" }).click();
+  // Run: Stage C over REST, analyzer, status, saved run. The run is labelled with the fake Jira's snapshot
+  // date, not today's: overdue checks compare against that date, so the count stays the same as days pass.
+  await page.route("**/api/run", (route) => route.continue({ postData: JSON.stringify({ ...route.request().postDataJSON(), label: "2026-11-13" }) }));
+  await page.getByRole("button", { name: "Check what's missing for launch" }).click();
   await expect(page.getByRole("heading", { name: /Launch Nov 20/ })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("open-findings")).toHaveText("4");
   await expect(page.getByTestId("next-actions").getByRole("checkbox")).toHaveCount(4);

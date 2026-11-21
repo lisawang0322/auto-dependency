@@ -11,7 +11,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
-import { JiraRest, type RestCreds } from "../skills/release-reader/scripts/lib/jira-rest.js";
+import { JiraRest, type RestCreds } from "../skills/throughline-reader/scripts/lib/jira-rest.js";
 import type { Store, User } from "./store.js";
 import type { TokenBox } from "./crypto.js";
 import { parseCookies, safeNext } from "./auth.js";

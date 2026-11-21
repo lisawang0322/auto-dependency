@@ -24,7 +24,7 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import YAML from "yaml";
 
-export const SCHEMA = "readiness-project/1";
+export const SCHEMA = "throughline-project/1";
 /** Where a coding agent working in the project folder leaves its reading for the GUI to pick up. */
 export const INBOX = "readings/inbox/reading.json";
 
@@ -46,7 +46,7 @@ export class Workspace {
   constructor(private readonly root: string, private readonly opts: { git?: boolean; log?: (s: string) => void; agentsMd?: (d: Record<string, any>) => string } = {}) {}
   private get useGit() { return (this.opts.git ?? true) && hasGit(); }
   private git(dir: string, args: string[]) {
-    return execFileSync("git", ["-c", "user.name=Readiness Review", "-c", "user.email=readiness-review@localhost", "-c", "commit.gpgsign=false", ...args], { cwd: dir, timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).toString();
+    return execFileSync("git", ["-c", "user.name=Throughline", "-c", "user.email=throughline@localhost", "-c", "commit.gpgsign=false", ...args], { cwd: dir, timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).toString();
   }
 
   /** The folder that holds this person's projects. */
@@ -163,7 +163,7 @@ export class Workspace {
     mkdirSync(dir, { recursive: true });
     const { stage = null, epic = "", launch = "", files = [], summary = null, plan = null, signals = [], project = null, agentRead = null, starter = null, records = [], events = [], ...state } = d;
     // project.yaml: the settings a person might read or edit; everything the GUI keeps that has no file of its own sits under state.
-    writeFileSync(join(dir, "project.yaml"), `# A Readiness Review project. Edited by the GUI; readable by anyone.\n` + yamlOut({ schema: SCHEMA, id: p.id, name: p.name, created_at: p.created_at, updated_at: p.updated_at, stage, epic, launch, summary, files, state }));
+    writeFileSync(join(dir, "project.yaml"), `# A Throughline project. Edited by the GUI; readable by anyone.\n` + yamlOut({ schema: SCHEMA, id: p.id, name: p.name, created_at: p.created_at, updated_at: p.updated_at, stage, epic, launch, summary, files, state }));
     // readings/<stage>/plan.json: what was read at this stage; removed when the reading no longer applies.
     if (stage) {
       const rf = join(dir, "readings", stage, "plan.json");

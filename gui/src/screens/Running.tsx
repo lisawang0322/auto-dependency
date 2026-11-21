@@ -1,4 +1,4 @@
-import type { PlanDraft, Run } from "@rrr/schemas";
+import type { PlanDraft, Run } from "@throughline/schemas";
 import type { ProgressStage, RunSummary, Stage } from "../backend/types";
 import { fmtDate } from "../model/dates";
 

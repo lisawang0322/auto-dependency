@@ -21,7 +21,7 @@ export function DirectoryDialog(p: Props) {
   return (
     <div className="consent accent" role="dialog" aria-labelledby="dir-title">
       <span className="eyebrow">Employee directory · {p.live ? "from a file" : "sample sign-in"}</span>
-      <h2 id="dir-title">Readiness Review wants read-only access to your employee directory</h2>
+      <h2 id="dir-title">Throughline wants read-only access to your employee directory</h2>
       {p.live ? (
         <div className="stack-sm" style={{ gap: 4, maxWidth: 420 }}>
           <label htmlFor="directory-file" className="label">Directory export (a team list or org chart: YAML, CSV or spreadsheet)</label>

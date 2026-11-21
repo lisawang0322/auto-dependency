@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Starter, InvolveRole, CoverageState, ApprovalState } from "@rrr/schemas";
+import type { Starter, InvolveRole, CoverageState, ApprovalState } from "@throughline/schemas";
 import type { DecisionStore, RunDecisions } from "../backend/types";
 import { fmtDate, prettyDates } from "../model/dates";
 import { STAGE_SHORT } from "./GetStarted";
@@ -7,7 +7,7 @@ import { STAGE_SHORT } from "./GetStarted";
 /**
  * Step 4 for the early stages (PRD R16, R17, R18): next actions first, then for "Just starting" the
  * stakeholder map, teams to involve and approvals to plan for; for "Building" team coverage and
- * approval status against Jira. Everything comes from release-starter's output, filtered by the
+ * approval status against Jira. Everything comes from throughline-starter's output, filtered by the
  * signals the person left ticked.
  */
 

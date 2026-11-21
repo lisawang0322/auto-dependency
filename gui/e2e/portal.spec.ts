@@ -107,7 +107,7 @@ test("a launch review is kept as a record with its status, and opens read-only a
   await page.getByRole("button", { name: "Confirm and connect apps" }).click();
   await page.getByRole("button", { name: "Connect Jira" }).click();
   await page.getByRole("button", { name: "Accept" }).click();
-  await page.getByRole("button", { name: "Run readiness review" }).click();
+  await page.getByRole("button", { name: "Check what's missing for launch" }).click();
   await expect(page.getByRole("heading", { name: /Launch Nov 20/ })).toBeVisible({ timeout: 15_000 });
   const nav = page.getByRole("navigation", { name: "Project" });
   await nav.getByRole("button", { name: "History" }).click();

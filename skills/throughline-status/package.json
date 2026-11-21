@@ -1,0 +1,11 @@
+{
+  "name": "throughline-status",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "throughline-status skill helper scripts: rolls the analyzer's findings up per team and compares with the previous run",
+  "dependencies": {
+    "@throughline/schemas": "*",
+    "zod": "^3.23.8"
+  }
+}

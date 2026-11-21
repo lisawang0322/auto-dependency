@@ -12,7 +12,7 @@
  *
  * Options: --read-as name=plan_items|launch_checks|teams_and_owners  --launch-date YYYY-MM-DD  --go-no-go YYYY-MM-DD
  *          --agent-items items.json (items the agent extracted by reading the plan files; each must quote its file, see
- *          skills/release-reader/SKILL.md; recomputes Stage A, so use it without --resume)
+ *          skills/throughline-reader/SKILL.md; recomputes Stage A, so use it without --resume)
  *          --no-search TEAM...  --label YYYY-MM-DD (default today)  --runs-dir runs  --cache-dir <dir>
  *
  * Checkpoints (the PRD's confirm-before-Jira rule), for an agent or a person at the terminal:
@@ -21,10 +21,10 @@
  *   --resume              reuse those files as confirmed instead of recomputing them
  */
 import { readFileSync } from "node:fs";
-import { parseArgs } from "../skills/release-reader/scripts/lib/cli.js";
-import type { AgentItem } from "../skills/release-reader/scripts/lib/plan-extract.js";
-import { credsFromEnv } from "../skills/release-reader/scripts/lib/jira-rest.js";
-import { ReadAs } from "@rrr/schemas";
+import { parseArgs } from "../skills/throughline-reader/scripts/lib/cli.js";
+import type { AgentItem } from "../skills/throughline-reader/scripts/lib/plan-extract.js";
+import { credsFromEnv } from "../skills/throughline-reader/scripts/lib/jira-rest.js";
+import { ReadAs } from "@throughline/schemas";
 import { runReview, todayLabel, type SourceSpec } from "./lib/pipeline.js";
 
 async function main() {
@@ -49,7 +49,7 @@ async function main() {
     source = { kind: "fixture", dir: args.opts.dir };
   } else if (kind === "rest") {
     source = { kind: "rest", creds: credsFromEnv(), cacheDir: args.opts["cache-dir"] ?? `out/jira-cache/${args.opts.epic}/${label}`, log: (l) => console.error("  jira: " + l) };
-  } else { console.error(`--source must be fixture or rest here (mcp mode runs stage by stage, see skills/release-reader/SKILL.md)`); process.exit(2); }
+  } else { console.error(`--source must be fixture or rest here (mcp mode runs stage by stage, see skills/throughline-reader/SKILL.md)`); process.exit(2); }
 
   const t0 = Date.now();
   const out = await runReview({

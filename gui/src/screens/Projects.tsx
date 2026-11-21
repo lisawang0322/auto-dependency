@@ -33,7 +33,7 @@ export function ProjectsHome(p: Props) {
     <div>
       <header className="top">
         <div className="wrap top-row">
-          <div className="brand"><span className="name">Readiness Review</span><span className="muted">Projects</span></div>
+          <div className="brand"><span className="name">Throughline</span><span className="muted">Projects</span></div>
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
             <span className="tag">{p.live ? `Live · ${p.siteLabel}` : "Sample data"}</span>
             {p.user && <span className="tag" data-testid="user-chip" title={p.user.email ?? undefined}>{p.user.name}</span>}

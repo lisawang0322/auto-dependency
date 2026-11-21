@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Finding, Team, TeamProject } from "@rrr/schemas";
+import type { Finding, Team, TeamProject } from "@throughline/schemas";
 import { rollup, teamStatus, releaseStatus, visibleFindings, allTeamsResolved, applyChoices, hiddenWeakCount, openFindingCount } from "./review";
 
 const item = (id: string, result: Team["items"][number]["result"], finding_id: string | null = null): Team["items"][number] =>

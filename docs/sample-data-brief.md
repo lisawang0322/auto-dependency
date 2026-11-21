@@ -1,4 +1,4 @@
-# Brief: write one sample release for the Release Readiness Review
+# Brief: write one sample release for Throughline
 
 Thank you for helping. This takes an afternoon. You are writing a small, fictional software release
 that a tool will review for gaps between what the plan says and what Jira shows. The tool's author
