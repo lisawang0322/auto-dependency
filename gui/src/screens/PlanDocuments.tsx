@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { PlanDraft, Signal } from "@throughline/schemas";
 import { PLAN_KINDS, type UploadedFile, type FileKind, type Stage, type AgentInfo, type AgentConsent, type AgentRead, type AgentReadStage, type ReadProgress } from "../backend/types";
 import { fmtDate } from "../model/dates";
+import { Info } from "./Info";
 
 /** Step 2 (PRD R1–R3, R14): add plan files in any format, see what was read from them, fix dates, confirm. */
 
@@ -28,13 +29,15 @@ export function ModeSelect({ agent, id }: { agent: Pick<AgentPanel, "info" | "mo
 }
 
 interface Props {
-  stage: Stage;
   agent: AgentPanel;
   files: UploadedFile[];
+  /** What the plan of record and the launch checklist say: dated items, owners, checks. Null without a plan of record. */
   plan: PlanDraft | null;
+  /** What a PRD says: the sentences that imply a team or an approval (the signals below), and the teams they name. */
+  earlyPlan: PlanDraft | null;
   planError: string | null;
   planDates: Record<string, string>;
-  /** The early stages: sentences of the PRD that imply a team, which the person can untick. */
+  /** Sentences of the PRD that imply a team, which the person can untick. */
   signals: Signal[];
   signalsOff: Record<string, boolean>;
   onToggleSignal: (id: string) => void;
@@ -44,21 +47,20 @@ interface Props {
   onAddFiles: (list: FileList | File[] | null) => void;
   onSetKind: (id: string, kind: FileKind) => void;
   onRemove: (id: string) => void;
-  onLoadSample: () => void;
+  /** Sample documents: a PRD, or the launch set (plan of record, launch checklist, team list). */
+  onLoadSample: (set: "prd" | "launch") => void;
   onSetDate: (id: string, value: string) => void;
   onBack: () => void; /** Where Back goes, in words: the step before, or the overview. */ backLabel?: string;
   onConfirm: () => void;
+  /** What confirming does next: connect apps, or, when everything is connected, run the review straight away. */
+  confirmLabel?: string; confirmHint?: string;
   /** Above the title: the step while setting up, the place's name in a project's workspace. */
   eyebrow?: string;
 }
 
 const KIND_LABEL: Record<string, string> = { deliverable: "Deliverable", dependency: "Dependency", approval: "Approval", checklist: "Checklist" };
 
-export const PLAN_INTRO: Record<Stage, string> = {
-  starting: "A PRD or one-pager is enough to start. Add an org chart if you have one.",
-  building: "Add your plan, plus a team list or org chart if you have one.",
-  launching: "Add your plan of record — doc or slides — plus your launch checklist if your company has one.",
-};
+export const PLAN_INTRO = "Anything that describes the project, in any format.";
 
 /** What a file gave us, in plain words. The reader's own note (a log-like count line) stays in the tooltip. */
 export function fileSummary(entry: { read_as: string[]; notes: string }): string {
@@ -98,8 +100,13 @@ export function PlanDocuments(p: Props) {
   const teamFiles = filesOf("teams");
   const hasOrg = teamFiles.length > 0;
   const viaDirectory = teamFiles.some((f) => f.via === "directory");
-  const notReady = !hasPlan || !p.plan;
-  const launching = p.stage === "launching";
+  /** What the person uploaded. The organisation's directory (step 1) is read with them as the team list, but behind the
+   *  scenes: it is a connection, not one of their files. */
+  const uploads = p.files.filter((f) => f.via !== "directory");
+  /** Each reading, by what was read: the plan of record's items (launch), the PRD's signals (who to involve). */
+  const anyPlan = p.plan ?? p.earlyPlan;
+  const hasLaunch = !!p.plan;
+  const notReady = !hasPlan || !anyPlan;
   const rows = p.plan?.items ?? [];
   const planCount = rows.filter((r) => r.kind !== "checklist").length;
   const checkTotal = p.plan?.files.find((f) => f.read_as.includes("launch_checks"))?.notes.match(/(\d+) checks/)?.[1];
@@ -114,26 +121,27 @@ export function PlanDocuments(p: Props) {
   const agentOn = agent.info.available && agent.consent === "yes";
   /** What goes to Devin: every upload but "other"; the directory connector's export is structured data, not a document. */
   const docs = p.files.filter((f) => f.kind !== "other" && f.via !== "directory");
-  /** "5 plan items, 3 of 9 checks and 4 teams" — what the reading found, in the stage's terms. */
+  /** "5 plan items, 6 signals, 3 of 9 checks and 4 teams": what the reading found, file by file. */
   const readSummary = (r: AgentRead) => {
-    const parts = [launching ? `${r.items_read} plan item${r.items_read === 1 ? "" : "s"}` : `${r.signals_read} signal${r.signals_read === 1 ? "" : "s"}`];
+    const parts = [r.items_read ? `${r.items_read} plan item${r.items_read === 1 ? "" : "s"}` : null, r.signals_read ? `${r.signals_read} signal${r.signals_read === 1 ? "" : "s"}` : null].filter((x): x is string => !!x);
+    if (!parts.length) parts.push("nothing yet");
     if (r.checks_read) parts.push(`${r.checks_apply ?? 0} of ${r.checks_read} checks`);
     if (r.teams_read) parts.push(`${r.teams_read} team${r.teams_read === 1 ? "" : "s"}`);
     return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
   };
   const unchecked = rows.filter((r) => r.source.quote_verified === false).length;
   const modeLabel = agent.mode ?? agent.info.default_mode;
-  /** What the agent writes down depends on the stage: commitments from a plan of record, signals from a PRD. */
-  const readsFor = launching ? "writes down what it commits to, which launch checks apply and which teams it names" : "writes down the sentences that point to a team or an approval, and the teams it names";
+  /** What the agent writes down depends on the file: commitments from a plan of record, signals from a PRD. */
+  const readsFor = "writes down what a plan of record commits to, the sentences of a PRD that point to a team or an approval, which launch checks apply, and the teams each names";
   /** The stakeholder map: every team the reading names in the plan, the checklist or the PRD's signals, with what it owns
    *  and whether a directory or team list grounds it. Teams only a list mentions are not part of this release. */
   const teamFileNames = new Set(teamFiles.map((f) => f.name));
-  const stakeholders = (p.plan?.teams ?? []).map((t) => {
+  const stakeholders = (anyPlan?.teams ?? []).map((t) => {
     const mine = rows.filter((r) => r.owner_team === t.name);
     const lines = p.signals.filter((g) => g.teams.includes(t.name)).length;
     const inPlan = mine.length > 0 || lines > 0 || t.mentioned_in.some((m) => !teamFileNames.has(m) && m !== "signals") || t.mentioned_in.includes("signals");
     const grounded = t.mentioned_in.some((m) => teamFileNames.has(m)) || (hasOrg && t.owners.length > 0);
-    const owns = launching
+    const owns = hasLaunch
       ? (mine.length ? [`Owns ${mine.length} item${mine.length === 1 ? "" : "s"}`, mine.some((r) => r.kind === "approval") ? `${mine.filter((r) => r.kind === "approval").length} approval${mine.filter((r) => r.kind === "approval").length === 1 ? "" : "s"}` : null, mine.some((r) => r.kind === "checklist") ? `${mine.filter((r) => r.kind === "checklist").length} launch check${mine.filter((r) => r.kind === "checklist").length === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ") : "Named in the plan, owns nothing yet")
       : (lines ? `Implied by ${lines} line${lines === 1 ? "" : "s"} of your plan` : "Named in the plan");
     return { t, grounded, owns, inPlan };
@@ -144,18 +152,18 @@ export function PlanDocuments(p: Props) {
     ["Checking", "Every item's quote is checked against the file before you see it."],
   ];
 
-  const needs: { label: string; required: boolean; desc: string; found: UploadedFile[]; without: string }[] = [
-    { label: "What you're building", required: true, desc: p.stage === "launching" ? "Dates, owners, dependencies and approvals — usually a POR deck or doc." : "Goals, users, data and scope — a PRD, one-pager or brief is enough.", found: planFiles, without: "" },
-    { label: "Launch checks", required: false, desc: "Approvals and gates your company expects before launch.", found: filesOf("checks"), without: p.stage === "launching" ? "standard launch items won't be checked." : "approvals come from common practice only." },
-    { label: "Teams and people", required: false, desc: "An org chart or team list — or connect your directory next.", found: teamFiles, without: "you'll get team names, not people." },
+  const needs: { label: string; required: boolean; desc: string; found: UploadedFile[]; short: string; without: string }[] = [
+    { label: "What you're building", required: true, desc: "A PRD, one-pager or brief is enough to start; a plan of record (doc or slides) adds dates and owners for launch.", found: planFiles, short: "", without: "" },
+    { label: "Launch checks", required: false, desc: "Approvals and gates your company expects before launch.", found: filesOf("checks"), short: "approvals from common practice", without: "Without a launch checklist, approvals come from common practice and standard launch items aren't checked." },
+    { label: "Teams and people", required: false, desc: "An org chart or team list, or your organisation's directory from step 1.", found: teamFiles, short: "you'll get team names, not people.", without: "Connect your organisation on step 1, or add a team list or org chart, to get people's names." },
   ];
 
   return (
     <div className="flow stack">
       <header className="stack-sm" style={{ gap: 8 }}>
-        <span className="eyebrow">{p.eyebrow ?? "Step 2 of 4"}</span>
+        <span className="eyebrow">{p.eyebrow ?? "Step 2 of 3"}</span>
         <h1 className="flow-title">Add what you have</h1>
-        <p className="lead">{PLAN_INTRO[p.stage]}</p>
+        <p className="lead">{PLAN_INTRO}<Info>You don't need to say what each file is: the reading works out what you have, and the review checks what that allows.</Info></p>
       </header>
 
       {p.notice && (
@@ -168,7 +176,12 @@ export function PlanDocuments(p: Props) {
       <section className="card" style={{ gap: 14 }} aria-labelledby="files-title">
         <div className="between" style={{ gap: 12, alignItems: "center" }}>
           <h2 id="files-title" className="h3">Your files</h2>
-          <button type="button" className="linkbtn" onClick={p.onLoadSample}>Use sample files</button>
+          <span className="row" style={{ gap: 4, alignItems: "baseline" }}>
+            <span className="small muted">Sample files:</span>
+            <button type="button" className="linkbtn" onClick={() => p.onLoadSample("prd")}>a PRD</button>
+            <span className="small muted">·</span>
+            <button type="button" className="linkbtn" onClick={() => p.onLoadSample("launch")}>launch documents</button>
+          </span>
         </div>
         <div
           className={"drop compact" + (over ? " over" : "")}
@@ -178,22 +191,22 @@ export function PlanDocuments(p: Props) {
         >
           <span className="stack-sm" style={{ gap: 2, textAlign: "left" }}>
             <span style={{ fontWeight: 500 }}>Drop files here</span>
-            <span className="small muted">Docs, slides, spreadsheets, PDFs, CSV or YAML. Any format.</span>
+            <span className="small muted">Docs, slides, spreadsheets, PDFs, CSV, YAML</span>
           </span>
           <label htmlFor="plan-files" className="btn" style={{ cursor: "pointer", flex: "none" }}>Choose files</label>
           <input id="plan-files" className="sr-only" type="file" multiple onChange={(e) => { p.onAddFiles(e.target.files); e.target.value = ""; }} />
         </div>
-        {p.files.length > 0 && (
+        {uploads.length > 0 && (
           <div className="file-list">
-            {p.files.map((f) => {
-              const entry = p.plan?.files.find((x) => x.name === f.name);
+            {uploads.map((f) => {
+              const entry = p.plan?.files.find((x) => x.name === f.name && x.read_as.length) ?? p.earlyPlan?.files.find((x) => x.name === f.name);
               const used = f.kind !== "other" && entry && entry.read_as.length > 0;
               return (
                 <div key={f.id} className="file-row">
                   <div className="meta">
                     <span className="name">{f.name}</span>
-                    <span className="small muted">{f.size}{f.via === "directory" ? " · via Employee directory" : ""}</span>
-                    <span className={"sm " + (used ? "ok" : "muted")} title={entry?.notes}>{f.kind === "other" ? "Nothing used from this file" : !launching && f.kind === "checks" ? "Launch checks are used when preparing to launch" : entry ? fileSummary(entry) : readingAny ? (reading ? `${agent.info.name} is reading…` : "Reading…") : hasPlan ? "Ready to read" : "Waiting for a plan file"}</span>
+                    <span className="small muted">{f.size}</span>
+                    <span className={"sm " + (used ? "ok" : "muted")} title={entry?.notes}>{f.kind === "other" ? "Nothing used from this file" : entry ? fileSummary(entry) : readingAny ? (reading ? `${agent.info.name} is reading…` : "Reading…") : hasPlan ? "Ready to read" : "Waiting for a plan file"}</span>
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
                     <label htmlFor={`kind-${f.id}`} className="sr-only">Read as</label>
@@ -221,7 +234,10 @@ export function PlanDocuments(p: Props) {
                 <span className={"prep-mark" + (done ? " done" : "")} aria-hidden="true">{done ? "✓" : ""}</span>
                 <span className="prep-text">
                   <span style={{ fontWeight: 500 }}>{n.label}</span>
-                  <span className={"small " + (done ? "ok" : n.required ? "muted" : "warn")} style={{ overflowWrap: "anywhere" }}>{done ? `Found in ${n.found.map((f) => f.name).join(", ")}` : n.required ? `Not found yet. ${n.desc}` : `Not found — ${n.without}`}</span>
+                  <span className={"small " + (done ? "ok" : n.required ? "muted" : "warn")} style={{ overflowWrap: "anywhere" }}>
+                    {done ? n.found.every((f) => f.via === "directory") ? "From your organisation's directory (step 1)" : `Found in ${n.found.map((f) => (f.via === "directory" ? "your organisation's directory" : f.name)).join(", ")}` : n.required ? "Not found yet" : `Not found — ${n.short}`}
+                    {!done && <Info>{n.required ? n.desc : n.without}</Info>}
+                  </span>
                 </span>
                 <span className={"prep-need " + (done ? "done" : n.required ? "required" : "")}>{done ? "Found" : n.required ? "Required" : "Optional"}</span>
               </div>
@@ -231,14 +247,15 @@ export function PlanDocuments(p: Props) {
       </section>
 
       {docs.length > 0 && !readingAny && (
-        <section className={"card" + (read?.status === "done" ? " agent-done" : "")} data-testid={p.plan ? "agent-panel" : devinOffer ? "agent-consent" : "agent-panel"} style={{ gap: 10 }}>
+        <section className={"card" + (read?.status === "done" ? " agent-done" : "")} data-testid={anyPlan ? "agent-panel" : devinOffer ? "agent-consent" : "agent-panel"} style={{ gap: 10 }}>
           <div className="between" style={{ gap: 12, alignItems: "flex-start" }}>
-            {p.plan && read?.status === "done" ? (
+            {anyPlan && read?.status === "done" ? (
               <div className="stack-sm" style={{ gap: 4 }} data-testid="agent-result">
                 <span>
                   <strong style={{ fontWeight: 600 }}>{read.name}{read.mode ? ` (${read.mode})` : ""} read {readSummary(read)}</strong>
                   {read.files_read.length > 0 && <> from {read.files_read.map((f) => f.name).join(", ")}</>}
                   {read.session_url && <> · <a href={read.session_url} target="_blank" rel="noreferrer">open the {agent.info.name} session</a></>}
+                  <Info>Change a file or how it is read and this reading no longer applies; read again to refresh it.</Info>
                 </span>
                 {(read.cached || read.files_read.some((f) => f.how)) && (
                   <details className="small"><summary style={{ cursor: "pointer" }} className="muted">How it was read</summary>
@@ -250,48 +267,45 @@ export function PlanDocuments(p: Props) {
                 )}
                 {read.unreadable.length > 0 && <span className="small">Could not open: {read.unreadable.map((u) => `${u.name}${u.reason ? ` (${u.reason})` : ""}`).join(", ")}</span>}
                 {read.warnings.length > 0 && <span className="small">{read.warnings.join(" ")}</span>}
-                {unchecked > 0 && <span className="small">{unchecked} item{unchecked === 1 ? "" : "s"} could not be checked against the file (the server cannot open that format); confirm them below.</span>}
-                <span className="small muted">Change a file or how it is read and this reading no longer applies; read again to refresh it.</span>
+                {unchecked > 0 && <span className="small">{unchecked} item{unchecked === 1 ? "" : "s"} not checked against the file; confirm below.<Info>The server cannot open that format, so these quotes could not be checked.</Info></span>}
               </div>
-            ) : p.plan && read?.status === "failed" ? (
+            ) : anyPlan && read?.status === "failed" ? (
               <div className="stack-sm" style={{ gap: 4 }} role="alert" data-testid="agent-result">
                 <span><strong style={{ fontWeight: 600 }}>{agent.info.name} could not read your files.</strong> {read.error}</span>
-                <span className="small muted">Showing what the built-in rules found on their own.</span>
+                <span className="small muted">Showing what the built-in rules found.</span>
               </div>
-            ) : p.plan ? (
+            ) : anyPlan ? (
               <div className="stack-sm" style={{ gap: 4 }} data-testid="rules-result">
-                <span style={{ fontWeight: 600 }}>Read with the built-in rules</span>
-                <span className="sm muted">They read structured plans, checklists and team lists; prose and slides can be missed.{agent.info.available && agent.consent !== "yes" ? ` ${agent.info.name} can read any format.` : ""} Change a file or how it is read and this reading no longer applies.</span>
+                <span style={{ fontWeight: 600 }}>Read with the built-in rules<Info>They read structured plans, checklists and team lists; prose and slides can be missed.{agent.info.available && agent.consent !== "yes" ? ` ${agent.info.name} can read any format.` : ""} Change a file or how it is read and this reading no longer applies.</Info></span>
               </div>
             ) : devinOffer ? (
               <div className="stack-sm" style={{ gap: 4 }}>
-                <span style={{ fontWeight: 600 }}>{agent.info.name} will read these files</span>
-                <span className="sm muted">Set up by your company. {agent.info.name} opens each document in whatever format it is and {readsFor}; nothing is sent until you click, and every line is checked against the file before you see it.</span>
-                <details className="small"><summary style={{ cursor: "pointer" }}>How {agent.info.name} works</summary><span className="muted">{agent.info.name} opens each plan document in your company's {agent.info.name} account and returns what it read with a quote for each line. Lines whose quote is not in the file are dropped; the rest appear below for you to confirm. Nothing is read by rules: the plan, the checklist and the team list all go to {agent.info.name}.</span></details>
+                <span style={{ fontWeight: 600 }}>{agent.info.name} will read these files<Info>Set up by your company. {agent.info.name} opens each document in whatever format it is and {readsFor}; every line is checked against the file before you see it. {agent.info.name} opens each plan document in your company's {agent.info.name} account and returns what it read with a quote for each line. Lines whose quote is not in the file are dropped; the rest appear below for you to confirm. Nothing is read by rules: the plan, the checklist and the team list all go to {agent.info.name}.</Info></span>
+                <span className="sm muted">Nothing is sent until you click.</span>
               </div>
             ) : agentOn ? (
               <div className="stack-sm" style={{ gap: 4 }}>
-                <span style={{ fontWeight: 600 }}>Ready for {agent.info.name} to read</span>
-                <span className="sm muted">{docs.length ? `Check "Read as" on each file first. Then ${agent.info.name} opens ${docs.map((f) => f.name).join(", ")}${modeLabel ? ` in ${modeLabel} mode` : ""} and ${readsFor}. Nothing is sent until you click.` : "Add a file first."}</span>
+                <span style={{ fontWeight: 600 }}>Ready for {agent.info.name} to read{docs.length > 0 && <Info>{agent.info.name} opens {docs.map((f) => f.name).join(", ")}{modeLabel ? ` in ${modeLabel} mode` : ""} and {readsFor}. Nothing is sent until you click.</Info>}</span>
+                <span className="sm muted">{docs.length ? `Check "Read as" on each file, then read.` : "Add a file first."}</span>
               </div>
             ) : (
               <div className="stack-sm" style={{ gap: 4 }}>
                 <span style={{ fontWeight: 600 }}>Ready to read</span>
-                <span className="sm muted">Check "Read as" on each file first. The built-in rules read structured plans, checklists and team lists.{agent.info.available ? ` ${agent.info.name} can read any format.` : ""}</span>
+                <span className="sm muted">Check "Read as" on each file, then read.<Info>The built-in rules read structured plans, checklists and team lists.{agent.info.available ? ` ${agent.info.name} can read any format.` : ""}</Info></span>
               </div>
             )}
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
               {agent.info.available && agent.consent !== "no" && <ModeSelect agent={agent} id={devinOffer ? "agent-mode-consent" : "agent-mode-plan"} />}
               {/* Devin is the reader whenever the company has set it up; the rules alone are the fallback when it is off or disconnected. */}
               {agent.info.available && (
-                <button type="button" className={"btn" + (!p.plan && agent.consent !== "no" ? " primary" : "")} disabled={!docs.length} data-testid="agent-read"
+                <button type="button" className={"btn" + (!anyPlan && agent.consent !== "no" ? " primary" : "")} disabled={!docs.length} data-testid="agent-read"
                   onClick={() => { if (agent.consent !== "yes") agent.setConsent("yes"); agent.read_now(true); }}>
                   {read?.status === "failed" ? "Try again" : read ? `Read again with ${agent.info.name}` : agent.consent === "no" ? `Read with ${agent.info.name} instead` : `Read with ${agent.info.name}`}
                 </button>
               )}
               {(!agent.info.available || agent.consent === "no") && (
-                <button type="button" className={"btn" + (!p.plan ? " primary" : "")} data-testid="rules-read" onClick={() => agent.read_now(false)}>
-                  {p.plan && !read ? "Read again" : "Read my files"}
+                <button type="button" className={"btn" + (!anyPlan ? " primary" : "")} data-testid="rules-read" onClick={() => agent.read_now(false)}>
+                  {anyPlan && !read ? "Read again" : "Read my files"}
                 </button>
               )}
             </div>
@@ -302,7 +316,7 @@ export function PlanDocuments(p: Props) {
               <ol className="list sm" style={{ marginTop: 8, gap: 6 }}>
                 <li>Open this project's folder in your coding agent: <span className="mono" style={{ overflowWrap: "anywhere" }}>{agent.folder.path}</span></li>
                 <li>Ask it: <span className="mono">Read the files in inputs/ by AGENTS.md.</span> It writes one file, its reading, and nothing else.</li>
-                <li>Come back and use the reading. Every quote is checked against your files before you see it, and anything else the agent changed is undone.</li>
+                <li>Come back and use the reading.<Info>Every quote is checked against your files before you see it, and anything else the agent changed is undone.</Info></li>
               </ol>
               <div style={{ marginTop: 8 }}><button type="button" className="btn" disabled={!docs.length} onClick={agent.folder.use} data-testid="folder-read">Use the reading</button></div>
             </details>
@@ -336,11 +350,10 @@ export function PlanDocuments(p: Props) {
         </section>
       )}
 
-      {hasPlan && p.plan && !launching && p.signals.length > 0 && (
+      {p.earlyPlan && p.signals.length > 0 && (
         <section className="stack" style={{ gap: 12 }} data-testid="signals">
           <div className="stack-sm" style={{ gap: 4 }}>
-            <h2>What we read in your PRD</h2>
-            <p className="sm muted" style={{ maxWidth: 680 }}>Each line below points to a team you'll likely need. Untick anything that's wrong.</p>
+            <h2>What we read in your PRD<Info>Each line points to a team you'll likely need. Untick anything that's wrong.</Info></h2>
           </div>
           <div className="card" style={{ padding: "4px 18px", gap: 0 }}>
             {p.signals.map((g) => (
@@ -348,22 +361,22 @@ export function PlanDocuments(p: Props) {
                 <input id={`sig-${g.id}`} type="checkbox" checked={!p.signalsOff[g.id]} onChange={() => p.onToggleSignal(g.id)} />
                 <label htmlFor={`sig-${g.id}`}>
                   <span>“{g.quote}”</span>
-                  <span className="small muted">{sourceShort(p.plan!, g.file) === "POR" ? "PRD" : g.file} {g.locator} · points to <strong style={{ fontWeight: 500, color: "var(--ink)" }}>{g.teams.join(", ")}</strong></span>
+                  <span className="small muted">{sourceShort(p.earlyPlan!, g.file) === "POR" ? "PRD" : g.file} {g.locator} · points to <strong style={{ fontWeight: 500, color: "var(--ink)" }}>{g.teams.join(", ")}</strong></span>
                 </label>
               </div>
             ))}
           </div>
         </section>
       )}
-      {hasPlan && p.plan && !launching && p.signals.length === 0 && (
-        <div className="notice-grey">Nothing in {planFiles.map((f) => f.name).join(", ")} matched a signal (customer data, public APIs, peak load, user-facing screens, GA…). Check it was read as the right kind, or add a PRD.</div>
+      {p.earlyPlan && p.signals.length === 0 && (
+        <div className="notice-grey">Nothing in {filesOf("prd").map((f) => f.name).join(", ")} matched a signal (customer data, public APIs, peak load, user-facing screens, GA…). Check it was read as the right kind, or add a PRD.</div>
       )}
 
-      {hasPlan && p.plan && launching && (
+      {p.plan && (
         <section className="stack" style={{ gap: 12 }}>
           <div className="stack-sm" style={{ gap: 4 }}>
             <h2>Plan we read</h2>
-            <p className="sm muted" style={{ maxWidth: 680 }}>From {planFiles.concat(filesOf("checks")).map((f) => f.name).join(" and ")}. Fix anything that's wrong — everything is checked against this list.</p>
+            <p className="sm muted" style={{ maxWidth: 680 }}>From {filesOf("plan").concat(filesOf("checks")).map((f) => f.name).join(" and ")}. Fix anything that's wrong — everything is checked against this list.</p>
           </div>
           <div className="table-wrap plan-table">
             <table>
@@ -406,19 +419,15 @@ export function PlanDocuments(p: Props) {
           <span className="sm muted">
             {[`Plan items: ${planCount}`, hasChecklist ? `Launch checks: ${checkApplied} of ${checkTotal ?? "?"} apply` : "No launch checks", hasOrg ? (viaDirectory ? "Owners: from your directory" : "Owners: from your files") : "Owners: inferred from Jira", ...(read?.status === "done" ? [`Read by ${agent.info.name}: ${read.items_read}`] : agentOn ? [`${agent.info.name} has not read these files yet`] : agent.info.available ? [`${agent.info.name} not used`] : [])].join(" · ")}
           </span>
-          {inferredCount > 0 && <span className="sm muted" data-testid="inferred-note">{inferredCount} date{inferredCount === 1 ? " was" : "s were"} inferred from the plan's wording, such as "the week before launch"; they are marked <span className="inferred-tag">inferred</span>. Adjust any that are wrong.</span>}
+          {inferredCount > 0 && <span className="sm muted" data-testid="inferred-note">{inferredCount} date{inferredCount === 1 ? " was" : "s were"} inferred, marked <span className="inferred-tag">inferred</span>. Adjust any that are wrong.<Info>Taken from the plan's wording, such as "the week before launch".</Info></span>}
           {p.plan.warnings.length > 0 && <div className="notice-grey">{p.plan.warnings.join(" ")}</div>}
         </section>
       )}
 
-      {p.plan && stakeholders.length > 0 && (
+      {anyPlan && stakeholders.length > 0 && (
         <section className="stack" style={{ gap: 12 }} data-testid="stakeholders">
           <div className="stack-sm" style={{ gap: 4 }}>
-            <h2>Who this involves</h2>
-            <p className="sm muted" style={{ maxWidth: 680 }}>
-              {launching ? "The teams your plan names, with what each owns." : "The teams your plan points to."}{" "}
-              {viaDirectory ? "Names come from your directory." : hasOrg ? "Names come from your team list." : "Connect your directory on step 1 to add names, and to catch teams the document never mentions."}
-            </p>
+            <h2>Who this involves<Info>{hasLaunch ? "The teams your plan names, with what each owns." : "The teams your plan points to."} {viaDirectory ? "Names come from your directory." : hasOrg ? "Names come from your team list." : "Connect your organisation on step 1 to add names, and to catch teams the document never mentions."}</Info></h2>
           </div>
           <div className="tiles">
             {stakeholders.map(({ t, grounded, owns }) => (
@@ -433,17 +442,16 @@ export function PlanDocuments(p: Props) {
               </div>
             ))}
           </div>
-          <span className="small muted">Processes your company documents in Confluence or a wiki are not read yet; when that connector exists, the steps those pages require will appear here too.</span>
         </section>
       )}
 
       <div className="between actions" style={{ gap: 16 }}>
         <span className="sm muted" style={{ maxWidth: 640 }}>
-          {!hasPlan ? "Add something that describes what you're building to continue." : !p.plan ? (p.planError ? "Fix the file above, or read it as something else, to continue." : reading ? `${agent.info.name} is reading your files…` : agent.reading ? "Reading your files…" : "Read your files to continue.") : !launching && p.signals.length === 0 ? "No signals found yet; you can still continue." : "Looks good. Next, connect the apps your teams use."}
+          {!hasPlan ? "Add something that describes what you're building to continue." : !anyPlan ? (p.planError ? "Fix the file above, or read it as something else, to continue." : reading ? `${agent.info.name} is reading your files…` : agent.reading ? "Reading your files…" : "Read your files to continue.") : p.earlyPlan && !hasLaunch && p.signals.length === 0 ? "No signals found yet; you can still continue." : (p.confirmHint ?? "Looks good. Next, connect the apps your teams use.")}
         </span>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <button type="button" className="btn" onClick={p.onBack}>{p.backLabel ? `‹ ${p.backLabel}` : "Back"}</button>
-          <button type="button" className="btn primary" style={{ padding: "0 20px" }} disabled={notReady} onClick={p.onConfirm}>Confirm and connect apps</button>
+          <button type="button" className="btn primary" style={{ padding: "0 20px" }} disabled={notReady} onClick={p.onConfirm}>{p.confirmLabel ?? "Confirm and connect apps"}</button>
         </div>
       </div>
     </div>

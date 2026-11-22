@@ -3,7 +3,7 @@
  * no server) and live mode (liveBackend.ts, talking to server/index.ts, which runs the real stages against
  * Jira). Decisions live in localStorage either way (decisionStore.ts).
  */
-import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@throughline/schemas";
+import type { PlanDraft, ReleaseTarget, Run, Signal, Starter, Commitment } from "@throughline/schemas";
 
 /** What a file is read as. "prd" and "plan" both feed Stage A's plan items; a PRD is the early stages' plan. */
 export type FileKind = "prd" | "plan" | "checks" | "teams" | "other";
@@ -32,14 +32,34 @@ export interface UploadedFile {
 export interface ProjectEvent { at: string; text: string }
 /** What the projects home shows for a project: its latest status and open actions. */
 export interface ProjectSummary { status: string | null; open: number | null; detail: string | null; at: string }
+/** One next action as the project page's panel lists it. The checklist lives in the panel, beside the team cards it points to. */
+export interface ActionGlance { id: string; text: string; detail: string; team: string | null; done: boolean; kept?: boolean }
+/** The review's checklist, handed to the panel: its actions, and the review's own ways to tick one and to show where it comes from. */
+export interface ActionsGlance {
+  items: ActionGlance[]; toggle: (id: string) => void; jump: (id: string) => void;
+  /** Teams whose time has not come yet (where the project stands is too early for their milestone): how many, and when. */
+  later?: { teams: number; when: string[]; anchor: string };
+}
 /** Everything the GUI keeps for a project between visits. Files keep their name, kind and stored copy, never the browser File. */
+/** One step of the project's path: the checks in the order a project usually meets them. */
+export interface PathStep { id: "involve" | "coverage" | "launch"; label: string; state: "done" | "next" | "later" }
 export interface ProjectData {
-  stage?: Stage | null; files?: UploadedFile[]; plan?: PlanDraft | null; signals?: Signal[]; signalsOff?: Record<string, boolean>; project?: string | null;
+  /** The phase the project was in when last saved, as its evidence showed it (never chosen; kept for the folder's files). */
+  stage?: Stage | null; files?: UploadedFile[];
+  /** The plan of record's reading (launch). Before Nov 2026, the one reading the chosen stage needed. */
+  plan?: PlanDraft | null;
+  /** The PRD's reading (its signals and the teams they name). A project saved before Nov 2026 has none: its plan was it. */
+  earlyPlan?: PlanDraft | null;
+  signals?: Signal[]; signalsOff?: Record<string, boolean>; project?: string | null;
   planDates?: Record<string, string>; planConfirmed?: boolean; epic?: string; launch?: string; choices?: Record<string, string>;
   confirmed?: boolean; runId?: string | null; starter?: Starter | null; agentRead?: AgentRead | null; lastRead?: boolean | null; jiraOn?: boolean;
   events?: ProjectEvent[]; summary?: ProjectSummary | null;
   /** Every review the project has had, oldest first. */
   records?: HistoryRecord[];
+  /** What the project has promised, carried from stage to stage (PRD "Commitments"); written to commitments.yaml. */
+  commitments?: Commitment[];
+  /** The launch check is on with no plan of record: each team read as ready or not from the commitments and Jira. */
+  launchCheck?: boolean;
 }
 /** One review, kept as it was: what was run, at which stage, what it found, and the result itself, so it can be opened later
  *  after the project has moved on or been re-run. Launch reviews keep their run id (the run is on the server or in the
@@ -49,6 +69,8 @@ export interface HistoryRecord {
   summary: { status: string | null; open: number | null; detail: string | null } | null;
   files: string[];
   starter?: Starter; signalsOff?: Record<string, boolean>;
+  /** A launch check made from the commitments (no plan of record), by this launch date. */
+  readiness?: { date: string | null };
   launch?: { epic: string; runId: string; target: ReleaseTarget; plan: PlanDraft; planDates: Record<string, string>; launch: string };
 }
 export interface ProjectRecord { id: string; name: string; created_at: string; updated_at: string; data: ProjectData; /** Where the project lives on disk (live mode): a folder any coding agent can open. */ folder?: string }
@@ -115,7 +137,11 @@ export interface ExtractOptions { agent?: boolean; /** Use the reading a coding 
 /** Stage A's result. The early stages add the PRD's signals and the project name (throughline-starter). */
 export interface PlanExtract { plan: PlanDraft; signals: Signal[]; project: string | null; agent?: AgentRead | null }
 
-export interface StarterRunInput { stage: "starting" | "building"; files: UploadedFile[]; excludeSignals: string[]; epic: string | null }
+export interface StarterRunInput {
+  stage: "starting" | "building"; files: UploadedFile[]; excludeSignals: string[]; epic: string | null;
+  /** Building: teams the person linked to a Jira project by hand (the reading missed them), or "skip". */
+  teamProjects?: Record<string, string>;
+}
 
 export interface ReviewBackend {
   readonly mode: "sample" | "live";
@@ -133,6 +159,8 @@ export interface ReviewBackend {
   runReview(plan: PlanDraft, target: ReleaseTarget, onProgress: (stage: ProgressStage) => void): Promise<string>;
   /** The early stages (throughline-starter): signals → teams, contacts, approvals, actions; building adds Jira coverage. */
   runStarter(input: StarterRunInput, onProgress: (stage: ProgressStage) => void): Promise<Starter>;
+  /** The Jira projects the person can see, to link a team the reading missed. */
+  jiraProjects(): Promise<{ key: string; name: string }[]>;
 }
 
 export type JiraState = "off" | "consent" | "connecting" | "on";

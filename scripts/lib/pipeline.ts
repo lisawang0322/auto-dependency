@@ -219,6 +219,9 @@ export interface StarterInput {
   agentSignals?: AgentSignal[];
   /** Building only. */
   epicKey?: string | null;
+  /** Building: a team's Jira project the person linked by hand (the reading missed it), or "skip"; applied before the work
+   *  is searched, so that project's tickets count for the team. */
+  teamProjects?: Record<string, string | "skip">;
   source?: SourceSpec;
   label?: string;
   runsRoot?: string;
@@ -327,7 +330,7 @@ export async function runStarter(input: StarterInput): Promise<{ starter: Starte
   } else {
     if (!input.epicKey || !input.source) throw new Error("The building stage needs --epic and a Jira source.");
     const plan = await starterPlan(inputs, sig, input.files);
-    const target = await stageB({ plan, epicKey: input.epicKey, source: input.source });
+    const target = applyProjectChoices(await stageB({ plan, epicKey: input.epicKey, source: input.source }), input.teamProjects ?? {});
     say("target", `epic ${target.epic.key}, ${target.projects.filter((p) => p.jira_project).length}/${target.projects.length} needed teams have a Jira project`);
     const release = await stageC({ plan, target, source: input.source, label, readAt: input.readAt });
     say("release", `${release.stories.length} stories, ${release.related.length} related, ${release.search_candidates.length} search candidates`);

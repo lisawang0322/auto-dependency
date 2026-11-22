@@ -1,7 +1,9 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Finding, PlanDraft, ReleaseTarget, Run, TeamStatus } from "@throughline/schemas";
-import type { DecisionStore, RunSummary, RunDecisions, Stage } from "../backend/types";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { Finding, PlanDraft, ReleaseTarget, Run, TeamStatus, Commitment } from "@throughline/schemas";
+import { linkFindings, firstSeenLabel } from "@throughline/schemas";
+import type { DecisionStore, RunSummary, RunDecisions, Stage, ActionsGlance, ActionGlance } from "../backend/types";
 import { fmtDate, daysBetween, clock, prettyDates } from "../model/dates";
+import { Info } from "./Info";
 import { rollup, releaseStatus, visibleFindings, openFindingCount, nextActions, type TeamView, type Effective } from "../model/review";
 import { STAGE_SHORT } from "./GetStarted";
 import { sourceLabel } from "./PlanDocuments";
@@ -12,12 +14,23 @@ export type OwnerSource = "directory" | "files" | "inferred";
 interface Props {
   stage: Stage; store: DecisionStore; runs: RunSummary[]; runsById: Record<string, Run>; latestId: string;
   target: ReleaseTarget; launch: string; planIds: Set<string> | null; planDates: Record<string, string>; plan: PlanDraft; ownerSource: OwnerSource;
-  onChangeStage: () => void; onAddFiles: () => void; onConnectApps: () => void;
+  /** Back to the project's overview, where the stage, files and connections are changed. */
+  onOverview?: () => void;
   /** What the projects home shows for this project: the latest run's status and open actions. */
   onSummary?: (s: { status: string | null; open: number | null; detail: string | null }) => void;
   eyebrow?: string;
   /** A past record opened from History: everything is shown, nothing can be decided or ticked. */
   readOnly?: boolean;
+  /** The project's commitments: a finding about one shows where it was first written down, and the PM's call on it
+   *  follows the item from review to review (a dropped commitment's finding reads as dismissed). */
+  commitments?: Commitment[];
+  onCommitment?: (id: string, kind: "kept" | "dropped" | "reopen", reason: string) => void;
+  /** The checklist, for the panel beside the review; given this, the review leaves the list to the panel. */
+  onActions?: (a: ActionsGlance) => void;
+  /** With a PRD too: what it says about each team (why, who, signs off, on the work, its own next actions), shown at the
+   *  top of that team's card; and the teams only the PRD names, listed after the launch teams. */
+  teamExtra?: (team: string) => ReactNode;
+  moreTeams?: ReactNode;
 }
 
 const STATUS_LABEL: Record<TeamStatus, string> = { on_track: "On track", at_risk: "At risk", late: "Late" };
@@ -58,7 +71,21 @@ export function Review(p: Props) {
   const idx = p.runs.findIndex((r) => r.id === runId);
   const prevSummary = idx > 0 ? p.runs[idx - 1] : null;
   const prevRun = prevSummary ? p.runsById[prevSummary.id] : null;
-  const dec = saved[runId] ?? EMPTY;
+  const raw = saved[runId] ?? EMPTY;
+  // Which commitment each finding is about. On the latest run a commitment the PM dropped (here or at an earlier stage)
+  // dismisses its finding; that call lives on the list, not in this run's saved decisions.
+  const linked = useMemo(() => (p.commitments?.length ? linkFindings(p.commitments, run) : {}), [p.commitments, run]);
+  const withList = (d: RunDecisions, r: Run): RunDecisions => {
+    if (!p.commitments?.length) return d;
+    const l = r === run ? linked : linkFindings(p.commitments, r);
+    const extra: RunDecisions["decisions"] = {};
+    for (const f of r.findings) {
+      const c = l[f.id];
+      if (c?.decision?.kind === "dropped" && !d.decisions[f.id]) extra[f.id] = { kind: "dismissed", reason: `Dropped ${fmtDate(c.decision.at)}: ${c.decision.reason}`, at: c.decision.at };
+    }
+    return Object.keys(extra).length ? { ...d, decisions: { ...d.decisions, ...extra } } : d;
+  };
+  const dec = isLatest ? withList(raw, run) : raw;
 
   const viewTeams = useMemo(() => rollup(run.teams, dec.decisions, p.planIds, p.planDates), [run, dec, p.planIds, p.planDates]);
   const prevTeams = useMemo(() => (prevRun ? rollup(prevRun.teams, (saved[prevSummary!.id] ?? EMPTY).decisions, p.planIds, p.planDates) : null), [prevRun, prevSummary, saved, p.planIds, p.planDates]);
@@ -76,15 +103,19 @@ export function Review(p: Props) {
     const r = reason.trim();
     if (kind === "dismissed" && !r) return;
     const text = kind === "kept" ? `Kept "${f.title}" — added to actions` : `Dismissed "${f.title}" — ${r}`;
-    const decisions = { ...dec.decisions, [f.id]: { kind, reason: r, at: new Date().toISOString() } };
-    persist({ ...dec, decisions, log: [{ time: clock(), text }, ...dec.log] });
+    const decisions = { ...raw.decisions, [f.id]: { kind, reason: r, at: new Date().toISOString() } };
+    persist({ ...raw, decisions, log: [{ time: clock(), text }, ...raw.log] });
+    const c = linked[f.id];
+    if (c) p.onCommitment?.(c.id, kind === "kept" ? "kept" : "dropped", r);
     setReason("");
     setSel(f.id); // stay here: the detail now reads "Kept" or "Dismissed — reason" with Reopen, so the decision is visible
   };
   const reopen = (f: Finding) => {
-    const decisions = { ...dec.decisions };
+    const decisions = { ...raw.decisions };
     delete decisions[f.id];
-    persist({ ...dec, decisions, log: [{ time: clock(), text: `Reopened "${f.title}"` }, ...dec.log] });
+    persist({ ...raw, decisions, log: [{ time: clock(), text: `Reopened "${f.title}"` }, ...raw.log] });
+    const c = linked[f.id];
+    if (c?.decision) p.onCommitment?.(c.id, "reopen", "");
   };
 
   const release = releaseStatus(viewTeams);
@@ -93,14 +124,15 @@ export function Review(p: Props) {
   const openCount = isLatest ? openFindingCount(liveFindings, dec.decisions) : viewTeams.reduce((n, t) => n + t.items.filter((i) => i.effective === "gap" || i.effective === "late").length, 0);
   const decs = Object.values(dec.decisions);
   // R16: the next actions come from the latest run's shown findings that are open or kept; ticks are saved with that run.
-  const latestDec = saved[p.latestId] ?? EMPTY;
+  const latestRaw = saved[p.latestId] ?? EMPTY;
+  const latestDec = withList(latestRaw, latest);
   const latestLive = latest.findings.filter((f) => !p.planIds || p.planIds.has(f.plan_item_id));
   const actions = nextActions(visibleFindings(latestLive, showWeak), latestDec.decisions);
   const actionsDone = latestDec.actionsDone ?? {};
   const openActions = actions.filter((a) => !actionsDone[a.id]).length;
   useEffect(() => { if (isLatest && !p.readOnly) p.onSummary?.({ status: release, open: openActions, detail: `${openCount} open finding${openCount === 1 ? "" : "s"} · ${fmtDate(p.latestId)} run` }); }, [release, openActions, openCount, isLatest]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleAction = (id: string) => {
-    const next: RunDecisions = { ...latestDec, actionsDone: { ...actionsDone, [id]: !actionsDone[id] } };
+    const next: RunDecisions = { ...latestRaw, actionsDone: { ...actionsDone, [id]: !actionsDone[id] } };
     setSaved((s) => ({ ...s, [p.latestId]: next }));
     p.store.save(keyOf(p.latestId), next);
   };
@@ -110,6 +142,26 @@ export function Review(p: Props) {
   const hopProjects = [...new Set(run.release.related.map((r) => r.project))].sort();
   const otherGaps = run.linkage_gaps.filter((g) => !g.finding_id);
   const selDec = selected ? dec.decisions[selected.id] : undefined;
+  /** The team a finding belongs to, so a next action can lead to the team card that holds its finding. */
+  const teamOfFinding = (fid: string) => latest.teams.find((t) => t.items.some((i) => i.finding_id === fid)) ?? null;
+  const goToFinding = (fid: string) => {
+    const t = teamOfFinding(fid);
+    if (!t) return;
+    setFilter("all");
+    setCollapsed((c) => ({ ...c, [t.team]: false }));
+    setSel(fid);
+    requestAnimationFrame(() => document.getElementById(`team-card-${t.project_key}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  // The checklist goes to the panel: the latest run's actions, each leading to the team card that holds its finding.
+  const toggleRef = useRef(toggleAction); toggleRef.current = toggleAction;
+  const goRef = useRef(goToFinding); goRef.current = goToFinding;
+  // Who (when it is a person, not just the team) and by when; the why is on the team card the action leads to.
+  const actionItems: ActionGlance[] = actions.map((a) => ({ id: a.id, text: prettyDates(a.text), detail: a.who === teamOfFinding(a.id)?.team ? prettyDates(a.when) : `${a.who} · ${prettyDates(a.when)}`, team: teamOfFinding(a.id)?.team ?? null, done: !!actionsDone[a.id], kept: a.kept }));
+  const itemsKey = JSON.stringify(actionItems);
+  useEffect(() => {
+    if (p.readOnly || !p.onActions) return;
+    p.onActions({ items: actionItems, toggle: (id) => toggleRef.current(id), jump: (id) => goRef.current(id) });
+  }, [itemsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const planItem = selected ? p.plan.items.find((i) => i.id === selected.plan_item_id) : null;
   const planDue = planItem ? p.planDates[planItem.id] ?? planItem.due : null;
 
@@ -131,11 +183,16 @@ export function Review(p: Props) {
           <span className="eyebrow" style={{ color: "var(--blue-text)" }}>Suggested next action</span>
           <span>{prettyDates(selected.next_action?.action ?? selected.ask ?? selected.title)}</span>
           {selected.next_action && <span className="small">{selected.next_action.who} · {prettyDates(selected.next_action.by_when)}</span>}
+          {/* The action is marked done here, beside the evidence; the panel's list follows. */}
+          {p.onActions && !p.readOnly && actions.some((a) => a.id === selected.id) && (actionsDone[selected.id]
+            ? <span className="row" style={{ gap: 8, alignItems: "center", marginTop: 6 }}><span className="small" style={{ color: "var(--green-dark)", fontWeight: 600 }}>✓ Done</span><button type="button" className="linkbtn" style={{ minHeight: 28 }} aria-label="Undo: mark not done" onClick={() => toggleAction(selected.id)}>Undo</button></span>
+            : <div style={{ marginTop: 6 }}><button type="button" className="btn" style={{ minHeight: 32, padding: "0 12px", fontSize: 14 }} onClick={() => toggleAction(selected.id)}>Mark done</button></div>)}
         </div>
         <div className="box">
           <span className="eyebrow">Expected (plan)</span>
           <span>{planItem?.text ?? selected.plan_item_id}{planDue ? ` by ${fmtDate(planDue)}` : ""}</span>
           {planItem && <span className="small muted">Source: {sourceLabel(p.plan, planItem.source.file, planItem.source.locator)} · “{planItem.source.quote}”</span>}
+          {linked[selected.id] && <span className="small" data-testid="commitment-since">Committed since {firstSeenLabel(linked[selected.id], fmtDate)}{linked[selected.id].first_seen.stage !== "launching" && linked[selected.id].sources[0] ? ` · “${linked[selected.id].sources[0].quote}”` : ""}</span>}
         </div>
         <div className="box" style={{ gap: 8 }}>
           <span className="eyebrow">Found in Jira</span>
@@ -181,7 +238,7 @@ export function Review(p: Props) {
   return (
     <div className="flow stack">
       <header className="stack-sm" style={{ gap: 8 }}>
-        <span className="eyebrow">{p.eyebrow ?? "Step 4 of 4"} · {STAGE_SHORT[p.stage]}</span>
+        <span className="eyebrow">{p.eyebrow ?? "Step 3 of 3"} · {STAGE_SHORT[p.stage]}</span>
         <h1 className="flow-title">Launch {fmtDate(p.launch)} · {daysOut} days out</h1>
         <p className="lead">{fmtDate(run.release.snapshot_label)} run{isLatest ? " (latest)" : ""} · {epic}, its linked tickets in {hopProjects.join(", ")}, and each team's project</p>
         <div className="run-row">
@@ -196,7 +253,7 @@ export function Review(p: Props) {
         </div>
       </header>
 
-      <section className="card" style={{ gap: 6, borderColor: "var(--accent)" }} data-testid="next-actions">
+      {!p.onActions && <section className="card" style={{ gap: 6, borderColor: "var(--accent)" }} data-testid="next-actions">
         <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
           <h2>Your next actions</h2>
           <span className="small muted" data-testid="actions-count">{openActions} open · {actions.length - openActions} done</span>
@@ -211,13 +268,14 @@ export function Review(p: Props) {
                 <span className={done ? "done" : ""} style={done ? undefined : { fontWeight: 500 }}>{prettyDates(a.text)}</span>
                 <span className="small muted"><strong style={{ fontWeight: 500, color: "var(--text-2)" }}>{a.who}</strong> · {prettyDates(a.when)} · {prettyDates(a.why)}{a.kept ? " · kept" : ""}</span>
               </label>
+              {teamOfFinding(a.id) && <button type="button" className="linkbtn team-jump" aria-label={`Go to ${teamOfFinding(a.id)!.team}`} onClick={() => goToFinding(a.id)}>{teamOfFinding(a.id)!.team} ›</button>}
             </div>
           );
         })}
         {!isLatest && <p className="small muted">Actions come from the latest run ({fmtDate(p.latestId)}).</p>}
-      </section>
+      </section>}
 
-      {!isLatest && <div className="notice-grey">Earlier run, shown read-only. Switch to {fmtDate(p.latestId)} to keep or dismiss findings.</div>}
+      {!isLatest && <div className="notice-grey">Earlier run, shown read-only.<Info>Switch to {fmtDate(p.latestId)} to keep or dismiss findings.{p.onActions ? ` Your next actions are always the latest run's (${fmtDate(p.latestId)}).` : ""}</Info></div>}
 
       <div className="tiles">
         <div className={"tile " + (release === "Green" ? "green" : "amber")}>
@@ -231,7 +289,7 @@ export function Review(p: Props) {
       </div>
 
       <div>
-        <section aria-label="Teams and findings" className="stack" style={{ gap: 12 }}>
+        <section aria-label="Teams and findings" id="teams" className="stack" style={{ gap: 12, scrollMarginTop: 16 }}>
           <div className="between" style={{ gap: 10 }}>
             <h2>Teams and findings</h2>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -248,15 +306,16 @@ export function Review(p: Props) {
           {rows.length === 0 && <div className="card sm muted">No teams match this filter.</div>}
           {rows.map((t) => <TeamCard key={t.team} t={t} prev={prevTeams?.find((x) => x.team === t.team) ?? null} prevLabel={prevSummary?.label ?? null} isLatest={isLatest}
             findingsById={findingsById} shownIds={shownIds} showWeak={showWeak} selId={selected?.id ?? null} decisions={dec.decisions}
-            expanded={!collapsed[t.team]} onToggle={() => setCollapsed((c) => ({ ...c, [t.team]: !c[t.team] }))} onOpen={(id) => { setSel(id); setReason(""); }} detail={detailNode} />)}
+            expanded={!collapsed[t.team]} onToggle={() => setCollapsed((c) => ({ ...c, [t.team]: !c[t.team] }))} onOpen={(id) => { setSel(id); setReason(""); }} detail={detailNode}
+            extra={isLatest ? p.teamExtra?.(t.team) : undefined} />)}
           {isLatest && !selected && rows.length > 0 && <p className="small muted">Open a finding to see its evidence and make your call.</p>}
         </section>
+        {isLatest && p.moreTeams}
 
       </div>
 
       <section className="stack" style={{ gap: 10 }}>
-        <h2>Related tickets not linked to the epic</h2>
-        <p className="sm muted">Worth linking so they show up with the release. None of these is a gap on its own, so they don't count toward the findings above.</p>
+        <h2>Related tickets not linked to the epic<Info>Worth linking so they show up with the release. None of these is a gap on its own, so they don't count toward the findings above.</Info></h2>
         {otherGaps.length === 0 && <div className="card sm muted">None in this run.</div>}
         {otherGaps.map((g) => (
           <div key={g.id} className="card" style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10, padding: "14px 16px" }}>
@@ -294,16 +353,9 @@ export function Review(p: Props) {
         </section>
       )}
 
-      <section className="limits" aria-labelledby="limits-title">
-        <h2 id="limits-title" className="h3">What this review can't see</h2>
-        <p className="sm muted">Anything agreed only in meetings, chat or email; approvals tracked in apps that aren't connected; and whether the technical work itself is adequate.</p>
-      </section>
+      <p className="small muted limits" data-testid="limits">What this review can't see<Info>Anything agreed only in meetings, chat or email; approvals tracked in apps that aren't connected; and whether the technical work itself is adequate.</Info></p>
 
-      {!p.readOnly && <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <button type="button" className="btn" onClick={p.onChangeStage}>Change stage</button>
-        <button type="button" className="btn" onClick={p.onAddFiles}>Add more files</button>
-        <button type="button" className="btn" onClick={p.onConnectApps}>Connect more apps</button>
-      </div>}
+      {!p.readOnly && p.onOverview && <div><button type="button" className="btn" onClick={p.onOverview}>‹ Overview</button></div>}
     </div>
   );
 }
@@ -312,6 +364,7 @@ function TeamCard(p: {
   t: TeamView; prev: TeamView | null; prevLabel: string | null; isLatest: boolean; findingsById: Record<string, Finding>; shownIds: string[]; showWeak: boolean;
   selId: string | null; decisions: Record<string, { kind: string; reason: string }>; expanded: boolean; onToggle: () => void; onOpen: (id: string) => void;
   /** The open finding's detail, placed right under it. */ detail: ReactNode;
+  /** What the PRD says about this team, above its launch items. */ extra?: ReactNode;
 }) {
   const { t } = p;
   const openItems = t.items.filter((i) => i.effective === "gap" || i.effective === "late");
@@ -324,7 +377,7 @@ function TeamCard(p: {
   }
   let hiddenWeak = 0;
   return (
-    <div className="team" data-testid={`team-${t.project_key}`}>
+    <div className="team" id={`team-card-${t.project_key}`} data-testid={`team-${t.project_key}`} style={{ scrollMarginTop: 16 }}>
       <button type="button" className="team-head" aria-expanded={p.expanded} onClick={p.onToggle}>
         <span className="stack-sm" style={{ gap: 2 }}>
           <span style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
@@ -338,6 +391,8 @@ function TeamCard(p: {
       </button>
       {p.expanded && (
         <div className="team-body">
+          {p.extra && <div className="team-extra">{p.extra}</div>}
+          {p.extra && <span className="eyebrow" style={{ marginTop: 4 }}>For launch</span>}
           {t.items.map((i) => {
             const f = i.finding_id && p.isLatest ? p.findingsById[i.finding_id] : null;
             if (f && f.strength === "weak" && !p.showWeak) { hiddenWeak++; return null; }

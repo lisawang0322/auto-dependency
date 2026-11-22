@@ -1,93 +1,84 @@
 /**
- * The portal: projects are kept and come back. Sample mode keeps them in the browser; live mode on the server
- * (server/projects.test.ts covers that side, files included).
+ * The portal: projects are kept and come back, and grow by what is added to them, with no stage to pick. Sample mode keeps
+ * them in the browser; live mode on the server (server/projects.test.ts covers that side, files included).
  */
 import { test, expect } from "@playwright/test";
 
-test("a project is kept across visits: home, reopen without re-reading, history, the next stage, delete", async ({ page }) => {
+test("a project is kept across visits and grows by what is added: home, reopen without re-reading, history, Jira, delete", async ({ page }) => {
   await page.goto("/?fast=1&backend=sample");
   await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
   await expect(page.getByTestId("no-projects")).toBeVisible();
 
-  // A new project, named, set up and reviewed.
+  // A new project, named, given a PRD and reviewed.
   await page.getByRole("button", { name: "New project" }).first().click();
   await page.getByLabel("Project name").fill("Ingestion service");
-  await page.getByRole("radio", { name: /Just starting/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Use sample files" }).click();
+  await page.getByRole("button", { name: "a PRD", exact: true }).click();
   await page.getByTestId("agent-read").click();
   await expect(page.getByRole("heading", { name: "What we read in your PRD" })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Confirm and connect apps" }).click();
-  await page.getByRole("button", { name: "Find who to involve" }).click();
+  await page.getByRole("button", { name: "Confirm and run the review" }).click();
   await expect(page.getByRole("heading", { name: "Who to involve, and what to do first" })).toBeVisible({ timeout: 15_000 });
 
-  // The same places all through the project's life; the overview is the hub: stage, next step, checklist, latest review.
-  const nav = page.getByRole("navigation", { name: "Project" });
-  await expect(nav.getByRole("button")).toHaveText(["Overview", "Plan", "Connections", "Review", "History"]);
-  await nav.getByRole("button", { name: "Overview" }).click();
-  await expect(page.getByTestId("lifecycle")).toContainText("Just starting");
-  await expect(page.getByTestId("next-up")).toContainText("This stage is reviewed");
-  await expect(page.getByTestId("latest-review")).toContainText("9 open actions");
-  await expect(page.getByTestId("checklist")).toContainText("Everything just starting needs is in place");
+  // Once reviewed there are no tabs: the review is the project's page. Where it stands is read from what it has.
+  await expect(page.getByRole("navigation", { name: "Setup" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Project" })).toHaveCount(0);
+  await expect(page.getByTestId("phase")).toHaveText("Just starting");
+  await expect(page.getByTestId("lifecycle").getByRole("button", { name: "Change stage" })).toHaveCount(0);
+  // What would let it check more, with the reason the files give.
+  await expect(page.getByTestId("next-up")).toContainText("See who's actually on the work");
+  await expect(page.getByTestId("next-up")).toContainText("INGEST-142");
+  await expect(page.getByTestId("actions-count")).toHaveText("6 open · 0 done"); // what is due now; three teams are coming up
+  await expect(page.getByTestId("project-links")).toContainText("Files and reading");
   await expect(page.getByTestId("save-state")).toHaveText("Saved");
 
   // Home: the card says where it is and what is open.
   await page.getByRole("button", { name: "‹ All projects" }).click();
   const card = page.getByTestId("project-Ingestion service");
   await expect(card).toContainText("Just starting");
-  await expect(card).toContainText("9 open actions");
+  await expect(card).toContainText("6 open actions");
   await expect(card).toContainText("9 teams to involve");
 
-  // A reload keeps it; opening it lands on the overview with nothing read again, and the review is one click away.
+  // A reload keeps it; opening it lands on its page, the review, with nothing read again.
   await page.reload();
   await page.getByRole("button", { name: "Open Ingestion service" }).click();
   await expect(page.getByTestId("next-up")).toBeVisible();
-  await page.getByTestId("latest-review").getByRole("button", { name: "Open the review" }).click();
   await expect(page.getByRole("heading", { name: "Who to involve, and what to do first" })).toBeVisible();
   await expect(page.getByTestId("agent-reading")).toHaveCount(0);
   await expect(page).toHaveURL(/#\/p\/p\w+$/);
 
   // History: the review kept as a record, with what it found, among the events; newest first.
-  await nav.getByRole("button", { name: "History" }).click();
+  await page.getByTestId("project-links").getByRole("button", { name: /^History/ }).click();
   const history = page.getByTestId("history");
   const record = page.getByTestId("record-starting");
   await expect(record).toContainText("Who to involve");
-  await expect(record).toContainText("9 open actions");
-  await expect(record).toContainText("9 teams to involve");
+  await expect(record).toContainText("6 open actions");
   await expect(record).toContainText("current");
   await expect(history).toContainText("Devin read 1 file");
   await expect(history.locator("li").last()).toContainText("Project created");
 
-  // The next stage keeps the files and asks for what it needs.
-  await nav.getByRole("button", { name: "Overview" }).click();
-  await page.getByRole("button", { name: "Move to building" }).click();
-  // It stays on the overview: the checklist now asks for what building needs.
-  await expect(page.getByTestId("overview-notice")).toContainText("Your files and connections are kept");
-  await expect(page.getByTestId("stage-chip")).toHaveText("Stage: Building");
-  await expect(page.getByTestId("check-read")).toContainText("not read for this stage yet");
-  await expect(page.getByTestId("next-up")).toContainText("Read your files");
-  await expect(page.getByTestId("latest-review")).toContainText("No review at this stage yet");
-  await expect(page.getByTestId("latest-review")).toContainText("Earlier reviews");
-  await nav.getByRole("button", { name: "Plan", exact: true }).click();
-  await expect(page.locator(".file-row .name")).toHaveText(["ingestion-service-PRD.md"]); // the file is kept
-  await expect(page.getByRole("heading", { name: "What we read in your PRD" })).toHaveCount(0); // its reading was for the last stage
+  // Growing is adding, not a new setup: connect Jira from the suggestion, and the review runs again with who is on the work.
+  await page.getByRole("button", { name: "‹ Overview" }).first().click();
+  await page.getByTestId("next-up").getByRole("button", { name: "Connect Jira" }).click();
+  await expect(page.getByRole("navigation", { name: "Setup" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Connect Jira", exact: true }).click();
+  await page.getByRole("button", { name: "Accept" }).click();
+  await expect(page.getByRole("heading", { name: "Who's missing, and what hasn't started" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("phase")).toHaveText("Building");
 
-  // The just-starting review is still there, as it was, and opens read-only.
-  await nav.getByRole("button", { name: "History" }).click();
+  // The first review is still there, as it was, and opens read-only.
+  await page.getByTestId("project-links").getByRole("button", { name: /^History/ }).click();
   await expect(record).not.toContainText("current");
-  await expect(history).toContainText("Moved from Just starting to Building");
+  await expect(page.getByTestId("record-building")).toContainText("current");
   await record.getByRole("button", { name: "Open this review" }).click();
   const view = page.getByTestId("record-view");
   await expect(view).toContainText("A past review, shown as it was");
   await expect(view.getByRole("heading", { name: "Who to involve, and what to do first" })).toBeVisible();
-  await expect(view.getByTestId("involve-Data Platform").getByRole("button", { name: "Mark contacted" })).toBeDisabled();
-  await expect(view.getByRole("button", { name: "Change stage" })).toHaveCount(0);
+  await expect(view.getByTestId("next-actions").getByRole("checkbox").first()).toBeDisabled(); // a past review keeps its own list, read-only
   await view.getByRole("button", { name: "‹ History" }).click();
   await expect(page.getByTestId("record-view")).toHaveCount(0);
   await expect(page.getByTestId("save-state")).toHaveText("Saved");
   await page.getByRole("button", { name: "‹ All projects" }).click();
   await expect(card).toContainText("Building");
-  await expect(card).toContainText("Not reviewed yet");
 
   // Delete asks first, then removes it.
   await card.getByRole("button", { name: "Delete" }).click();
@@ -96,31 +87,36 @@ test("a project is kept across visits: home, reopen without re-reading, history,
   await expect(page.getByTestId("no-projects")).toBeVisible();
 });
 
-test("a launch review is kept as a record with its status, and opens read-only after the stage changes", async ({ page }) => {
+test("a launch review is kept as a record with its status, and opens read-only after the project grows", async ({ page }) => {
   await page.goto("/?fast=1&backend=sample");
   await page.getByRole("button", { name: "New project" }).first().click();
-  await page.getByRole("radio", { name: /Preparing to launch/ }).check();
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Use sample files" }).click();
+  await page.getByRole("button", { name: "launch documents" }).click();
   await page.getByTestId("agent-read").click();
   await expect(page.getByRole("heading", { name: "Plan we read" })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Confirm and connect apps" }).click();
-  await page.getByRole("button", { name: "Connect Jira" }).click();
+  // A plan of record asks for the launch check, which needs Jira: confirming goes to connect it, and connecting runs the review.
+  await page.getByRole("button", { name: "Confirm and connect Jira" }).click();
+  await page.getByRole("button", { name: "Connect Jira", exact: true }).click();
   await page.getByRole("button", { name: "Accept" }).click();
-  await page.getByRole("button", { name: "Check what's missing for launch" }).click();
   await expect(page.getByRole("heading", { name: /Launch Nov 20/ })).toBeVisible({ timeout: 15_000 });
-  const nav = page.getByRole("navigation", { name: "Project" });
-  await nav.getByRole("button", { name: "History" }).click();
+  await expect(page.getByTestId("phase")).toHaveText("Preparing to launch");
+  await page.getByTestId("project-links").getByRole("button", { name: /^History/ }).click();
   const record = page.getByTestId("record-launching");
   await expect(record).toContainText("Launch review · Nov 13 run");
   await expect(record).toContainText("Amber");
   await expect(record).toContainText("4 open actions");
-  // Back a stage from the stage tab: the launch review stays, as it was.
-  await nav.getByRole("button", { name: "Overview" }).click();
-  await page.getByTestId("lifecycle").getByRole("button", { name: "Change stage" }).click();
-  await page.getByRole("radio", { name: /Team forming/ }).check();
-  await nav.getByRole("button", { name: "History" }).click();
-  await record.getByRole("button", { name: "Open this review" }).click();
+
+  // The project grows (a PRD joins the files) and is reviewed again: the first launch review stays, as it was.
+  await page.getByRole("button", { name: "‹ Overview" }).first().click();
+  await page.getByTestId("project-links").getByRole("button", { name: "Files and reading" }).click();
+  await page.getByRole("button", { name: "a PRD", exact: true }).click();
+  await page.getByTestId("agent-read").click();
+  await page.getByRole("button", { name: "Confirm and run the review" }).click();
+  await expect(page.getByRole("heading", { name: /Launch Nov 20/ })).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId("project-links").getByRole("button", { name: /^History/ }).click();
+  await expect(record).toHaveCount(2);
+  await expect(record.last()).not.toContainText("current");
+  await record.last().getByRole("button", { name: "Open this review" }).click();
   const view = page.getByTestId("record-view");
   await expect(view.getByRole("heading", { name: /Launch Nov 20/ })).toBeVisible();
   await view.getByRole("button", { name: /Approval still open: Security review approved/ }).click();
@@ -133,47 +129,51 @@ test("setting up goes step by step, and back goes a step back: the link, the ste
   await page.goto("/?fast=1&backend=sample");
   await page.getByRole("button", { name: "New project" }).first().click();
   const steps = page.getByRole("navigation", { name: "Setup" });
-  await expect(steps.getByRole("button")).toHaveText(["1Stage", "2Plan", "3Connections", "4Review"]);
-  await page.getByRole("radio", { name: /Team forming/ }).check();
+  await expect(steps.getByRole("button")).toHaveText(["1Organisation", "2Files", "3Review"]); // Jira is optional, not a step
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByText("Step 2 of 4")).toBeVisible();
-  await expect(steps.getByRole("button", { name: /Stage/ })).toHaveText("✓Stage");
+  await expect(page.getByText("Step 2 of 3")).toBeVisible();
+  await expect(steps.getByRole("button", { name: /Organisation/ })).toHaveText("✓Organisation");
 
   // The link at the top goes back a step; the browser's Back returns to where you were.
-  await page.getByRole("button", { name: "‹ Step 1: Stage" }).first().click();
-  await expect(page.getByRole("radio", { name: /Team forming/ })).toBeChecked();
+  await page.getByRole("button", { name: "‹ Step 1: Organisation" }).first().click();
+  await expect(page.getByRole("heading", { name: "Set up your project" })).toBeVisible();
   await page.goBack();
-  await expect(page.getByText("Step 2 of 4")).toBeVisible();
-  await page.getByRole("button", { name: "Use sample files" }).click();
+  await expect(page.getByText("Step 2 of 3")).toBeVisible();
+  await page.getByRole("button", { name: "launch documents" }).click();
   await page.getByTestId("agent-read").click();
-  await page.getByRole("button", { name: "Confirm and connect apps" }).click();
-  await expect(page.getByText("Step 3 of 4")).toBeVisible();
-  await page.getByRole("button", { name: "‹ Step 2: Plan" }).last().click();
-  await expect(page.getByText("Step 2 of 4")).toBeVisible();
+  await page.getByRole("button", { name: "Confirm and connect Jira" }).click();
+  // Only a plan of record: its launch check is the one thing that needs Jira first, so confirming opens the connections.
+  const toFiles = page.getByRole("button", { name: "‹ Step 2: Files" }).last();
+  await expect(toFiles).toBeVisible();
+  await toFiles.click();
+  await expect(page.getByText("Step 2 of 3")).toBeVisible();
   await page.goBack();
-  await expect(page.getByText("Step 3 of 4")).toBeVisible();
-  await page.getByRole("button", { name: "Connect Jira" }).click();
+  await expect(toFiles).toBeVisible();
+  // Jira was the last thing missing: connecting it runs the review, and the step bar is gone with the setup.
+  await page.getByRole("button", { name: "Connect Jira", exact: true }).click();
   await page.getByRole("button", { name: "Accept" }).click();
-  await page.getByRole("button", { name: "Check my team and approvals" }).click();
-  await expect(page.getByRole("navigation", { name: "Project" })).toBeVisible({ timeout: 15_000 });
+  const results = page.getByRole("heading", { name: /Launch Nov 20/ });
+  await expect(results).toBeVisible({ timeout: 15_000 });
+  await expect(steps).toHaveCount(0);
 
-  // Once reviewed, it is a workspace: back from a section goes to the overview, and the browser's Back walks the screens.
-  const nav = page.getByRole("navigation", { name: "Project" });
-  await nav.getByRole("button", { name: "Plan", exact: true }).click();
-  await page.getByRole("button", { name: "‹ Overview" }).first().click();
+  // Once reviewed, the review is the project's page: the files are a link beside it, back comes back to it,
+  // and the browser's Back walks the screens.
+  await page.getByTestId("project-links").getByRole("button", { name: "Files and reading" }).click();
+  await expect(page.getByRole("heading", { name: "Add what you have" })).toBeVisible();
+  await page.getByRole("button", { name: "‹ Overview" }).click();
   await expect(page.getByTestId("next-up")).toBeVisible();
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Add what you have" })).toBeVisible();
   await page.goBack();
-  await expect(nav.getByRole("button", { name: "Review" })).toHaveAttribute("aria-current", "page");
+  await expect(results).toBeVisible();
 
   // Back from a project comes home.
   await page.getByRole("button", { name: "‹ All projects" }).click();
   await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
   await page.goBack();
-  await expect(page.getByRole("navigation", { name: "Project" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "‹ All projects" })).toBeVisible(); // the project is open again
   await expect(page.getByTestId("save-state")).toHaveText("Saved"); // nothing was lost by leaving quickly
   await page.goForward();
   await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-  await expect(page.getByTestId("project-Untitled project")).toContainText("Building");
+  await expect(page.getByTestId("project-Untitled project")).toContainText("Preparing to launch");
 });

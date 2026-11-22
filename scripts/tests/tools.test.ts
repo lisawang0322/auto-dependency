@@ -23,7 +23,7 @@ describe("npm run doctor", () => {
     const by = Object.fromEntries(checks.map((c) => [c.name, c]));
     expect(by.Node.level).toBe("ok");
     expect(by.Jira.level).toBe("ok");
-    expect(by.Jira.detail).toMatch(/as Fixture User; 6 visible projects: INGEST, DATA, SEC, SRE/);
+    expect(by.Jira.detail).toMatch(/as Fixture User; 7 visible projects: INGEST, DATA, SEC, SRE/);
     expect(by.Epic).toMatchObject({ level: "ok" });
     expect(by.Epic.detail).toMatch(/INGEST-142 "Ingestion service launch" is an Epic, In Progress, fix version 1.0 \(2026-11-20\)/);
   });

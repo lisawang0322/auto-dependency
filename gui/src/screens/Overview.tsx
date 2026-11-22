@@ -1,65 +1,168 @@
-import { useState } from "react";
-import type { HistoryRecord, ProjectEvent, Stage } from "../backend/types";
+import { useState, type ReactNode } from "react";
+import type { HistoryRecord, Stage, ActionsGlance, PathStep } from "../backend/types";
+import { NOT_IN_PLAN, type Commitment } from "@throughline/schemas";
+import { Commitments } from "./Commitments";
 import { fmtDate } from "../model/dates";
 import { STAGE_SHORT } from "./GetStarted";
-import { LIFECYCLE } from "./Projects";
+import { Info } from "./Info";
 
 export interface CheckItem {
   id: string; label: string;
-  /** done; todo (needed for this stage); optional (helps, not needed); waiting (needs an earlier item first) */
+  /** done; todo (needed for the review); optional (helps, not needed); waiting (needs an earlier item first) */
   state: "done" | "todo" | "optional" | "waiting";
   detail: string;
   action?: { label: string; go: () => void };
 }
-export interface NextUp { title: string; detail: string; action?: { label: string; go: () => void } }
+export interface NextUp { title: string; detail: string; action?: { label: string; go: () => void }; /** A quieter alternative, as a link. */ more?: { label: string; go: () => void } }
 
 interface Props {
-  name: string; stage: Stage; nextStage: Stage | null;
-  onMove: (s: Stage) => void; onChangeStage: () => void;
+  name: string; stage: Stage;
+  /** The project's path: which checks ran, and the one the suggestion leads to. */
+  path: PathStep[];
+  /** This review includes the PRD's check: the teams only the PRD names are then cards on the page, not a list. */
+  hasPrdReview?: boolean;
   notice: string | null; onDismissNotice: () => void;
   next: NextUp; items: CheckItem[];
-  latest: HistoryRecord | null; onOpenReview: () => void;
   earlier: HistoryRecord[]; onOpenRecord: (r: HistoryRecord) => void;
-  activity: ProjectEvent[]; onHistory: () => void;
+  /** The stage's review, once it has one: the page then is the review, framed by the stage and what comes next. */
+  review?: ReactNode;
+  onOpenFiles: () => void; onOpenConnections: () => void;
+  /** The review's checklist: the panel lists it, beside the team cards it points to. */
+  actions: ActionsGlance | null;
+  onHistory: () => void;
+  commitments: Commitment[]; onCommitment: (id: string, kind: "dropped" | "reopen", reason: string) => void;
 }
 
 const MARK: Record<CheckItem["state"], string> = { done: "✓", todo: "", optional: "", waiting: "" };
 const NEED: Record<CheckItem["state"], string> = { done: "", todo: "Needed", optional: "Recommended", waiting: "Later" };
 
-/** The project's hub: where it is in its life, the one thing to do next, what this stage still needs, what the last review found, and what happened lately. */
+/**
+ * The project's page, in two columns on a wide screen. The main column is the work: before the stage is reviewed, the one
+ * thing to do next and what the stage still needs; once reviewed, the review itself, a card per team. Beside it, "at a
+ * glance" keeps the stage and the next move, the checklist of next actions, and the links to files, connections and
+ * history in view while the main column scrolls.
+ */
 export function Overview(p: Props) {
-  const at = LIFECYCLE.findIndex((l) => l.id === p.stage);
   const doneCount = p.items.filter((i) => i.state === "done" || i.state === "optional").length;
   const complete = p.items.every((i) => i.state === "done" || i.state === "optional");
   // A finished checklist folds to one line; it opens on request, and stays open while anything is left.
   const [showAll, setShowAll] = useState(false);
   const open = !complete || showAll;
-  return (
-    <div className="flow stack">
-      <header className="stack-sm" style={{ gap: 8 }}>
-        <span className="eyebrow">Overview</span>
-        <h1 className="flow-title">{p.name}</h1>
-        <p className="lead">Where this project is, what to do next, and what its latest review found. Everything else is one click from here.</p>
-      </header>
 
-      {p.notice && (
-        <div className="notice-grey between" role="status" data-testid="overview-notice" style={{ gap: 12 }}>
-          <span>{p.notice}</span>
-          <button type="button" className="btn" style={{ minHeight: 32, padding: "0 10px" }} aria-label="Dismiss this note" onClick={p.onDismissNotice}>OK</button>
+  const notice = p.notice && (
+    <div className="notice-grey between" role="status" data-testid="overview-notice" style={{ gap: 12 }}>
+      <span>{p.notice}</span>
+      <button type="button" className="btn" style={{ minHeight: 32, padding: "0 10px" }} aria-label="Dismiss this note" onClick={p.onDismissNotice}>OK</button>
+    </div>
+  );
+  const reviewed = !!p.review;
+  // Once reviewed, each commitment is on its team's card (the early stages) or, at launch, with its finding or in the list
+  // of what the launch plan left out.
+  const leftOut = p.commitments.filter((c) => c.flags.includes(NOT_IN_PLAN) || c.state === "dropped");
+  const openCount = p.actions ? p.actions.items.filter((a) => !a.done).length : 0;
+  const jumpTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  /** Beside the page (above it on a narrow screen): where the project is and what comes next, then the checklist, the
+   *  review's next actions, each leading to the team card that says why. The cards are the page; the checklist is here. */
+  const glance = (
+    <aside className="glance" aria-label="Project at a glance" data-testid="glance">
+      <section className="glance-sec" aria-label="Project stage" data-testid="lifecycle">
+        {/* Where the project stands is read from what it has (a plan of record, work in Jira, a PRD); it is never chosen. */}
+        <div className="stack-sm" style={{ gap: 2 }}>
+          <span className="eyebrow">Where it stands</span>
+          <span style={{ fontWeight: 600 }} data-testid="phase">{STAGE_SHORT[p.stage]}</span>
         </div>
+        {reviewed && (
+          <ol className="path" data-testid="path" aria-label="The project's path">
+            {p.path.map((s) => (
+              <li key={s.id} className={s.state} data-testid={`path-${s.id}`} aria-current={s.state === "next" ? "step" : undefined}>
+                <span className="path-dot" aria-hidden="true">{s.state === "done" ? "✓" : ""}</span>
+                <span className="sm path-label">{s.label}<span className="sr-only">{s.state === "done" ? " (checked)" : s.state === "next" ? " (next)" : ""}</span></span>
+              </li>
+            ))}
+          </ol>
+        )}
+        {reviewed && (
+          <div className="glance-next" data-testid="next-up">
+            <span style={{ fontWeight: 600 }}>{p.next.title}{p.next.detail && <Info>{p.next.detail}</Info>}</span>
+            {p.next.action && <button type="button" className="btn outline-accent" style={{ alignSelf: "flex-start" }} onClick={p.next.action.go}>{p.next.action.label}</button>}
+            {p.next.more && <button type="button" className="linkbtn" style={{ alignSelf: "flex-start" }} onClick={p.next.more.go}>{p.next.more.label}</button>}
+          </div>
+        )}
+      </section>
+
+      {reviewed && p.actions && (
+        <section className="glance-sec" aria-labelledby="glance-actions" data-testid="next-actions">
+          <div className="between" style={{ gap: 8, alignItems: "baseline" }}>
+            <h2 id="glance-actions" className="h3" style={{ margin: 0 }}>Your next actions</h2>
+            <span className="small muted" data-testid="actions-count">{openCount} open · {p.actions.items.length - openCount} done</span>
+          </div>
+          {p.actions.items.length === 0 && <p className="small muted" style={{ margin: 0 }}>Nothing open.</p>}
+          {/* A status list, in the review's order: actions are marked done on their team's card (or finding), where the why is,
+              and each line here leads there. */}
+          <ol className="glance-actions">
+            {p.actions.items.map((a) => (
+              <li key={a.id} className={"glance-action" + (a.done ? " is-done" : "")}>
+                <span className={"status-mark" + (a.done ? " done" : "")} aria-hidden="true">{a.done ? "✓" : ""}</span>
+                <button type="button" className="glance-action-btn" onClick={() => p.actions!.jump(a.id)}
+                  aria-label={`${a.text}${a.done ? " (done)" : ""}${a.team ? `. Go to ${a.team}` : ""}`}>
+                  <span className={"sm" + (a.done ? " done" : "")} style={a.done ? undefined : { fontWeight: 500 }}>{a.text}</span>
+                  <span className="small muted">{a.detail}{a.kept ? " · kept" : ""}{a.team ? ` · ${a.team} ›` : ""}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+          {p.actions.later && (
+            <button type="button" className="linkbtn" style={{ minHeight: 32, alignSelf: "flex-start" }} data-testid="later-note" onClick={() => jumpTo(p.actions!.later!.anchor)}>
+              {p.actions.later.teams} more coming up · {p.actions.later.when.join(", ")} ›
+            </button>
+          )}
+          {p.stage === "launching" && p.hasPrdReview && (
+            <button type="button" className="linkbtn" style={{ minHeight: 32, alignSelf: "flex-start" }} onClick={() => jumpTo("prd-teams")}>Teams only your PRD names ›</button>
+          )}
+          {p.stage === "launching" && !p.hasPrdReview && leftOut.filter((c) => c.state !== "dropped").length > 0 && (
+            <button type="button" className="linkbtn" style={{ minHeight: 32, alignSelf: "flex-start" }} onClick={() => jumpTo("commitments")}>
+              {leftOut.filter((c) => c.state !== "dropped").length} named earlier, not in the launch plan ›
+            </button>
+          )}
+        </section>
       )}
 
-      <section className="lifecycle" aria-label="Project stage" data-testid="lifecycle">
-        <ol className="life-steps">
-          {LIFECYCLE.map((l, i) => (
-            <li key={l.id} className={i < at ? "past" : i === at ? "now" : ""} aria-current={i === at ? "step" : undefined}><span className="life-num" aria-hidden="true">{i < at ? "✓" : i + 1}</span>{l.label}</li>
-          ))}
-        </ol>
-        <div className="life-next">
-          {p.nextStage && <button type="button" className="btn" onClick={() => p.onMove(p.nextStage!)}>Move to {STAGE_SHORT[p.nextStage].toLowerCase()}</button>}
-          <button type="button" className="linkbtn" onClick={p.onChangeStage}>Change stage</button>
-        </div>
-      </section>
+      <nav className="glance-sec project-links" aria-label="Files, connections and history" data-testid="project-links">
+        <button type="button" className="linkbtn" onClick={p.onOpenFiles}>Files and reading</button>
+        <button type="button" className="linkbtn" onClick={p.onOpenConnections}>Connections</button>
+        <button type="button" className="linkbtn" onClick={p.onHistory}>History{p.earlier.length ? ` · ${p.earlier.length} earlier review${p.earlier.length === 1 ? "" : "s"}` : ""}</button>
+      </nav>
+    </aside>
+  );
+
+  const main = reviewed ? (
+    <div className="project-main stack" style={{ gap: 24 }}>
+      {notice}
+      {!complete && (
+        <section className="notice between" data-testid="checklist" style={{ gap: 12 }}>
+          <span>Something the review needs has changed since it ran: {p.items.filter((i) => i.state === "todo").map((i) => i.label.toLowerCase()).join(", ")}.</span>
+          {p.items.find((i) => i.state === "todo")?.action && <button type="button" className="btn" onClick={p.items.find((i) => i.state === "todo")!.action!.go}>{p.items.find((i) => i.state === "todo")!.action!.label}</button>}
+        </section>
+      )}
+      {p.review}
+      {/* At launch the team cards come from the plan of record; what an earlier stage promised and the POR leaves out
+          would otherwise vanish, so it is listed under the review, with Drop for what no longer applies. */}
+      {p.stage === "launching" && !p.hasPrdReview && leftOut.length > 0 && (
+        <div id="commitments"><Commitments commitments={leftOut} onDecide={p.onCommitment}
+          title="Named earlier, not in the launch plan"
+          intro="Teams and approvals named earlier that the plan of record leaves out. Confirm each is still needed, or drop it with a reason." /></div>
+      )}
+    </div>
+  ) : (
+    <div className="project-main stack" style={{ gap: 24 }}>
+      <header className="stack-sm" style={{ gap: 8 }}>
+        <span className="eyebrow">{STAGE_SHORT[p.stage]}</span>
+        <h1 className="flow-title">{p.name}</h1>
+        <p className="lead">What the review needs</p>
+      </header>
+
+      {notice}
 
       <section className="card next-up" data-testid="next-up" aria-labelledby="next-title">
         <span className="eyebrow" style={{ color: "var(--accent)" }}>Next up</span>
@@ -70,7 +173,7 @@ export function Overview(p: Props) {
 
       <section className="card" style={{ gap: 12 }} data-testid="checklist" aria-labelledby="check-title">
         <div className="between" style={{ gap: 12, alignItems: "baseline" }}>
-          <h2 id="check-title" className="h3">{complete ? `Everything ${STAGE_SHORT[p.stage].toLowerCase()} needs is in place` : `Ready for ${STAGE_SHORT[p.stage].toLowerCase()}`}</h2>
+          <h2 id="check-title" className="h3">{complete ? "Everything the review needs is in place" : "What the review needs"}</h2>
           {complete
             ? <button type="button" className="linkbtn" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>{showAll ? "Hide the checklist" : "Show the checklist"}</button>
             : <span className="small muted">{doneCount} of {p.items.length} done</span>}
@@ -92,19 +195,7 @@ export function Overview(p: Props) {
 
       <section className="card" style={{ gap: 12 }} data-testid="latest-review" aria-labelledby="latest-title">
         <h2 id="latest-title" className="h3">Latest review</h2>
-        {p.latest ? (
-          <div className="between" style={{ gap: 16, alignItems: "flex-start" }}>
-            <div className="stack-sm" style={{ gap: 4, minWidth: 0 }}>
-              <span style={{ fontWeight: 600 }}>{p.latest.title}</span>
-              <span className="small muted">{fmtDate(p.latest.at.slice(0, 10))} · {STAGE_SHORT[p.latest.stage]}{p.latest.summary?.detail ? ` · ${p.latest.summary.detail}` : ""}</span>
-              <div style={{ marginTop: 8 }}><button type="button" className="btn" onClick={p.onOpenReview}>Open the review</button></div>
-            </div>
-            <div className="project-status">
-              {p.latest.summary?.status && <span className={"status-pill " + p.latest.summary.status.toLowerCase()}>{p.latest.summary.status}</span>}
-              {p.latest.summary?.open != null && <span className="sm">{p.latest.summary.open} open action{p.latest.summary.open === 1 ? "" : "s"}</span>}
-            </div>
-          </div>
-        ) : <p className="sm muted" style={{ margin: 0 }}>No review at this stage yet. The checklist above says what it needs.</p>}
+        <p className="sm muted" style={{ margin: 0 }}>No review since the files changed.</p>
         {p.earlier.length > 0 && (
           <div className="stack-sm" style={{ gap: 6, borderTop: "1px solid var(--line-soft)", paddingTop: 12 }}>
             <span className="eyebrow">Earlier reviews</span>
@@ -118,17 +209,9 @@ export function Overview(p: Props) {
         )}
       </section>
 
-      <section className="stack" style={{ gap: 8 }} aria-labelledby="activity-title">
-        <div className="between" style={{ gap: 12, alignItems: "baseline" }}>
-          <h2 id="activity-title" className="h3">Recent activity</h2>
-          <button type="button" className="linkbtn" onClick={p.onHistory}>All history</button>
-        </div>
-        <ol className="history" data-testid="activity">
-          {[...p.activity].reverse().slice(0, 5).map((e, i) => (
-            <li key={i}><span className="small muted mono">{fmtDate(e.at.slice(0, 10))} {e.at.slice(11, 16)}</span><span>{e.text}</span></li>
-          ))}
-        </ol>
-      </section>
+      <div id="commitments"><Commitments commitments={p.commitments} onDecide={p.onCommitment} /></div>
     </div>
   );
+
+  return <div className="project-layout">{main}{glance}</div>;
 }

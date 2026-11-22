@@ -79,7 +79,12 @@ export class Workspace {
     if (!existsSync(pf)) return null;
     const p = YAML.parse(readFileSync(pf, "utf8")) ?? {};
     const stage = p.stage ?? null;
-    const reading = stage && existsSync(join(dir, "readings", stage, "plan.json")) ? readJson(join(dir, "readings", stage, "plan.json")) : null;
+    // Each reading by what was read: the PRD's (signals) and the plan of record's (dated items). A project saved when a chosen
+    // stage decided its one reading has it under readings/<stage>/ instead, and comes back as it was.
+    const at = (sub: string) => (existsSync(join(dir, "readings", sub, "plan.json")) ? readJson(join(dir, "readings", sub, "plan.json")) : null);
+    const prd = at("prd"), por = at("plan-of-record");
+    const split = !!(prd || por) || existsSync(join(dir, "readings", "prd")) || existsSync(join(dir, "readings", "plan-of-record"));
+    const reading = split ? (prd ?? por) : stage ? at(stage) : null;
     const records: any[] = [];
     if (existsSync(join(dir, "reviews"))) {
       for (const r of readdirSync(join(dir, "reviews"))) { const f = join(dir, "reviews", r, "review.json"); if (existsSync(f)) records.push(readJson(f)); }
@@ -91,8 +96,10 @@ export class Workspace {
       : [];
     const data: Record<string, any> = {
       ...(p.state ?? {}), stage, epic: p.epic ?? "", launch: p.launch ?? "", files: p.files ?? [], summary: p.summary ?? null,
-      plan: reading?.plan ?? null, signals: reading?.signals ?? [], project: reading?.project ?? null, agentRead: reading?.agent_read ?? null,
+      ...(split ? { plan: por?.plan ?? null, earlyPlan: prd?.plan ?? null } : { plan: reading?.plan ?? null }),
+      signals: reading?.signals ?? [], project: reading?.project ?? null, agentRead: (por ?? reading)?.agent_read ?? null,
       starter: current?.starter ?? null, records, events,
+      commitments: existsSync(join(dir, "commitments.yaml")) ? (YAML.parse(readFileSync(join(dir, "commitments.yaml"), "utf8"))?.commitments ?? []) : [],
     };
     return { id: p.id ?? id, name: p.name ?? id, created_at: p.created_at ?? "", updated_at: p.updated_at ?? "", data };
   }
@@ -161,15 +168,22 @@ export class Workspace {
   private write(dir: string, p: Omit<FolderProject, "data"> & { data: Record<string, any> }, prev: FolderProject | null) {
     const d = p.data ?? {};
     mkdirSync(dir, { recursive: true });
-    const { stage = null, epic = "", launch = "", files = [], summary = null, plan = null, signals = [], project = null, agentRead = null, starter = null, records = [], events = [], ...state } = d;
+    const { stage = null, epic = "", launch = "", files = [], summary = null, plan = null, earlyPlan, signals = [], project = null, agentRead = null, starter = null, records = [], events = [], commitments = [], ...state } = d;
     // project.yaml: the settings a person might read or edit; everything the GUI keeps that has no file of its own sits under state.
     writeFileSync(join(dir, "project.yaml"), `# A Throughline project. Edited by the GUI; readable by anyone.\n` + yamlOut({ schema: SCHEMA, id: p.id, name: p.name, created_at: p.created_at, updated_at: p.updated_at, stage, epic, launch, summary, files, state }));
-    // readings/<stage>/plan.json: what was read at this stage; removed when the reading no longer applies.
-    if (stage) {
-      const rf = join(dir, "readings", stage, "plan.json");
-      if (plan) { mkdirSync(join(dir, "readings", stage), { recursive: true }); writeFileSync(rf, JSON.stringify({ stage, read_at: agentRead ? new Date().toISOString() : null, project, agent_read: agentRead, signals, plan }, null, 2) + "\n"); }
+    // readings/prd/ and readings/plan-of-record/: what each kind of file said; removed when that reading no longer applies.
+    // A project the GUI saved before the readings were split (no earlyPlan in its data) keeps its readings/<stage>/ file.
+    const put = (sub: string, body: object | null) => {
+      const rf = join(dir, "readings", sub, "plan.json");
+      if (body) { mkdirSync(join(dir, "readings", sub), { recursive: true }); writeFileSync(rf, JSON.stringify(body, null, 2) + "\n"); }
       else if (existsSync(rf)) rmSync(rf);
-    }
+    };
+    const readAt = agentRead ? new Date().toISOString() : null;
+    if (earlyPlan !== undefined) {
+      mkdirSync(join(dir, "readings", "prd"), { recursive: true });
+      put("prd", earlyPlan ? { read_at: readAt, project, agent_read: agentRead, signals, plan: earlyPlan } : null);
+      put("plan-of-record", plan ? { read_at: readAt, agent_read: agentRead, plan } : null);
+    } else if (stage) put(stage, plan ? { stage, read_at: readAt, project, agent_read: agentRead, signals, plan } : null);
     // reviews/<id>/: every review as it was, and the current early-stage result.
     for (const r of records as any[]) {
       const rd = join(dir, "reviews", safeSeg(String(r.id)));
@@ -184,6 +198,8 @@ export class Workspace {
     // teams.yaml: the teams this project names and their Jira projects. Owners and people are left out on purpose.
     const teams = ((plan?.teams ?? []) as any[]).map((t) => ({ name: t.name, role: t.role ?? null, jira_project: t.jira_project_hint ?? null }));
     writeFileSync(join(dir, "teams.yaml"), `# Teams this project involves. No people: names and contacts stay with the organisation's directory, outside this folder.\n` + yamlOut({ teams }));
+    // commitments.yaml: the promises the project carries from stage to stage (PRD "Commitments"). Only the GUI writes it.
+    writeFileSync(join(dir, "commitments.yaml"), `# What this project has promised: teams to involve and approvals, from the first stage that named each one.\n# Kept by Throughline from what the PM confirms; agents read it and never edit it.\n` + yamlOut({ commitments }));
     writeFileSync(join(dir, "history.md"), `# History\n\n` + (events as any[]).map((e) => `- ${e.at} · ${String(e.text).replace(/\n/g, " ")}`).join("\n") + "\n");
     writeFileSync(join(dir, "README.md"), readme(p.name, d));
     writeFileSync(join(dir, "AGENTS.md"), this.opts.agentsMd ? this.opts.agentsMd(d) : "# Instructions for coding agents\n");
@@ -211,7 +227,9 @@ function readme(name: string, d: Record<string, any>): string {
   const s = d.summary;
   const out = [`# ${name}`, ``, `Stage: ${d.stage ?? "not set"}${d.epic ? ` · Epic: ${d.epic}` : ""}${d.launch ? ` · Launch: ${d.launch}` : ""}`, ``];
   if (s) out.push(`Latest review: ${s.status ? `${s.status} · ` : ""}${s.open ?? 0} open actions${s.detail ? ` · ${s.detail}` : ""}`, ``);
-  out.push(`Files: ${(d.files ?? []).map((f: any) => f.name).join(", ") || "none yet"}`, ``, `See history.md for what happened, reviews/ for every review, and AGENTS.md for how a coding agent works in this folder.`, ``);
+  const live = ((d.commitments ?? []) as any[]).filter((c) => c.state === "open" || c.state === "tracked" || c.state === "proposed");
+  if ((d.commitments ?? []).length) out.push(`Commitments: ${live.length} open, ${live.filter((c) => (c.flags ?? []).length).length} at risk (commitments.yaml)`, ``);
+  out.push(`Files: ${(d.files ?? []).map((f: any) => f.name).join(", ") || "none yet"}`, ``, `See history.md for what happened, reviews/ for every review, commitments.yaml for what the project has promised, and AGENTS.md for how a coding agent works in this folder.`, ``);
   return out.join("\n");
 }
 

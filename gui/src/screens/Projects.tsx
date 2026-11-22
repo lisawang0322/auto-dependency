@@ -47,7 +47,7 @@ export function ProjectsHome(p: Props) {
             <div className="stack-sm" style={{ gap: 8 }}>
               <span className="eyebrow">Your projects</span>
               <h1 className="flow-title">Projects</h1>
-              <p className="lead">Each project keeps its files, readings and reviews, from the first PRD to launch. Come back as it moves; add only what changed.</p>
+              <p className="lead">From the first PRD to launch. Add only what changed.</p>
             </div>
             <button type="button" className="btn primary" style={{ padding: "0 20px", flex: "none" }} onClick={p.onCreate}>New project</button>
           </header>
@@ -58,7 +58,7 @@ export function ProjectsHome(p: Props) {
           {p.projects !== null && list.length === 0 && (
             <section className="card empty-projects" data-testid="no-projects">
               <h2 className="h3">No projects yet</h2>
-              <p className="sm muted">Start one for anything you're planning or shipping. You'll pick its stage, add your plan, and connect the tools your teams use; next time it's all here.</p>
+              <p className="sm muted">Start one for anything you're planning or shipping.</p>
               <div><button type="button" className="btn primary" onClick={p.onCreate}>New project</button></div>
             </section>
           )}

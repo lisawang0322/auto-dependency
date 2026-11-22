@@ -119,6 +119,20 @@ describe("local API server: the early stages", () => {
     const bad = await api("POST", "/api/starter", { files, stage: "building" });
     expect(bad.status).toBe(400);
   });
+
+  it("lists the Jira projects, and a team linked by hand counts the work in its project", async () => {
+    expect((await api("GET", "/api/jira/projects")).data.projects.map((p: any) => p.key)).toEqual(["DATA", "DSGN", "INGEST", "SEC", "SECOPS", "SRE", "SRETOOLS"]);
+    const run = async (team_projects: Record<string, string>) => {
+      const start = await api("POST", "/api/starter", { files, stage: "building", epic: "INGEST-142", label: "2026-11-13", team_projects });
+      let job: any;
+      for (let i = 0; i < 100; i++) { job = (await api("GET", `/api/jobs/${start.data.job}`)).data; if (job.done) break; await new Promise((r) => setTimeout(r, 100)); }
+      expect(job.error).toBeUndefined();
+      return job.result.coverage.find((c: any) => c.team === "UX");
+    };
+    // Product Design's name does not say UX, so the reading cannot tie DSGN-31 to UX; the person's link does.
+    expect(await run({})).toMatchObject({ state: "missing" });
+    expect(await run({ UX: "DSGN", QA: "not a key" })).toMatchObject({ state: "covered", tickets: ["DSGN-31"], people: ["Mira Santos"] });
+  });
 });
 
 describe("Devin reads the uploads (agent: \"devin\")", () => {

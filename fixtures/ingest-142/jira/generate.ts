@@ -20,7 +20,7 @@ const PEOPLE = {
   wei: "Wei Zhang", tomas: "Tomás Herrera", anika: "Anika Rao",
   jordan: "Jordan Blake", fatima: "Fatima Noor",
   sam: "Sam Whitfield", lena: "Lena Fischer", omar: "Omar Haddad",
-  noah: "Noah Park", ava: "Ava Chen",
+  noah: "Noah Park", ava: "Ava Chen", mira: "Mira Santos",
 };
 
 const projects = [
@@ -28,6 +28,8 @@ const projects = [
   { key: "DATA", name: "Data Platform", category: "Platform", description: "Shared data platform: clusters, storage and permissions.", lead: PEOPLE.wei },
   { key: "SEC", name: "Security Engineering", category: "Security", description: "Application security reviews and launch approvals.", lead: PEOPLE.jordan },
   { key: "SRE", name: "Site Reliability Engineering", category: "Platform", description: "Capacity, on-call and production readiness.", lead: PEOPLE.sam },
+  // UX's work lives here, under a name the reading cannot tie to "UX": the case where the person links the team by hand.
+  { key: "DSGN", name: "Product Design", category: "Design", description: "Design for product surfaces: flows, screens and reviews.", lead: PEOPLE.mira },
   // decoys: plausible names that must never be matched silently
   { key: "SRETOOLS", name: "SRE Tooling", category: "Platform", description: "Internal tools built for the SRE org.", lead: PEOPLE.noah },
   { key: "SECOPS", name: "Security Operations", category: "Security", description: "Incident response and security monitoring.", lead: PEOPLE.ava },
@@ -57,6 +59,7 @@ issues.push({
     { type: "Blocks", dir: "inward", key: "SEC-881" },
     { type: "Relates", dir: "outward", key: "DATA-240" },
     { type: "Blocks", dir: "inward", key: "SRE-398" },
+    { type: "Relates", dir: "outward", key: "DSGN-31" },
   ],
   comments: [
     { created: "2026-10-20T09:00:00.000+0000", author: PEOPLE.priya, body: "Kickoff done. The plan of record v3 is the source of truth for dates and owners." },
@@ -186,6 +189,12 @@ issues.push(
     key: "INGEST-170", type: "Task", summary: "Test plan for ingestion launch", description: "QA sign-off is needed before GA. Nobody has picked this up yet.",
     assignee: null, created: "2026-11-01T09:00:00.000+0000", components: [],
     at: same("To Do", "2026-11-01T09:00:00.000+0000"),
+  },
+  {
+    key: "DSGN-31", type: "Task", summary: "Screens for the failed-events replay dashboard", description: "Support agents find and replay failed events. Flows and screens for review.",
+    assignee: PEOPLE.mira, created: "2026-10-24T09:00:00.000+0000", due: "2026-11-12", components: [],
+    links: [{ type: "Relates", dir: "inward", key: "INGEST-142" }],
+    at: { "2026-11-10": { status: "In Progress", updated: "2026-11-07T10:00:00.000+0000" }, "2026-11-13": { status: "In Review", updated: "2026-11-12T15:00:00.000+0000" } },
   },
   // decoy-project issues: only reachable if someone picks the wrong project
   {

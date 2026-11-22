@@ -147,7 +147,62 @@ td { padding: 12px 16px; border-bottom: 1px solid var(--line-soft); vertical-ali
 .map-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .map-item { display: flex; flex-direction: column; background: var(--ground); border-radius: 6px; padding: 8px 10px; }
 .engage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
-.btn.contacted { background: var(--green-bg); color: var(--green-dark); border-color: var(--green-line); }
+.stage-bar { flex-wrap: wrap; }
+.stage-next { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.project-links { display: flex; flex-wrap: wrap; gap: 4px 24px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
+/* The project's page: the work on the left, "at a glance" beside it (above it on narrow screens). */
+.project-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.project-main { min-width: 0; }
+.project-main .flow { max-width: none; }
+.glance { order: -1; display: flex; flex-direction: column; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
+.glance-sec { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--line-soft); }
+.glance-sec:first-child { border-top: 0; }
+.glance .life-steps { gap: 6px 16px; }
+.glance-next { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px dashed var(--line-soft); }
+.glance-item { display: flex; flex-direction: column; gap: 0; padding: 6px 0; border-top: 1px solid var(--line-soft); }
+.glance-activity { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.glance-activity li { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; }
+.glance .project-links { border-top: 1px solid var(--line-soft); padding-top: 10px; gap: 0 18px; flex-direction: row; flex-wrap: wrap; }
+/* Above the page on a narrow screen it stays short: counts and links, not lists. */
+@media (max-width: 1099px) { .glance-wide { display: none; } }
+@media (min-width: 1100px) {
+  .project-layout { grid-template-columns: minmax(0, 1fr) 320px; gap: 32px; }
+  .glance { order: 0; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+  .glance .life-steps { flex-direction: column; }
+}
+/* A team card: the team's why, who, what it owes, what to do, on one card (labels in a narrow left column). */
+.team-card { gap: 10px; scroll-margin-top: 16px; }
+.team-card.dropped { opacity: .6; }
+.team-facts { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px 12px; margin: 0; }
+.team-facts dt { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
+.team-facts dd { margin: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.owe-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 14px; }
+.rel-tag { font-size: 12px; font-weight: 500; padding: 1px 8px; border-radius: 999px; background: var(--grey-bg); color: var(--text-2); white-space: nowrap; }
+.rel-tag.signs { background: none; border: 1px solid var(--line-strong); color: var(--ink); }
+.team-next { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; padding: 2px 0; }
+@media (max-width: 560px) { .team-next { grid-template-columns: 1fr; justify-items: start; } }
+.team-next .done { text-decoration: line-through; color: var(--muted); }
+.later-team { padding: 0; gap: 0; }
+.later-team > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 12px 16px; cursor: pointer; list-style: none; }
+.later-team > summary::before { content: "›"; color: var(--muted); transition: transform .15s; }
+.later-team[open] > summary::before { transform: rotate(90deg); }
+.later-team > .team-card { border: 0; border-top: 1px solid var(--line-soft); border-radius: 0 0 8px 8px; }
+.team-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
+.team-jump { min-height: 28px; white-space: nowrap; font-size: 13px; margin-left: auto; align-self: center; }
+@media (max-width: 560px) { .team-facts { grid-template-columns: 1fr; gap: 2px; } .team-facts dt { padding-top: 6px; } }
+/* The panel: the stages on one line, and the checklist, each action leading to its team's card. */
+.glance-actions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.glance-action { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start; padding: 6px 0; border-top: 1px solid var(--line-soft); }
+.status-mark { width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; border: 1.5px solid var(--line-strong); box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; line-height: 1; }
+.status-mark.done { background: var(--green); border-color: var(--green); color: #fff; }
+.glance-action-btn { display: flex; flex-direction: column; gap: 2px; padding: 2px 4px; margin: -2px -4px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.glance-action-btn:hover, .glance-action-btn:focus-visible { background: var(--ground); }
+.glance-action .done { text-decoration: line-through; color: var(--muted); }
+.life-line { display: flex; flex-wrap: wrap; gap: 2px 6px; list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--muted); }
+.life-line li + li::before { content: "›"; margin-right: 6px; color: var(--line-strong); }
+.life-line li.past { color: var(--green-dark); }
+.life-line li.now { color: var(--ink); font-weight: 600; }
+.commit-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line-soft); font-size: 14px; align-items: start; }
 .approval-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; align-items: baseline; }
 @media (max-width: 560px) { .approval-row { grid-template-columns: 1fr; gap: 2px; } }
 .coverage-table { min-width: 760px; }
@@ -246,9 +301,6 @@ h2.numbered { display: flex; align-items: center; gap: 10px; }
 .limits { border-top: 1px solid var(--line); padding-top: 18px; display: flex; flex-direction: column; gap: 4px; }
 .role-group { display: flex; flex-direction: column; gap: 10px; }
 .role-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
-.contact-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line-soft); padding-top: 10px; margin-top: auto; }
-.contact-row > span { min-width: 0; }
-.contact-row > .btn { flex: none; }
 
 /* ---- projects home ---- */
 .project-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -317,3 +369,30 @@ nav.setup-steps .step-num.done { background: var(--green-bg); color: var(--green
 nav.setup-steps button:disabled { cursor: default; }
 /* Back, at the top of a step, where people look for it. */
 .back-link { align-self: flex-start; margin-bottom: -12px; font-weight: 500; }
+
+/* The panel: the project's path */
+.path { display: flex; flex-direction: column; gap: 0; margin: 4px 0 0; padding: 0; list-style: none; }
+.path li { position: relative; display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.path li + li::before { content: ""; position: absolute; left: 8.25px; top: -5px; height: 10px; border-left: 1.5px solid var(--line-strong); }
+.path .path-dot { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; font-size: 11px; font-weight: 700; line-height: 1; background: var(--paper); }
+.path .done .path-dot { background: var(--green); border-color: var(--green); color: #fff; }
+.path .next .path-dot { border-color: var(--accent); box-shadow: 0 0 0 3px var(--blue-bg); }
+.path .next .path-label { font-weight: 600; }
+.path .later .path-label { color: var(--muted); }
+
+/* Info: the explanation behind a line, on hover, focus or tap */
+.info { position: relative; display: inline-flex; vertical-align: middle; margin-left: 4px; }
+.info-btn { width: 18px; height: 18px; min-height: 0; padding: 0; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--paper); color: var(--muted); font: italic 600 11px/1 Georgia, serif; cursor: help; display: grid; place-items: center; }
+.info-btn::before { content: ""; position: absolute; inset: -13px; } /* a 44px target without the bulk */
+.info-btn:hover, .info-btn:focus-visible { border-color: var(--accent); color: var(--accent); }
+.info-tip { display: none; position: absolute; z-index: 20; left: -8px; top: calc(100% + 6px); width: max-content; max-width: min(300px, 80vw); padding: 8px 10px; border-radius: 6px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 400; font-style: normal; line-height: 1.4; text-align: left; white-space: normal; box-shadow: 0 4px 14px rgba(0,0,0,.15); pointer-events: none; } /* never in the way of what it covers */
+.info:hover .info-tip, .info:focus-within .info-tip { display: block; }
+/* The panel scrolls and clips, so there the tip spans the section it is in, below the line, whatever side the "i" is on. */
+.glance-sec, .glance-next { position: relative; }
+.glance .info { position: static; }
+.glance .info-btn { position: relative; } /* keeps its enlarged target on the "i", not the section */
+.glance .info-tip { left: 0; right: 0; top: auto; width: auto; max-width: none; margin-top: 6px; }
+
+/* A dialog over the page: a centred card on a dimmed backdrop; at phone width it fills the width with the usual gutter. */
+.modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(20, 20, 20, .35); display: grid; place-items: center; padding: 16px; }
+.modal { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; gap: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.2); }

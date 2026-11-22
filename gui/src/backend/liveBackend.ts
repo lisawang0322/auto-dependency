@@ -95,7 +95,7 @@ export class LiveBackend implements ReviewBackend {
   }
 
   async runStarter(input: StarterRunInput, onProgress: (s: ProgressStage) => void): Promise<Starter> {
-    const { job } = await api<{ job: string }>("POST", "/api/starter", { files: await this.payload(input.files), stage: input.stage, exclude_signals: input.excludeSignals, epic: input.epic });
+    const { job } = await api<{ job: string }>("POST", "/api/starter", { files: await this.payload(input.files), stage: input.stage, exclude_signals: input.excludeSignals, epic: input.epic, team_projects: input.teamProjects ?? {} });
     onProgress(0);
     for (;;) {
       await wait(400);
@@ -105,6 +105,8 @@ export class LiveBackend implements ReviewBackend {
       if (j.done && j.result) return Starter.parse(j.result);
     }
   }
+
+  async jiraProjects() { return (await api<{ projects: { key: string; name: string }[] }>("GET", "/api/jira/projects")).projects; }
 
   async resolveRelease(plan: PlanDraft, epicKey: string): Promise<ReleaseTarget> {
     const { target } = await api<{ target: unknown }>("POST", "/api/target", { plan, epic: epicKey });

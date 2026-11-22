@@ -38,6 +38,14 @@ export function demoLoginPage(next: string): string {
   return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · Sample Co</title><style>${STYLE}</style><main><span class="tag">Demo identity provider · stands in for Microsoft Entra ID</span><h1>Sign in to Sample Co</h1><p>Pick who to sign in as. Each person keeps their own plans, decisions and connections, as they would with the company's real sign-in.</p>${rows}</main>`;
 }
 
+/** The site the demo Jira connection stands in for; its issues are the INGEST-142 sample snapshot. */
+export const DEMO_JIRA_SITE = "sample-co.atlassian.net";
+
+/** The Jira consent page (AUTH=demo, no Atlassian app set up): what Atlassian's consent screen would show, read-only scopes. */
+export function demoAtlassianConsentPage(popup: boolean, next: string): string {
+  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Throughline · Atlassian</title><style>${STYLE}</style><main><span class="tag">Demo Atlassian sign-in · stands in for Sign in with Atlassian</span><h1>Throughline is requesting access to your Atlassian account</h1><p>Site: <b>${DEMO_JIRA_SITE}</b> (Sample Co). Throughline would be able to:</p><ul><li>Read issues, comments, links and due dates</li><li>Read projects, components and fix versions</li><li>Read user names, to find owners</li></ul><p>It cannot create, edit, comment on or move issues. The issues are the sample INGEST-142 release.</p><form method="post" action="/auth/atlassian/callback?${popup ? "popup=1&" : ""}next=${encodeURIComponent(next)}" style="display:flex;gap:10px"><button type="submit" name="decision" value="accept" class="primary">Accept</button><button type="submit" name="decision" value="cancel">Cancel</button></form></main>`;
+}
+
 /** The directory consent page: what Entra's admin-consent prompt would show for the Graph scope. */
 export function demoDirectoryConsentPage(scopes: string[], popup: boolean): string {
   return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Permissions requested · Sample Co</title><style>${STYLE}</style><main><span class="tag">Demo identity provider · stands in for Microsoft Entra ID</span><h1>Permissions requested</h1><p><b>Throughline</b> wants to read your organisation's directory on your behalf (${escapeHtml(scopes.join(", "))}):</p><ul><li>Names, titles and departments of everyone at Sample Co</li><li>Who reports to whom</li></ul><p>It cannot change anything, and it keeps a snapshot, not a token.</p><form method="post" action="/auth/directory/entra/callback${popup ? "?popup=1" : ""}" style="display:flex;gap:10px"><button type="submit" name="decision" value="accept" class="primary">Accept</button><button type="submit" name="decision" value="cancel">Cancel</button></form></main>`;

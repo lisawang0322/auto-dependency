@@ -44,6 +44,17 @@
     }
   },
   {
+    "key": "DSGN",
+    "name": "Product Design",
+    "projectCategory": {
+      "name": "Design"
+    },
+    "description": "Design for product surfaces: flows, screens and reviews.",
+    "lead": {
+      "displayName": "Mira Santos"
+    }
+  },
+  {
     "key": "SRETOOLS",
     "name": "SRE Tooling",
     "projectCategory": {

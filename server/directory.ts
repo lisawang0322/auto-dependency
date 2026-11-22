@@ -215,7 +215,9 @@ export class DirectoryHub {
     }
     return this.teamsFromGraphUsers(users, `Microsoft Entra ID · ${tenant}`);
   }
-  /** A team per department, its people with their titles; the department's outside manager (whom most of it reports to) leads the list. */
+  /** A team per department, its people with their titles. The team's own lead (the member who reports outside the
+   *  department) comes first, since the first person is who the team is contacted through; the manager outside the
+   *  department, whom most of it reports to, comes last, as the escalation. */
   private teamsFromGraphUsers(users: { displayName: string; jobTitle: string | null; department: string | null; manager: string | null }[], label: string): DirectorySnapshot {
     const byDept = new Map<string, DirectoryEntry>();
     for (const v of users) {
@@ -224,12 +226,17 @@ export class DirectoryHub {
       t.people.push({ name: v.displayName, title: v.jobTitle });
       byDept.set(v.department, t);
     }
-    // The department's manager (the one most of its people report to, when they report outside it) leads the list.
     for (const t of byDept.values()) {
       const counts = new Map<string, number>();
       for (const v of users) if (v.department === t.name && v.manager && !t.people.some((p) => p.name === v.manager)) counts.set(v.manager, (counts.get(v.manager) ?? 0) + 1);
-      const lead = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-      if (lead) { const m = users.find((v) => v.displayName === lead); t.people.unshift({ name: lead, title: m?.jobTitle ?? "manager" }); }
+      const outside = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      if (!outside) continue;
+      // The member who reports to that manager leads the team (a security lead, not the platform director above them).
+      const leadName = users.find((v) => v.department === t.name && v.manager === outside)?.displayName;
+      const i = t.people.findIndex((p) => p.name === leadName);
+      if (i > 0) t.people.unshift(...t.people.splice(i, 1));
+      const m = users.find((v) => v.displayName === outside);
+      t.people.push({ name: outside, title: m?.jobTitle ?? "manager" });
     }
     const teams = [...byDept.values()];
     return { source: "entra", label, teams, people: teams.reduce((n, t) => n + t.people.length, 0), connected_at: new Date().toISOString() };

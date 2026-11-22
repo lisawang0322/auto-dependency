@@ -4,9 +4,13 @@ Oct 25, 2026 · @Lisa
 
 ## Summary
 
-An agent that reads a project's plan and the tools its teams already use, then tells the owner who to involve, what's missing and what to do next. It adapts to the project's stage: just starting, building, or preparing to launch. Its core, and this semester's MVP, is the launch review: it checks a release's Jira work against its plan of record (POR) and launch checklist, lists the gaps with owners and evidence, gives a next action for each, and tracks each team's status across review runs. This semester: a working prototype on sample data. The completed prototype is the deliverable; there is no usability testing.
+An agent that reads a project's plan and the tools its teams already use, then tells the owner who to involve, what's missing and what to do next. It checks what the project's files and connections allow, with no stage to choose: who to involve from a PRD, who is actually on the work once Jira is connected, and whether each team is ready to launch: from the PRD's commitments and Jira, or against a plan of record and launch checklist when the company has them. Its core, and this semester's MVP, is the launch review: it checks a release's Jira work against its plan of record (POR) and launch checklist, lists the gaps with owners and evidence, gives a next action for each, and tracks each team's status across review runs. This semester: a working prototype on sample data. The completed prototype is the deliverable; there is no usability testing.
 
 **Revised Oct 25** after Professor Prayaga's review of the prototype: added onboarding, plan files in any format, "Connect your apps" in place of Jira-only, a stage-aware flow, and next actions on every result.
+
+**Revised Nov 22, later** (repo copy): launch readiness no longer needs a plan of record, which not every company writes. With a PRD and Jira, each team is read as ready, at risk, blocking or can't tell from what the PRD commits it to; a plan of record or launch checklist is optional and adds dated items. See "Launch readiness without a plan of record".
+
+**Revised Nov 22** (repo copy): no stages. The person adds what they have; each file is read for what it is (a PRD for the sentences that imply a team or an approval, a plan of record and launch checklist for what they commit to), and every check those files and connections allow runs as one review. The phase shown (just starting, building, preparing to launch) is read from the evidence, never chosen.
 
 **Revised Nov 21** (repo copy): renamed from Release Readiness Review to **Throughline**: the PM's view of a project from PRD to launch, keeping the plan and the tickets telling the same story, with a coding agent such as Devin doing the reading. The skills are now `throughline` (the entry skill) and `throughline-reader`, `-analyzer`, `-status`, `-starter`.
 
@@ -56,23 +60,24 @@ Current tools (Jira, Asana, Linear, Planview) don't track business-process depen
 
 Known miss: anything agreed only in meetings or Slack.
 
-The same flow adapts to earlier stages:
+There is no stage to pick. Each check runs once what it needs is here, and they run together as one review, with every team's results on one card:
 
-| Stage | User adds | They get |
+| Check | Needs | Gives |
 |---|---|---|
-| Just starting | A PRD or one-pager; the employee directory | Teams to involve, with why and when; a likely contact per team; a stakeholder map; approvals they'll need; first actions |
-| Building | Their plan; Jira; a team list or directory | Teams missing from the work; approvals not started or without an owner; next actions |
-| Preparing to launch | POR and launch checklist; Jira and the release epic | The launch review above: findings with evidence, team status across runs, next actions |
+| Who to involve | A PRD or one-pager (the employee directory adds names) | Teams to involve, with why and when; a likely contact per team; a stakeholder map; approvals they'll need; first actions |
+| Who is on the work | The same, plus Jira and the epic the work is tracked in | Teams missing from the work; approvals not started or without an owner; next actions |
+| Ready to launch | The same as above, once the PM asks for it; the launch date comes from the epic's release date | Each team ready, at risk, blocking or can't tell, with why; the project's answer is its worst team |
+| What is missing for launch | Optional: a plan of record or launch checklist, plus Jira and the epic; a team list sharpens it | The launch review above: dated findings with evidence, team status across runs, next actions |
 
 ## Scope
 
-**MVP (locked by Nov 4):** the launch review. Onboarding that explains the tool, what counts as a plan, and asks the project's stage; plan files in any format (doc, slides, spreadsheet, PDF), with a POR required and a launch checklist and team list optional; "Connect your apps", where apps the company allows can be connected and the rest are greyed out (Jira works; others are shown only); process, cross-team date and commitment gaps; linkage gaps between the epic and other teams' tickets; evidence, strength and a next action on every finding; one review screen over saved runs that combines findings and team status, with history across runs; an answer key for each sample release.
+**MVP (locked by Nov 4):** the launch review. Onboarding that explains the tool, what counts as a plan, and asks the project's stage; plan files in any format (doc, slides, spreadsheet, PDF), with a POR required and a launch checklist and team list optional (since Nov 22 a POR is optional: see "Launch readiness without a plan of record"); "Connect your apps", where apps the company allows can be connected and the rest are greyed out (Jira works; others are shown only); process, cross-team date and commitment gaps; linkage gaps between the epic and other teams' tickets; evidence, strength and a next action on every finding; one review screen over saved runs that combines findings and team status, with history across runs; an answer key for each sample release.
 
 **Built Oct 30, ahead of the Nov 16–22 slot:** the early-stage path — suggest teams, contacts and approvals from a PRD plus an employee directory — and the building-stage path (teams missing from the Jira work; approvals not started or without an owner). Nov 16–22 now goes to evaluating both on a second sample release and fixing what the evaluation finds.
 
 **Designed only (prototype):** connectors other than Jira and the employee directory (shown in the gallery, not connectable).
 
-**Out this semester:** usability testing; meeting notes, Slack and email; follow-up chat; other gap types (coverage, ownership, assumption drift); briefs for other roles; launch reviews without a POR; writing to Jira; multi-release rollup; plugin packaging; Glean and Asana; real company data.
+**Out this semester:** usability testing; meeting notes, Slack and email; follow-up chat; other gap types (coverage, ownership, assumption drift); briefs for other roles; writing to Jira; multi-release rollup; plugin packaging; Glean and Asana; real company data.
 
 ## Requirements
 
@@ -91,9 +96,9 @@ The same flow adapts to earlier stages:
 | R11 | Three skills (reader, analyzer, status) plus an orchestrator; each skill usable alone. The status skill rolls findings up per team and compares them with the previous run |
 | R12 | Sample data and answer key: someone else writes the sample POR, checklist, org map and Jira projects, including known gaps (one is an unlinked cross-team blocker) and an answer key listing them. Each sample release has at least two dated snapshots, with known status changes between them. Devin runs each snapshot 3 times, and the output is checked against the key |
 | R13 | Surface linkage gaps found in R4: a matching ticket in another team's project that isn't linked to the epic, or an issue key mentioned in a comment with no link. Each shows both tickets and the suggested link type. A linkage gap behind a finding is shown on that finding; the rest are listed in a separate "Linkage gaps" section that does not count toward the 10-finding cap |
-| R14 | Onboarding: say what the tool does and what counts as a plan (PRD, one-pager, POR deck, brief, checklist; any format, no template), ask the project's stage, and list what to have ready for that stage before upload |
-| R15 | Connect your apps: a gallery grouped by kind (work tracking, docs, product planning, people and org, chat); apps the company allows can be connected read-only, others are greyed out; required and recommended apps marked per stage. Jira and the employee directory work; others are shown only |
-| R16 | Next actions: every finding carries one (who, what, by when, why), and every result opens with the user's next actions for their stage, which they can tick off |
+| R14 | Onboarding: say what the tool does and what counts as a plan (PRD, one-pager, POR deck, brief, checklist; any format, no template), and say what each kind of file lets the review check; there is no stage to choose |
+| R15 | Connect your apps: a gallery grouped by kind (work tracking, docs, product planning, people and org, chat); apps the company allows can be connected read-only, others are greyed out; Jira marked required only when a plan of record asks for the launch check (readiness without one needs Jira too, but only once the PM asks for it). Jira and the employee directory work; others are shown only |
+| R16 | Next actions: every finding carries one (who, what, by when, why), and every result keeps the user's next actions in view beside it, each marked done on its team's card |
 | R17 | Early stage: from a PRD, list the signals that imply a team (with the quote), suggest teams to involve with why and when, a likely contact per team from the directory, a stakeholder map, and the approvals to plan for |
 | R18 | Building stage: compare the teams the plan needs with the people on the Jira work, and show approvals not started or without an owner |
 
@@ -135,6 +140,97 @@ Phasing: directory export (built) → Jira projects as teams, through the Jira c
 
 The tool is not a one-time review. It opens on the person's projects; each keeps its files, readings, epic, decisions and runs, so a return visit starts from where the project is and asks only for what changed. A project moves through its life (just starting → building → preparing to launch) from its overview, keeping its files and connections, and its history records what was added, read, reviewed and moved.
 
+## Commitments: one list the checks share (first slice built, Nov 2026)
+
+Each project keeps one running list of commitments: the teams, approvals, deliverables and launch checks it has promised. Every stage reads that list and adds to it, so a launch finding can say how long something has been owed. Today each stage works everything out again from its own files: the building stage recomputes teams and approvals from the PRD's signals, launch compares only the POR and checklist with Jira, and decisions are saved per run. The project moves forward, but what it learned does not come with it. That is the gap between the name and the product.
+
+**What a commitment holds.** One entry in `commitments.yaml` in the project folder, beside `teams.yaml`. It belongs to the project, not to a run.
+
+| Field | What it holds | Example |
+| --- | --- | --- |
+| id | Stable for the project's life; never reused | `c-007` |
+| kind | team, approval, deliverable, dependency, launch check | approval |
+| what | The promise in plain words | Security review approved |
+| team · owner | The team that owes it; a person once the directory or Jira names one | Security · Jordan Blake |
+| due | A date, or a phrase until a later plan dates it | before launch → Nov 20 |
+| first seen | Stage, date and file it was first written down in | Starting · PRD §2 Scope |
+| sources | Every quote that backs it, across all files, each checked against its original | PRD §2, POR §4 |
+| ticket | The Jira key it is tracked by, and how it was matched | SEC-881 · linked to the epic |
+| state | Proposed, open, tracked, done or dropped (lifecycle below) | tracked |
+| decision | The PM's call and reason; it holds until the PM changes it | kept · Nov 13 |
+| history | One line per review that changed it | Nov 13: still In Review, 7 days to launch |
+
+**How each check reads and writes it (the checks were stages until Nov 22).**
+
+| Stage | Proposes | Checks | Example result |
+| --- | --- | --- | --- |
+| Starting | Teams and approvals from the PRD's signals | Nothing in Jira yet; who the directory names | Security review needed (PRD §2 Scope) |
+| Building | Deliverables and dependencies from the plan | Each open team and approval against Jira: is there a ticket, an owner, a team on the work | Security review: no ticket yet, flagged |
+| Preparing to launch | Launch checks from the checklist; dated items from the POR, when there is one | Every open commitment against its ticket, its due date and launch; with no POR, each team's commitments against Jira | Security approval still open: needed since the PRD (§2 Scope), SEC-881 In Review |
+
+**Rules that keep the list trustworthy.**
+
+- **Readings propose; the PM confirms.** A reading (Devin, another agent, or the rules) only proposes items. The confirm step shows each proposal as already on the list, new, or possibly the same as an existing item. Nothing merges silently.
+- **Matching.** A proposal matches an existing item when they share a Jira ticket, or have the same kind and team and close wording. Anything weaker goes to the PM as a question.
+- **Never deleted.** A dropped item stays with its reason, so it is not proposed again and the history shows why.
+- **Decisions follow the item, not the run.** A dismissal in building still holds at launch. Each review's findings point at commitment ids, and the run keeps a copy of the list as it stood.
+- **Agents never edit the list directly.** They write proposals into the folder; the rules check every quote and apply only what the PM confirmed, as they already do for readings.
+
+**The life of one commitment.**
+
+Lifecycle (diagram in the live doc): Proposed (from a reading) → Open (confirmed, no ticket) → Tracked (a ticket carries it) → Done (kept in history). The PM confirms Proposed → Open; a review moves Open → Tracked when a Jira ticket is found and Tracked → Done when it is resolved. From Proposed, Open or Tracked the PM can dismiss an item to Dropped, with a reason; it is never proposed again. Readings propose; only the PM puts a commitment on the list or takes it off.
+
+Reviews move items only along the top row, when Jira shows a ticket or a resolution. Open and tracked items also get flags on each review (late, no owner, claimed in a comment only), and those flags are the findings.
+
+**What changes in the build.** The smallest useful slice is teams and approvals carried from starting to launch; deliverables and launch checks follow. Built Nov 21: steps 1 to 6 for teams and approvals, plus one rule found while building: a team or approval an earlier stage named that the launch plan leaves out is flagged "not in the launch plan". On the ingestion sample that flags six teams and four approvals the PRD named and the POR dropped.
+
+1. A `Commitment` schema and `commitments.yaml` in the project folder; each run keeps a copy of the list as it stood.
+2. A merge step after every reading: proposals come back as matched, new or ask-the-PM, and the confirm step on Your plan shows those three groups.
+3. Building coverage and the launch analyzer read the open commitments as well as the files; every finding carries a commitment id and its first-seen date.
+4. Decisions keyed by commitment id instead of run; existing per-run decisions are moved over once.
+5. The overview shows the list's count (open, at risk, new since the last review) and a per-team list one click away.
+6. `AGENTS.md`: agents write proposals and never edit `commitments.yaml`.
+
+**Done when,** on the ingestion sample: the launch finding for the Security approval says it was first seen in the PRD; an item dismissed while building does not come back at launch; and a refresh with no new files changes nothing on the list.
+
+**Open questions.**
+
+- [ ] Does a resolved Jira ticket close a commitment by itself, or does the PM confirm done?
+- [ ] Can a PM add a commitment by hand, such as one agreed in a meeting (today's known miss)?
+- [ ] Who judges close wording: the rules alone, or the agent proposes matches and the rules check them?
+- [ ] Does work found only in Jira, promised in no plan, become a commitment, or stay under related tickets?
+
+## Launch readiness without a plan of record (built Nov 22)
+
+A plan of record is not a thing at every company. Many teams ship from a PRD, an epic and a release date, so the launch check can't depend on one. It needs three things, and most projects have them without a POR:
+
+1. **What each team owes.** The commitments list already holds this: the teams the PRD involves and the sign-offs it asks of them. A POR or checklist, when there is one, adds items and dates to the same list.
+2. **When it launches.** The epic's release date or fix version in Jira, then a date the PRD names. Without one, readiness still works, but nothing can be late.
+3. **Whether each team is done.** The Jira coverage check already answers this per team and per sign-off.
+
+**Rules.** The rules are fixed; no model rates a team. Anything the PM dropped, or whose PRD signal they unticked, is left out.
+
+| Team | When |
+| --- | --- |
+| Blocking | Nobody from the team is on the work, or a sign-off it owes has not started or has no owner |
+| At risk | A sign-off is in progress |
+| Can't tell | Jira can't show whether the team is on the work |
+| Ready | On the work, and every sign-off it owes is done |
+
+The project's answer is its worst team: "Launch Nov 20: not ready". On the ingestion sample, 2 of 9 teams are ready (Data Platform, SRE), Security is at risk (SEC-881 In Review) and six block, QA among them (nobody on the work, and INGEST-170 has no owner).
+
+**Why not the launch review on synthesized items.** The first build made plan items from the commitments and ran the POR analyzer on them. It gave wrong answers: items of teams with no Jira project were counted as Data Platform's, and "Privacy review" and "Legal review" matched Security's SEC-881 on the word "review". Short PRD sign-offs need the coverage check's per-approval search, so readiness reads that.
+
+**In the product.** Once Jira and the epic are in, the suggestion is "Ready to launch?" with **Check launch readiness**, and "Add a launch checklist" as a quieter link. Checking turns readiness on for the project. The review becomes the readiness view, with teams grouped Blocking, At risk, Can't tell, Ready, and Dropped (still reopenable). Each card has a Launch line saying why. The phase reads Preparing to launch, and History records "Launch readiness · INGEST-142". A launch checklist or plan of record, added from the same dialog, switches to the full launch review with dated items.
+
+**Limits.** Without written commitments, "ready" means "Jira shows the work and the sign-offs done", not "every team did what it agreed to". The page says it was checked against the PRD and Jira. With no launch date anywhere, the heading has no date. A past readiness record counts teams the PM dropped later.
+
+**Open questions.**
+
+- [ ] Should readiness turn on by itself as the launch date nears, rather than when the PM asks?
+- [ ] Can the PM set or correct the launch date when Jira has none?
+- [ ] Should a company's standard launch checklist live at the organisation level, so every project gets it without a POR?
+
 ## Direction: a project folder any coding agent can work in (Nov 2026)
 
 The GUI makes a coding agent useful to a PM who is not technical. Each project is real files in a folder that is its own repository: settings, the original documents, every reading and review, a plain-English history, and instructions for any coding agent. The agent reads the documents and makes the judgment calls; the rules check every quote against the original and check the plan against Jira, so a refresh costs nothing and does not vary. Devin reads automatically through its API, and any major coding agent (Claude Code, Codex, Cursor, Copilot, Gemini CLI, or Devin opened on the folder) can do the reading in the folder by its AGENTS.md. The organisation's directory never enters a project: it lists teams and their Jira projects, not people. Git stays hidden. Prompt injection is met by telling every agent the documents are data, flagging text addressed to an AI, giving reading sessions no repository or credentials, letting an agent write one file and undoing anything else, checking every quote outside the agent, and the PM confirming the plan.
@@ -143,7 +239,7 @@ This semester the working build is the deliverable, and the folder contract runs
 
 ## How it works
 
-Devin runs the orchestrator on each dated snapshot of a sample release (reader → analyzer → status) and saves each run as JSON; the GUI loads the runs in order, so the review screen shows the latest status and how it changed. The GUI asks the stage first and adapts what it asks for and what it shows; every stage ends in next actions. The agent reads the plan files itself, in any format (a POR deck, a PDF, a PRD in Word), and writes the plan items and signals, each with a quote; the command checks the quotes against every file it can read, marks the rest unchecked for the TPM to confirm, and adds the structured parts it can parse. Which items are gaps, and what a signal implies, stays rule-based. The reading runs on the agent's own model and credits (Devin's), so the product needs no model API key; from the GUI, the server starts the Devin session through the company's service-user key. Skills are plain `SKILL.md` files, so they can move to another agent. Details: Dependency Review Skills — Design (Devin + Jira) (`docs/skills-design.md`; where they disagree, this PRD wins).
+Devin runs the orchestrator on each dated snapshot of a sample release (reader → analyzer → status) and saves each run as JSON; the GUI loads the runs in order, so the review screen shows the latest status and how it changed. The GUI asks for no stage: it reads each file for what it is, runs every check the files and connections allow as one review, and ends in next actions. The agent reads the plan files itself, in any format (a POR deck, a PDF, a PRD in Word), and writes the plan items and signals, each with a quote; the command checks the quotes against every file it can read, marks the rest unchecked for the TPM to confirm, and adds the structured parts it can parse. Which items are gaps, and what a signal implies, stays rule-based. The reading runs on the agent's own model and credits (Devin's), so the product needs no model API key; from the GUI, the server starts the Devin session through the company's service-user key. Skills are plain `SKILL.md` files, so they can move to another agent. Details: Dependency Review Skills — Design (Devin + Jira) (`docs/skills-design.md`; where they disagree, this PRD wins).
 
 ## Success metrics
 
@@ -179,12 +275,22 @@ Timeline: Oct 12 to Dec 4, MVP locked Nov 4, away Nov 5–14.
 | The dashboard and run history add scope, against the professor's advice to keep an achievable MVP | Build the dashboard from saved runs only; if time is short, ship the latest status first and add history after the MVP |
 | The stage-aware direction roughly doubles the build | Lock the MVP to the launch review by Nov 4. (Oct 30: both early paths were built as one rule-based skill; the risk is now that their sample data is the tool author's, so the second sample release matters more.) |
 | Connectors beyond Jira look like promises | Build only Jira and the employee directory; show others in the gallery and say so in the report |
+| Without a POR, "ready" rests on Jira alone | Say on the page that readiness was checked against the PRD and Jira; offer a launch checklist, never require it |
 | POR formats vary widely (slides, docs, spreadsheets) | Read slide decks first, test them against the markdown POR, and keep every plan item tied to a source quote the TPM confirms |
+
+## Parked ideas
+
+Not this semester. The test for a new idea: does it help a PM see, or act on, where the plan and the tickets disagree? If not, it goes here.
+
+| Idea | Why parked | Smallest version that fits |
+| --- | --- | --- |
+| Our own chat around the agent | Competes with Devin's own interface, Slack and the IDE; Throughline's strength is that the PM never prompts | "Ask about this project": opens a Devin session already pointed at the project folder, then hands off to Devin's UI |
+| Cover the PM skills in pm-workflow (10 workflows, 39 skills, ideation to measurement) | One PM's own work, while Throughline covers the work between teams; they overlap only at the PRD stage and launch | Put the skills beside a project folder's files, since any agent already works there; no integration |
 
 ## Open questions
 
 - [ ] Who writes the sample POR, checklist and org map?
 - [ ] How should RQ2 be reworded?
 - [ ] GUI host: existing program-management-tool codebase or a new page?
-- [ ] One adaptive flow for the three stages, or separate entry points? (Designed as one flow; confirm with Professor Prayaga.)
+- [ ] One adaptive flow for the three stages, or separate entry points? (Answered Nov 22: neither. There are no stages; the review checks what the files and connections allow.)
 - [ ] Which employee directory source is realistic for the early-stage path, and is a sample directory enough for this semester? (Answered Nov 2026, see Employee directory sources: a sample export this semester; then Atlassian Teams and Microsoft Graph, both behind sign-ins the product already has.)

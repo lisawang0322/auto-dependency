@@ -449,3 +449,5 @@ export const Starter = z.object({
   warnings: z.array(z.string()),
 });
 export type Starter = z.infer<typeof Starter>;
+
+export * from "./commitments.js";

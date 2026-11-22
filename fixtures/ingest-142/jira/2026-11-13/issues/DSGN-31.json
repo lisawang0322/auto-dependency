@@ -1,0 +1,41 @@
+{
+  "key": "DSGN-31",
+  "fields": {
+    "summary": "Screens for the failed-events replay dashboard",
+    "description": "Support agents find and replay failed events. Flows and screens for review.",
+    "issuetype": {
+      "name": "Task"
+    },
+    "status": {
+      "name": "In Review"
+    },
+    "resolution": null,
+    "project": {
+      "key": "DSGN"
+    },
+    "assignee": {
+      "displayName": "Mira Santos"
+    },
+    "duedate": "2026-11-12",
+    "created": "2026-10-24T09:00:00.000+0000",
+    "updated": "2026-11-12T15:00:00.000+0000",
+    "components": [],
+    "fixVersions": [],
+    "issuelinks": [
+      {
+        "type": {
+          "name": "Relates",
+          "inward": "relates to",
+          "outward": "relates to"
+        },
+        "inwardIssue": {
+          "key": "INGEST-142"
+        }
+      }
+    ],
+    "comment": {
+      "comments": [],
+      "total": 0
+    }
+  }
+}

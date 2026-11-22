@@ -16,6 +16,7 @@ import starterTargetJson from "../../../fixtures/ingest-142/starter/release-targ
 import startingJson from "../../../fixtures/ingest-142/starter/starting.json";
 import startingNoDirJson from "../../../fixtures/ingest-142/starter/starting.no-directory.json";
 import buildingJson from "../../../fixtures/ingest-142/starter/building.2026-11-13.json";
+import jiraProjectsJson from "../../../fixtures/ingest-142/jira/2026-11-13/projects.json";
 import porRaw from "../../../fixtures/ingest-142/docs/Ingestion-service-POR-v3.md?raw";
 import checksRaw from "../../../fixtures/ingest-142/docs/launch-checklist.csv?raw";
 import teamsRaw from "../../../fixtures/ingest-142/docs/team-list.yaml?raw";
@@ -36,6 +37,11 @@ const STARTER_TARGET = ReleaseTarget.parse(starterTargetJson);
 const STARTING = Starter.parse(startingJson);
 const STARTING_NO_DIR = Starter.parse(startingNoDirJson);
 const BUILDING = Starter.parse(buildingJson);
+/** Work in the sample Jira that the reading cannot tie to a team by name: Product Design (DSGN) holds UX's screens, linked
+ *  from the epic. Linking UX to DSGN finds it, as the real coverage check does against the same snapshot. */
+const SAMPLE_PROJECT_WORK: Record<string, { found: string; people: string[]; tickets: string[] }> = {
+  DSGN: { found: "DSGN-31 linked · Mira Santos", people: ["Mira Santos"], tickets: ["DSGN-31"] },
+};
 const EPIC = TARGET.epic.key;
 
 const kb = (s: string) => `${Math.max(1, Math.round(new TextEncoder().encode(s).length / 1024))} KB`;
@@ -50,7 +56,9 @@ export const SAMPLE_FILES: UploadedFile[] = [
   SAMPLE_TEAM_LIST,
 ];
 /** What "Use sample files" loads per stage: the launch review's three files, or the PRD (the directory is connected on step 3). */
-export function sampleFilesFor(stage: Stage): UploadedFile[] { return stage === "launching" ? SAMPLE_FILES : [SAMPLE_PRD]; }
+/** The sample documents: a PRD (who to involve, and with Jira who is on the work), or the launch set (plan of record,
+ *  launch checklist, team list) for what is missing for launch. */
+export function sampleFiles(set: "prd" | "launch"): UploadedFile[] { return set === "launch" ? SAMPLE_FILES : [SAMPLE_PRD]; }
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -161,6 +169,19 @@ export class FixtureBackend implements ReviewBackend {
       for (const c of b.coverage) c.contact = null;
       for (const a of b.next_actions) a.who = a.team;
     }
+    // A team linked by hand: the work in that project counts for it, as the real check finds (scripts/lib/pipeline.ts).
+    for (const [team, key] of Object.entries(input.teamProjects ?? {})) {
+      const row = b.coverage.find((c) => c.team === team);
+      const work = SAMPLE_PROJECT_WORK[key];
+      if (!row || !work || row.state === "covered") continue;
+      Object.assign(row, { state: "covered", found: work.found, people: work.people, tickets: work.tickets });
+      b.next_actions = b.next_actions.filter((a) => !(a.team === team && (a.why === "missing team" || a.why === "no owner on the work")));
+    }
     return { ...b, excluded_signals: input.excludeSignals };
+  }
+
+  async jiraProjects() {
+    await wait(this.delayMs);
+    return (jiraProjectsJson as { key: string; name: string }[]).map((p) => ({ key: p.key, name: p.name })).sort((a, b) => a.key.localeCompare(b.key));
   }
 }

@@ -45,6 +45,11 @@ describe("projects are folders: one per project, readable by people and any codi
       confirmed: true, runId: "2026-11-13", starter: null, agentRead: null, lastRead: false, jiraOn: true, choices: { Security: "SEC" }, signalsOff: {},
       summary: { status: "Amber", open: 4, detail: "4 open findings · Nov 13 run", at: "2026-11-20T10:00:00.000Z" },
       events: [{ at: "2026-11-20T09:00:00.000Z", text: "Project created" }, { at: "2026-11-20T09:05:00.000Z", text: "Read the files with the built-in rules" }],
+      commitments: [{ id: "c-001", kind: "approval", what: "Security review", team: "Security", why: "New public or partner-facing API",
+        first_seen: { stage: "starting", at: "2026-10-02", file: "ingestion-service-PRD.md", locator: "§2 Scope" },
+        sources: [{ file: "ingestion-service-PRD.md", locator: "§2 Scope", quote: "Partners send events through a new public API, authenticated per tenant." }],
+        ticket: { key: "SEC-881", how: "found by search" }, state: "tracked", flags: ["Approval still open"], decision: null,
+        history: [{ at: "2026-10-02", stage: "starting", text: "Added: Security review" }] }],
       records: [{ id: "launch:INGEST-142:2026-11-13", at: "2026-11-20T10:00:00.000Z", stage: "launching", title: "Launch review · Nov 13 run", summary: { status: "Amber", open: 4, detail: "4 open findings" }, files: ["Ingestion-service-POR-v3.md"] }],
     };
     expect((await api("PUT", `/api/projects/${p.id}`, { name: "Ingestion service", data })).status).toBe(200);
@@ -66,10 +71,25 @@ describe("projects are folders: one per project, readable by people and any codi
     expect(agents).toContain(`- Ingestion-service-POR-v3.md → inputs/${up.stored}`);
     expect(agents).toContain("Write this JSON object to readings/inbox/reading.json");
     expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
+    expect(agents).toContain("commitments.yaml is the project's list of promises");
+    // commitments.yaml: the promises carried from stage to stage, in their own file and not in project.yaml.
+    expect(YAML.parse(readFileSync(join(dir, "commitments.yaml"), "utf8")).commitments[0]).toMatchObject({ id: "c-001", what: "Security review", ticket: { key: "SEC-881" } });
+    expect(y.state.commitments).toBeUndefined();
+    expect(readFileSync(join(dir, "README.md"), "utf8")).toMatch(/Commitments: 1 open, 1 at risk/);
 
     // It comes back exactly as saved.
     const back = (await api("GET", `/api/projects/${p.id}`)).data;
     for (const k of Object.keys(data)) expect([k, back.data[k]]).toEqual([k, (data as any)[k]]);
+
+    // Without stages, each reading has its own file: the PRD's and the plan of record's, both coming back as they were.
+    const both = { ...data, earlyPlan: plan, signals: [], plan };
+    expect((await api("PUT", `/api/projects/${p.id}`, { name: "Ingestion service", data: both })).status).toBe(200);
+    expect(JSON.parse(readFileSync(join(dir, "readings", "prd", "plan.json"), "utf8")).plan.items.length).toBe(plan.items.length);
+    expect(JSON.parse(readFileSync(join(dir, "readings", "plan-of-record", "plan.json"), "utf8")).plan.items.length).toBe(plan.items.length);
+    const back2 = (await api("GET", `/api/projects/${p.id}`)).data;
+    expect(back2.data.earlyPlan.items.length).toBe(plan.items.length);
+    expect(back2.data.plan.items.length).toBe(plan.items.length);
+    expect(YAML.parse(readFileSync(join(dir, "project.yaml"), "utf8")).state.earlyPlan).toBeUndefined(); // not in the settings file
 
     // One repo per project: every save is a commit with a plain message.
     if (hasGit()) {

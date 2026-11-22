@@ -54,7 +54,7 @@ describe("the employee directory: Microsoft Entra ID through the sign-in, Jira p
 
     // Jira: every project with its lead and the people assigned to its work.
     const d2 = (await c.json("POST", "/api/directory/jira")).data;
-    expect(d2.jira.connected).toMatchObject({ teams: 6 }); // one per project, with its lead and assignees
+    expect(d2.jira.connected).toMatchObject({ teams: 7 }); // one per project, with its lead and assignees
     expect(d2.jira.connected.label).toMatch(/^Jira projects · 127\.0\.0\.1/);
 
     // The plan step takes the merged directory as a file: Entra's people under Jira's project keys.
@@ -64,6 +64,11 @@ describe("the employee directory: Microsoft Entra ID through the sign-in, Jira p
     const data = teams.find((t: any) => t.name === "Data Platform");
     expect(data).toMatchObject({ jira_project_hint: "DATA" });
     expect(data.owners).toEqual(expect.arrayContaining(["Wei Zhang (project lead)", "Anika Rao (director, platform)", "Tomás Herrera (DBA)"]));
+    // A team is contacted through its own lead, not the director the lead reports to: Security's first owner is its
+    // security lead, and the platform director comes last, as the escalation.
+    const security = teams.find((t: any) => t.name === "Security");
+    expect(security.owners[0]).toMatch(/^Jordan Blake/);
+    expect(security.owners[security.owners.length - 1]).toBe("Anika Rao (director, platform)");
     expect(r.data.plan.files.find((f: any) => f.name === "Employee directory.yaml").notes).toMatch(/^\d+ teams · \d+ Jira projects · \d+ owners$/);
     // The merged team list is written under the person's upload root (per organisation) and reads as a team list.
     const file = (readdirSync(join(tmp, "up"), { recursive: true }) as string[]).find((f) => f.endsWith("Employee directory.yaml"));
@@ -72,7 +77,7 @@ describe("the employee directory: Microsoft Entra ID through the sign-in, Jira p
 
     // Disconnect one layer; the other stays; nothing left means the file cannot be made.
     expect((await c.json("DELETE", "/api/directory/entra")).data.entra.connected).toBeNull();
-    expect((await c.json("GET", "/api/directory")).data.jira.connected).toMatchObject({ teams: 6 });
+    expect((await c.json("GET", "/api/directory")).data.jira.connected).toMatchObject({ teams: 7 });
     expect((await c.json("DELETE", "/api/directory/jira")).data.jira.connected).toBeNull();
     const none = await c.json("POST", "/api/plan", { files: [{ name: "Ingestion-service-POR-v3.md", kind: "plan", sample: true }, { name: "Employee directory.yaml", kind: "teams", via: "directory", source: "server" }] });
     expect(none.status).toBe(400);

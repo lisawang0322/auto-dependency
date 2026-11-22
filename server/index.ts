@@ -17,12 +17,13 @@
  *   GET  /api/decisions/:key, PUT /api/decisions/:key   keep/dismiss decisions, the log and ticked actions, per user and run
  *   POST /api/jira/connect            {site, email, token} → checks /myself, keeps the credentials
  *   POST /api/jira/disconnect
+ *   GET  /api/jira/projects            → {projects: [{key, name}]}, to link a team the reading missed
  *   POST /api/plan                    {files:[{name, kind, content_base64 | sample}], launch_date?, stage?} → {plan}
  *                                     stage starting|building adds {signals, project} (throughline-starter)
  *                                     agent: "devin" → 202 {job}; the job's result is the same plus {agent}: Devin
  *                                     reads the plan documents (not csv/yaml) and its items go through Stage A's
  *                                     quote check; each file's reading is cached by content, so a re-read is free
- *   POST /api/starter                 {files, stage, exclude_signals?, epic?, label?} → {job}; the job's result is the Starter
+ *   POST /api/starter                 {files, stage, exclude_signals?, epic?, label?, team_projects?} → {job}; the job's result is the Starter
  *   POST /api/target                  {plan, epic, no_search?} → {target}
  *   GET  /api/runs/:epic              [{id, label}]
  *   GET  /api/runs/:epic/:id          the saved run
@@ -35,7 +36,7 @@ import { basename, extname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { PlanDraft, ReleaseTarget, ReadAs } from "@throughline/schemas";
 import { JiraRest, JiraAuthError, type RestCreds } from "../skills/throughline-reader/scripts/lib/jira-rest.js";
-import { stageA, stageB, stageC, analyzeStep, statusStep, previousRun, saveRun, listRunLabels, loadRun, todayLabel, readStarterInputs, starterSignals, starterPlan, runStarter, type SourceSpec, type AgentReading } from "../scripts/lib/pipeline.js";
+import { stageA, stageB, stageC, analyzeStep, statusStep, previousRun, saveRun, listRunLabels, loadRun, todayLabel, readStarterInputs, starterSignals, starterPlan, runStarter, withSource, type SourceSpec, type AgentReading } from "../scripts/lib/pipeline.js";
 import { loadRules } from "../skills/throughline-starter/scripts/lib/config.js";
 import type { AgentItem, AgentTeam, AgentLaunchDate } from "../skills/throughline-reader/scripts/lib/plan-extract.js";
 import type { AgentSignal } from "../skills/throughline-starter/scripts/lib/signals.js";
@@ -50,6 +51,7 @@ import { createHash } from "node:crypto";
 import { Store, type User } from "./store.js";
 import { Auth, authFromEnv, LOCAL_USER, type AuthConfig } from "./auth.js";
 import { Atlassian, atlassianFromEnv, type AtlassianConfig } from "./atlassian.js";
+import { DEMO_JIRA_SITE, demoAtlassianConsentPage, escapeHtml } from "./demo.js";
 import { TokenBox } from "./crypto.js";
 import { randomBytes } from "node:crypto";
 
@@ -59,6 +61,8 @@ export interface ServerOptions {
   uploadRoot?: string;
   cacheRoot?: string;
   fixtureDir?: string | null;
+  /** The snapshot a demo-mode Jira connection reads (AUTH=demo with no Atlassian app); defaults to the INGEST-142 sample. */
+  demoJiraDir?: string;
   creds?: RestCreds | null;
   guiDist?: string;
   sampleDocs?: string;
@@ -145,6 +149,10 @@ export function createApp(opts: ServerOptions = {}) {
   const atlCfg = opts.atlassian === undefined ? atlassianFromEnv(process.env, appUrl) : opts.atlassian ? { ...opts.atlassian, appUrl: opts.atlassian.appUrl || appUrl } : null;
   const atlassian = atlCfg ? new Atlassian(atlCfg, store, box, log) : null;
   const directory = new DirectoryHub(store, box, auth, opts.directory ?? directoryFromEnv(), log);
+  /** AUTH=demo without an Atlassian app or a fixture: Sign in with Atlassian is mocked by a consent page, and a person who
+   *  accepts reads the sample INGEST-142 snapshot as if it were their site. Kept per person, so each connects on their own. */
+  const demoJiraDir = !atlassian && !fixtureDir && authCfg.mode === "demo" ? resolve(opts.demoJiraDir ?? "fixtures/ingest-142/jira/2026-11-13") : null;
+  const demoJiraOn = (u: User) => !!demoJiraDir && !!store.connection(u.id, "jira-demo");
   // The sign-in's consent covers the directory: it is read on arrival, so Get started shows it connected without another prompt.
   auth.onSignedIn = async (u, token) => { await directory.connectWithToken(u, token); };
   auth.onDemoSignedIn = async (u) => { await directory.connectDemo(u); };
@@ -183,11 +191,13 @@ export function createApp(opts: ServerOptions = {}) {
   }
   function jiraInfo(u: User = LOCAL_USER) {
     if (fixtureDir) return { connected: true, site: `fixture ${basename(fixtureDir)}`, user: "sample data", fixture: true, oauth: false, method: "fixture" as const, sites: 0 };
+    if (demoJiraDir) { const on = demoJiraOn(u); return { connected: on, site: on ? DEMO_JIRA_SITE : null, user: on ? u.name : null, fixture: false, oauth: true, method: on ? "oauth" as const : null, sites: on ? 1 : 0 }; }
     const c = credsFor(u);
     return { connected: !!c, site: c ? c.creds.site.replace(/^https?:\/\//, "") : null, user: c?.user ?? null, fixture: false, oauth: !!atlassian, method: c?.method ?? null, sites: c?.method === "oauth" ? (atlassian?.info(u)?.sites ?? 0) : 0 };
   }
   function source(u: User, epic: string, label: string, fresh = false): SourceSpec {
     if (fixtureDir) return { kind: "fixture", dir: fixtureDir };
+    if (demoJiraDir) { if (!demoJiraOn(u)) throw new HttpError(400, "Not connected to Jira. Connect first."); return { kind: "fixture", dir: demoJiraDir }; }
     const c = credsFor(u);
     if (!c) throw new HttpError(400, "Not connected to Jira. Connect first.");
     const cacheDir = join(rootsFor(u).cacheRoot, epic, label);
@@ -464,8 +474,17 @@ export function createApp(opts: ServerOptions = {}) {
     },
 
     /** Forgets the person's Atlassian sign-in and any token they typed; the company's environment credentials, if any, still apply. */
-    async disconnect(u: User) { if (!fixtureDir) { userCreds.delete(u.id); atlassian?.disconnect(u); } return jiraInfo(u); },
-    async jiraSites(u: User) { return { sites: atlassian?.sites(u) ?? [], current: atlassian?.connection(u)?.cloud_id ?? null }; },
+    async disconnect(u: User) { if (!fixtureDir) { userCreds.delete(u.id); atlassian?.disconnect(u); if (demoJiraDir) store.deleteConnection(u.id, "jira-demo"); } return jiraInfo(u); },
+    /** The Jira projects the person can see, to link a team the reading missed. */
+    async jiraProjects(u: User) {
+      const src = source(u, "PROJECTS", "list");
+      const raw = await withSource(src, (s) => s.listProjects());
+      return { projects: (raw ?? []).map((p) => ({ key: p.key, name: p.name })).sort((a, b) => a.key.localeCompare(b.key)) };
+    },
+    async jiraSites(u: User) {
+      if (demoJiraDir) return demoJiraOn(u) ? { sites: [{ id: "demo", url: `https://${DEMO_JIRA_SITE}`, name: "Sample Co" }], current: "demo" } : { sites: [], current: null };
+      return { sites: atlassian?.sites(u) ?? [], current: atlassian?.connection(u)?.cloud_id ?? null };
+    },
     async chooseJiraSite(u: User, body: any) {
       if (!atlassian) throw new HttpError(400, "Sign in with Atlassian is not set up on this server.");
       try { await atlassian.chooseSite(u, String(body?.cloud_id ?? "")); } catch (e) { throw new HttpError(400, (e as Error).message); }
@@ -511,13 +530,16 @@ export function createApp(opts: ServerOptions = {}) {
       if (stage === "building" && !/^[A-Z][A-Z0-9]+-\d+$/.test(epic ?? "")) throw new HttpError(400, "The building stage needs an epic key like PROJ-123.");
       const src = epic ? source(u, epic, label, true) : undefined;
       const exclude: string[] = Array.isArray(body?.exclude_signals) ? body.exclude_signals.map(String) : [];
+      // Team → Jira project links the person made by hand (or "skip"); anything else is ignored.
+      const teamProjects: Record<string, string> = {};
+      for (const [team, key] of Object.entries(body?.team_projects ?? {})) if (typeof key === "string" && (key === "skip" || /^[A-Z][A-Z0-9_]+$/.test(key))) teamProjects[team] = key;
       const job: Job = { stage: 0, done: false, log: [] };
       const id = randomUUID();
       jobs.set(id, job);
       (async () => {
         try {
           const out = await runStarter({
-            stage, files: paths, directoryFiles: dirPaths, excludeSignals: exclude, epicKey: epic, source: src, label, runsRoot,
+            stage, files: paths, directoryFiles: dirPaths, excludeSignals: exclude, epicKey: epic, source: src, label, runsRoot, teamProjects,
             onStage: (s, d) => { job.log.push(`${s}: ${d}`); if (s === "suggest" || s === "target") job.stage = 1; if (s === "people" || s === "coverage") job.stage = 2; },
           });
           job.result = out.starter; job.run_id = label; job.stage = 3; job.done = true;
@@ -595,12 +617,34 @@ export function createApp(opts: ServerOptions = {}) {
     },
   };
 
+  /** The mocked Sign in with Atlassian (see demoJiraDir): GET start shows the consent page, POST callback records the choice. */
+  async function demoAtlassian(req: IncomingMessage, res: ServerResponse, url: URL, user: User | null): Promise<boolean> {
+    const popup = url.searchParams.get("popup") === "1";
+    const next = url.searchParams.get("next") || "/";
+    if (url.pathname === "/auth/atlassian/start" && req.method === "GET") {
+      if (!user) { res.writeHead(302, { Location: `/auth/login?next=${encodeURIComponent(next)}` }); res.end(); return true; }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }); res.end(demoAtlassianConsentPage(popup, next)); return true;
+    }
+    if (url.pathname !== "/auth/atlassian/callback" || req.method !== "POST") return false;
+    let body = ""; for await (const c of req) body += c;
+    const ok = !!user && new URLSearchParams(body).get("decision") === "accept";
+    if (ok) { store.setConnection(user!.id, "jira-demo", { site: DEMO_JIRA_SITE, at: new Date().toISOString() }); log(`jira: ${user!.name} connected the demo site ${DEMO_JIRA_SITE}`); }
+    const text = ok ? `Jira connected: ${DEMO_JIRA_SITE}. You can close this window.` : user ? "Atlassian did not grant access: you cancelled." : "Sign in first.";
+    if (popup) {
+      res.writeHead(ok ? 200 : 400, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(`<!doctype html><meta charset="utf-8"><title>Jira ${ok ? "connected" : "not connected"}</title><body style="font-family:system-ui;padding:24px"><p>${escapeHtml(text)}</p><script>try{window.opener&&window.opener.postMessage({type:"rrr:atlassian",ok:${ok}},location.origin)}catch(e){}setTimeout(function(){window.close()},${ok ? 300 : 1500})</script></body>`);
+      return true;
+    }
+    if (ok) { res.writeHead(302, { Location: next.startsWith("/") ? next : "/", "Cache-Control": "no-store" }); res.end(); return true; }
+    res.writeHead(user ? 400 : 401, { "Content-Type": "text/plain; charset=utf-8" }); res.end(text); return true;
+  }
   async function handle(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url ?? "/", "http://x");
     const p = url.pathname;
     const send = (status: number, data: unknown) => { res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify(data)); };
     try {
       if (p.startsWith("/auth/directory/")) { if (await directory.handle(req, res, url, auth.userOf(req))) return; return send(404, { error: `No route ${req.method} ${p}` }); }
+      if (p.startsWith("/auth/atlassian/") && demoJiraDir) { if (await demoAtlassian(req, res, url, auth.userOf(req))) return; return send(404, { error: `No route ${req.method} ${p}` }); }
       if (p.startsWith("/auth/atlassian/")) { if (!atlassian) return send(404, { error: "Sign in with Atlassian is not set up on this server." }); if (await atlassian.handle(req, res, url, auth.userOf(req))) return; return send(404, { error: `No route ${req.method} ${p}` }); }
       if (p.startsWith("/auth/")) { if (await auth.handle(req, res, url)) return; return send(404, { error: `No route ${req.method} ${p}` }); }
       if (p.startsWith("/api/")) {
@@ -631,6 +675,7 @@ export function createApp(opts: ServerOptions = {}) {
         if ((m = p.match(/^\/api\/directory\/(\w+)$/)) && req.method === "DELETE") return send(200, await routes.directoryDisconnect(u, m[1]));
         if (p === "/api/jira/connect" && req.method === "POST") return send(200, await routes.connect(u, body));
         if (p === "/api/jira/disconnect" && req.method === "POST") return send(200, await routes.disconnect(u));
+        if (p === "/api/jira/projects" && req.method === "GET") return send(200, await routes.jiraProjects(u));
         if (p === "/api/jira/sites" && req.method === "GET") return send(200, await routes.jiraSites(u));
         if (p === "/api/jira/site" && req.method === "POST") return send(200, await routes.chooseJiraSite(u, body));
         if (p === "/api/plan" && req.method === "POST") { const r = await routes.plan(u, body); return send(r.status, r.data); }
@@ -677,6 +722,7 @@ function readJson(req: IncomingMessage): Promise<any> {
 
 export async function startServer(opts: ServerOptions = {}): Promise<{ url: string; app: ReturnType<typeof createApp>; close(): Promise<void> }> {
   const app = createApp(opts);
+
   const server = createServer((req, res) => void app.handle(req, res));
   const port = opts.port ?? Number(process.env.PORT ?? 8787);
   await new Promise<void>((r, j) => { server.once("error", j); server.listen(port, "127.0.0.1", r); });
@@ -692,7 +738,7 @@ if (isMain) {
     const devinWhoami = s.app.devinWhoami;
     const j = s.app.jiraInfo();
     console.error(`Throughline server on ${s.url}`);
-    console.error(j.fixture ? `  Jira: demo mode, reading ${j.site}` : j.connected ? `  Jira: ${j.site} (from environment)` : j.oauth ? "  Jira: Sign in with Atlassian on the Connect step (ATLASSIAN_CLIENT_ID set)" : "  Jira: not connected; the GUI's Connect step asks for a site, email and API token (set ATLASSIAN_CLIENT_ID and ATLASSIAN_CLIENT_SECRET for Sign in with Atlassian)");
+    console.error(j.fixture ? `  Jira: demo mode, reading ${j.site}` : s.app.auth.mode === "demo" && j.oauth && !process.env.ATLASSIAN_CLIENT_ID ? "  Jira: mocked Sign in with Atlassian (AUTH=demo); accepting connects the sample INGEST-142 site" : j.connected ? `  Jira: ${j.site} (from environment)` : j.oauth ? "  Jira: Sign in with Atlassian on the Connect step (ATLASSIAN_CLIENT_ID set)" : "  Jira: not connected; the GUI's Connect step asks for a site, email and API token (set ATLASSIAN_CLIENT_ID and ATLASSIAN_CLIENT_SECRET for Sign in with Atlassian)");
     const a = s.app.agentInfo();
     console.error(s.app.auth.mode === "oidc" ? "  Sign-in: with your identity provider (OIDC_ISSUER)" : s.app.auth.mode === "demo" ? "  Sign-in: demo (AUTH=demo); a Sample Co sign-in page with people to sign in as, and a demo directory" : "  Sign-in: off (AUTH=none); set OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET and APP_URL to require it");
     if (a.available) {

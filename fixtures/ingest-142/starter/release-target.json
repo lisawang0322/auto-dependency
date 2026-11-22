@@ -93,6 +93,13 @@
       "lead": "Wei Zhang"
     },
     {
+      "key": "DSGN",
+      "name": "Product Design",
+      "category": "Design",
+      "description": "Design for product surfaces: flows, screens and reviews.",
+      "lead": "Mira Santos"
+    },
+    {
       "key": "INGEST",
       "name": "Ingestion service",
       "category": "Product",

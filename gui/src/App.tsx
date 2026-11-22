@@ -1,29 +1,47 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PlanDraft, ReleaseTarget, Run, Signal, Starter } from "@throughline/schemas";
-import { PLAN_KINDS, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage, type AgentConsent, type AgentRead, type AgentReadStage, type ReadProgress, type UserInfo, type DirectoryInfo, type DirectorySourceId, type ProjectRecord, type ProjectStore, type ProjectData, type ProjectEvent, type ProjectSummary, type HistoryRecord } from "./backend/types";
+import type { PlanDraft, ReleaseTarget, Run, Signal, Starter, Commitment } from "@throughline/schemas";
+import { fromStarter, fromLaunch, decide as decideCommitment } from "@throughline/schemas";
+import { PLAN_KINDS, type ActionsGlance, type ReviewBackend, type JiraConnection, type DecisionStore, type UploadedFile, type FileKind, type JiraState, type RunSummary, type ProgressStage, type Stage, type AgentConsent, type AgentRead, type AgentReadStage, type ReadProgress, type UserInfo, type DirectoryInfo, type DirectorySourceId, type ProjectRecord, type ProjectStore, type ProjectData, type PathStep, type ProjectEvent, type ProjectSummary, type HistoryRecord } from "./backend/types";
 import { storableFiles } from "./backend/projects";
-import { LIFECYCLE } from "./screens/Projects";
-import { sampleFilesFor, SAMPLE_DIRECTORY } from "./backend/fixtureBackend";
+import { sampleFiles, SAMPLE_DIRECTORY } from "./backend/fixtureBackend";
 import { fmtDate } from "./model/dates";
 import { applyChoices, type TeamChoice } from "./model/review";
 import { GetStarted, STAGE_SHORT } from "./screens/GetStarted";
 import { PlanDocuments } from "./screens/PlanDocuments";
+import { PlanOfRecordDialog } from "./screens/PlanOfRecordDialog";
 import { ConnectApps } from "./screens/ConnectApps";
 import { Running } from "./screens/Running";
 import { Review, type OwnerSource } from "./screens/Review";
 import { EarlyResults } from "./screens/EarlyResults";
+import { ProjectReview } from "./screens/ProjectReview";
 import { Overview, type CheckItem, type NextUp } from "./screens/Overview";
-import { RUN_LABEL } from "./screens/ConnectApps";
 import { allTeamsResolved } from "./model/review";
 
 /** A project's places: its overview (the hub), plan, connections, review and history, the same at every point in its life;
  *  "start" (stage and organisation) opens from the overview, and on a new project's first visit. */
+/** "results" names only the step bar's last step: a reviewed stage's results are the overview itself. */
 export type Screen = "overview" | "start" | "plan" | "apps" | "running" | "results" | "history";
 
 export interface AppProps {
   backend: ReviewBackend; jira: JiraConnection; store: DecisionStore; user?: UserInfo | null; initialConsent?: AgentConsent; initialMode?: string | null; onSignOut?: () => void;
   /** The project opened from the portal, and where to save it; without one the app is a one-off session (tests, embeds). */
   project?: ProjectRecord; projectStore?: ProjectStore; onHome?: () => void;
+}
+
+/** The phase a project is in, read from what it has, never chosen: a plan of record means preparing to launch, work
+ *  tracked in Jira (connected, with the epic) means building, and anything else is just starting. */
+export function phaseOf(hasPlanOfRecord: boolean, jiraOn: boolean, epicOk: boolean): Stage {
+  return hasPlanOfRecord ? "launching" : jiraOn && epicOk ? "building" : "starting";
+}
+
+/** One account of a reading done in two parts (the PRD, then the plan of record): what both found, together. */
+function mergeReads(a: AgentRead | null, b: AgentRead | null): AgentRead | null {
+  if (!a || !b) return a ?? b;
+  return {
+    ...b, status: a.status === "failed" || b.status === "failed" ? "failed" : "done", cached: a.cached && b.cached, session_url: b.session_url ?? a.session_url,
+    items_read: b.items_read, signals_read: a.signals_read, files_read: [...a.files_read, ...b.files_read], unreadable: [...a.unreadable, ...b.unreadable],
+    warnings: [...a.warnings, ...b.warnings], error: a.error ?? b.error,
+  };
 }
 
 export function guessKind(name: string, files: UploadedFile[]): FileKind {
@@ -39,9 +57,9 @@ export function guessKind(name: string, files: UploadedFile[]): FileKind {
 export function App({ backend, jira, store, user = null, initialConsent = "unknown", initialMode = null, onSignOut, project: saved, projectStore, onHome }: AppProps) {
   // A saved project comes back as it was left: its files (kept on the server), its reading, epic, choices and results.
   const d: ProjectData = saved?.data ?? {};
-  const restoredResults = !!d.confirmed && (d.stage === "launching" ? !!d.runId : !!d.starter);
-  /** Until its first review, a project is set up as four steps; after that every visit starts at the overview. */
-  const [screen, setScreen] = useState<Screen>(!d.stage ? "start" : d.records?.length || restoredResults ? "overview" : "plan");
+  const restoredResults = !!d.confirmed && (!!d.runId || !!d.starter);
+  /** Until its first review, a project is set up as steps; after that every visit starts at the overview. */
+  const [screen, setScreen] = useState<Screen>(d.records?.length || restoredResults ? "overview" : d.files?.some((f) => f.via !== "directory") ? "plan" : "start");
   // The browser's Back and Forward move between screens: each screen the person goes to is a history entry. "Working on
   // it" is never kept as one, and the entry a pop lands on already names its screen, so nothing is pushed twice.
   const opened = useRef(true);
@@ -55,31 +73,60 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
     else history.pushState({ screen }, "");
   }, [screen]);
   useEffect(() => {
-    const onPop = (e: PopStateEvent) => { const sc = (e.state as { screen?: Screen } | null)?.screen; if (sc) { setOpenRecord(null); setScreen(sc === "running" ? "apps" : sc); } };
+    const onPop = (e: PopStateEvent) => { const sc = (e.state as { screen?: Screen } | null)?.screen; if (sc) { setOpenRecord(null); setScreen(sc === "running" ? "apps" : sc === "results" ? "overview" : sc); } };
     addEventListener("popstate", onPop);
     return () => removeEventListener("popstate", onPop);
   }, []);
   const [name, setName] = useState(saved?.name ?? "New project");
   const [events, setEvents] = useState<ProjectEvent[]>(d.events ?? []);
   const [summary, setSummary] = useState<ProjectSummary | null>(d.summary ?? null);
+  /** The current review's checklist, which the panel beside it shows (handed over by the review as it renders). */
+  const [actionsGlance, setActionsGlance] = useState<ActionsGlance | null>(null);
   /** Every review, kept so it can be opened after the project moves on or is re-run. The current one takes the summary. */
   const [records, setRecords] = useState<HistoryRecord[]>(d.records ?? []);
   const [currentRecord, setCurrentRecord] = useState<string | null>(d.records?.length ? d.records[d.records.length - 1].id : null);
+  /** What the project has promised, carried from stage to stage. A project saved before the list existed starts it from
+   *  its early-stage reviews; its launch reviews join at the next run. */
+  const [commitments, setCommitments] = useState<Commitment[]>(() => d.commitments?.length ? d.commitments
+    : (d.records ?? []).reduce<Commitment[]>((l, r) => (r.starter ? fromStarter(l, r.starter, r.signalsOff ?? {}).list : l), []));
   const addRecord = useCallback((r: HistoryRecord) => { setRecords((cur) => (cur.some((x) => x.id === r.id) ? cur : [...cur, r])); setCurrentRecord(r.id); }, []);
   const logEvent = useCallback((text: string) => setEvents((e) => [...e, { at: new Date().toISOString(), text }]), []);
-  const [stage, setStageChoice] = useState<Stage | null>(d.stage ?? null);
   const [files, setFiles] = useState<UploadedFile[]>(d.files ?? []);
-  const [plan, setPlan] = useState<PlanDraft | null>(d.plan ?? null);
+  // Two readings, by what each file is: the plan of record's (plan) and the PRD's (earlyPlan). A project saved when a chosen
+  // stage decided the one reading keeps it as the reading it was.
+  const legacyEarly = d.earlyPlan === undefined && d.stage !== "launching";
+  const [plan, setPlan] = useState<PlanDraft | null>(legacyEarly ? null : d.plan ?? null);
+  const [earlyPlan, setEarlyPlan] = useState<PlanDraft | null>(legacyEarly ? d.plan ?? null : d.earlyPlan ?? null);
   const [signals, setSignals] = useState<Signal[]>(d.signals ?? []);
   const [signalsOff, setSignalsOff] = useState<Record<string, boolean>>(d.signalsOff ?? {});
   const [project, setProject] = useState<string | null>(d.project ?? null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [planDates, setPlanDates] = useState<Record<string, string>>(d.planDates ?? {});
   const [planConfirmed, setPlanConfirmed] = useState(!!d.planConfirmed);
+  /** The launch check without a plan of record, turned on by the person: each team read from its commitments and Jira. */
+  const [launchCheck, setLaunchCheck] = useState(!!d.launchCheck);
+  /** Adding a launch checklist or plan of record, in a dialog over the project (see addPlanOfRecord). */
+  const [por, setPor] = useState<null | "pick" | "added" | "reading" | "checking">(null);
+  const [porError, setPorError] = useState<string | null>(null);
+  const openChecklist = () => { setPorError(null); setPor("pick"); };
   const [jiraState, setJiraState] = useState<JiraState>(d.jiraOn && backend.mode === "sample" ? "on" : "off");
   const [epic, setEpic] = useState(d.epic ?? "");
+  const epicVal = epic.trim();
+  const epicOk = /^[A-Z][A-Z0-9]+-\d+$/.test(epicVal);
+  /** What the files are: a PRD (read for signals) and a plan of record (read for dated items), either or both. */
+  const hasPrd = files.some((f) => f.kind === "prd");
+  const hasPor = files.some((f) => f.kind === "plan");
+  /** The phase, as the evidence shows it. It names the project's place and the history's records; it decides nothing. */
+  /** Launch readiness from the commitments: on, with no plan of record (which brings its own launch review instead). */
+  const readinessOn = launchCheck && !hasPor && jiraState === "on" && epicOk;
+  const stage: Stage = phaseOf(hasPor || readinessOn, jiraState === "on", epicOk);
+  const onCommitment = useCallback((id: string, kind: "kept" | "dropped" | "reopen", reason: string) => {
+    setCommitments((cur) => decideCommitment(cur, id, kind, reason, stage, new Date().toISOString()));
+  }, [stage]);
   const [target, setTarget] = useState<ReleaseTarget | null>(null);
   const [targetError, setTargetError] = useState<string | null>(null);
+  /** The reading the target was matched for: a new plan of record keeps the old target until its own match is back. */
+  const targetFor = useRef<unknown>(null);
   const [launch, setLaunch] = useState<string>(d.launch ?? "");
   const [choices, setChoices] = useState<Record<string, TeamChoice>>((d.choices ?? {}) as Record<string, TeamChoice>);
   const [runs, setRuns] = useState<RunSummary[]>([]);
@@ -114,7 +161,6 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
   const uploadedTeamList = teamFiles.find((f) => f.via !== "directory") ?? null;
   const ownerSource: OwnerSource = directoryFile ? "directory" : uploadedTeamList ? "files" : "inferred";
   const live = backend.mode === "live";
-  const needsJira = stage !== "starting";
 
   // Each step starts at the top of the page.
   useEffect(() => { window.scrollTo(0, 0); }, [screen]);
@@ -123,16 +169,14 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
   // A sample project that was connected stays connected (the stand-in has no server to ask).
   useEffect(() => { let on = true; jira.initialState().then((s) => { if (on) setJiraState((cur) => (backend.mode === "sample" && cur === "on" ? cur : s)); }); return () => { on = false; }; }, [jira]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Stage A: re-extract whenever the files, their "read as" or the stage change. A directory connected on
-  // step 3 is a file too, but it does not send the person back to confirm the plan.
-  const uploadKey = files.filter((f) => f.via !== "directory").map((f) => `${f.id}:${f.kind}`).join("|") + `@${stage}`;
+  // Re-extract whenever the files or their "Read as" change. A directory connected on step 3 is a file too, but it does not
+  // send the person back to confirm the plan.
+  const uploadKey = files.filter((f) => f.via !== "directory").map((f) => `${f.id}:${f.kind}`).join("|");
   const prevUploadKey = useRef(uploadKey);
   const restoredKey = useRef(uploadKey);
   useEffect(() => {
-    // Opening a saved project: its reading and results are as they were left; nothing is read again. A new stage,
-    // like any change to the files, makes the reading stale as usual.
-    if (files === restoredFiles.current && uploadKey === restoredKey.current && plan) return;
-    const my = ++seq.current;
+    // Opening a saved project: its readings and results are as they were left; nothing is read again.
+    if (files === restoredFiles.current && uploadKey === restoredKey.current && (plan || earlyPlan)) return;
     const uploadChanged = prevUploadKey.current !== uploadKey;
     if (uploadChanged) { setPlanConfirmed(false); prevUploadKey.current = uploadKey; }
     setConfirmed(false);
@@ -142,21 +186,23 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
     // Nothing is read until the person asks: files land, "Read as" is set, then one click reads them, with Devin or
     // with the built-in rules alone. A change to the uploads makes any earlier reading stale, so the results clear.
     // A connector (the employee directory on step 3) is not an upload: it re-reads the same way as before, silently.
-    if (uploadChanged || !plan || lastRead.current === null) {
+    if (uploadChanged || !(plan || earlyPlan) || lastRead.current === null) {
       lastRead.current = null;
+      ++seq.current;
       setAgentRead(null);
       setAgentStage(null);
       setPlanReading(false);
-      setPlan(null); setSignals([]); setProject(null); setPlanError(null);
+      setPlan(null); setEarlyPlan(null); setSignals([]); setProject(null); setPlanError(null);
       return;
     }
     readFilesRef.current?.(lastRead.current);
-  }, [files, backend, hasPlanFile, uploadKey, stage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [files, backend, hasPlanFile, uploadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** The deliberate step: read the files as they stand now, with Devin (which spends credits), the rules alone, or the
-   *  reading a coding agent left in the project's folder. */
+   *  reading a coding agent left in the project's folder. Each file is read for what it is: a PRD for the sentences that
+   *  point to a team or an approval, a plan of record and a launch checklist for what they commit to, by when. */
   const readFiles = useCallback((withAgent: boolean, fromFolder = false) => {
-    if (!hasReadable || !stage) return;
+    if (!hasReadable) return;
     const useAgent = withAgent && backend.agent.available && !fromFolder;
     lastRead.current = useAgent;
     const my = ++seq.current;
@@ -165,34 +211,47 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
     setAgentProgress(null);
     setPlanReading(true);
     setConfirmed(false);
-    backend.extractPlan(files, stage, { agent: useAgent, folder: fromFolder && saved ? saved.id : undefined, onProgress: (st, pr) => { if (my === seq.current) { setAgentStage(st); if (pr) setAgentProgress(pr); } } }).then((r) => {
+    const teams = files.filter((f) => f.kind === "teams");
+    const prdFiles = files.filter((f) => f.kind === "prd");
+    const porFiles = files.filter((f) => f.kind === "plan" || f.kind === "checks");
+    const opts = { agent: useAgent, folder: fromFolder && saved ? saved.id : undefined, onProgress: (st: AgentReadStage, pr?: ReadProgress) => { if (my === seq.current) { setAgentStage(st); if (pr) setAgentProgress(pr); } } };
+    (async () => {
+      const early = prdFiles.length ? await backend.extractPlan([...prdFiles, ...teams], "starting", opts) : null;
+      const launchRead = porFiles.some((f) => f.kind === "plan") ? await backend.extractPlan([...porFiles, ...teams], "launching", opts) : null;
       if (my !== seq.current) return;
-      setPlan(r.plan); setSignals(r.signals); setProject(r.project); setPlanError(null);
-      setAgentRead(r.agent ?? null); setAgentStage(null); setAgentProgress(null); setPlanReading(false);
-      if (r.plan.launch_date) setLaunch(r.plan.launch_date);
-      logEvent(fromFolder ? `Your coding agent read ${files.filter((f) => f.kind !== "other").length} file${files.length === 1 ? "" : "s"} in the project folder` : useAgent ? `${backend.agent.name} read ${files.filter((f) => f.kind !== "other").length} file${files.length === 1 ? "" : "s"}${r.agent?.cached ? " (an earlier reading)" : ""}` : "Read the files with the built-in rules");
-    }).catch((e) => { if (my === seq.current) { setPlan(null); setSignals([]); setAgentStage(null); setPlanReading(false); setPlanError(String(e.message ?? e)); } });
-  }, [backend, files, stage, hasReadable, saved]);
+      if (!early && !launchRead) throw new Error("No file was read as a PRD or a plan of record. Set \"Read as\" on the file that describes the project.");
+      setEarlyPlan(early?.plan ?? null); setSignals(early?.signals ?? []); setProject(early?.project ?? null);
+      setPlan(launchRead?.plan ?? null); setPlanError(null);
+      setAgentRead(mergeReads(early?.agent ?? null, launchRead?.agent ?? null)); setAgentStage(null); setAgentProgress(null); setPlanReading(false);
+      if (launchRead?.plan.launch_date) setLaunch(launchRead.plan.launch_date);
+      const n = files.filter((f) => f.kind !== "other" && f.via !== "directory").length;
+      logEvent(fromFolder ? `Your coding agent read ${n} file${n === 1 ? "" : "s"} in the project folder` : useAgent ? `${backend.agent.name} read ${n} file${n === 1 ? "" : "s"}${(early?.agent ?? launchRead?.agent)?.cached ? " (an earlier reading)" : ""}` : "Read the files with the built-in rules");
+    })().catch((e) => { if (my === seq.current) { setPlan(null); setEarlyPlan(null); setSignals([]); setAgentStage(null); setPlanReading(false); setPlanError(String(e.message ?? e)); } });
+  }, [backend, files, hasReadable, saved]); // eslint-disable-line react-hooks/exhaustive-deps
   const readFilesRef = useRef(readFiles);
   readFilesRef.current = readFiles;
 
-  const epicVal = epic.trim();
-  const epicOk = /^[A-Z][A-Z0-9]+-\d+$/.test(epicVal);
-
   // One epic named in the plan is the answer to "which work is this?": fill it in rather than ask for a click.
   useEffect(() => {
-    if (plan && !epic.trim() && plan.epic_keys_mentioned.length === 1) setEpic(plan.epic_keys_mentioned[0]);
-  }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
+    const keys = [...new Set([...(plan?.epic_keys_mentioned ?? []), ...(earlyPlan?.epic_keys_mentioned ?? [])])];
+    if (!epic.trim() && keys.length === 1) setEpic(keys[0]);
+  }, [plan, earlyPlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A one-line note on the plan step for things the app did on its own: a stage change kept the files, sample files replaced yours.
   const [planNotice, setPlanNotice] = useState<string | null>(null);
+  /** Set when the plan is confirmed with everything connected: the review runs once the epic's lookup finishes. */
+  const [autoRun, setAutoRun] = useState(false);
+  /** Set by a suggestion that sends the person to connect something: what to wait for before running the review again. */
+  const [rerunWhen, setRerunWhen] = useState<"jira" | "launch" | null>(null);
 
-  // Stage B: resolve once connected and the epic key is valid (not needed when just starting).
+  // Stage B: resolve once connected and the epic key is valid, against the plan of record's teams when there is one.
   useEffect(() => {
-    if (!plan || !needsJira || jiraState !== "on" || !epicOk) { setTarget(null); setTargetError(null); return; }
+    const base = plan ?? earlyPlan;
+    if (!base || jiraState !== "on" || !epicOk) { setTarget(null); setTargetError(null); return; }
     let on = true;
-    backend.resolveRelease(plan, epicVal, hasTeamList).then(async (t) => {
+    backend.resolveRelease(base, epicVal, hasTeamList).then(async (t) => {
       if (!on) return;
+      targetFor.current = base;
       setTarget(t);
       setTargetError(null);
       // The team choices saved with the project hold for its epic; a different epic starts over.
@@ -207,10 +266,10 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
       setRunsById(loaded);
     }).catch((e) => { if (on) { setTarget(null); setTargetError(String(e.message ?? e)); } });
     return () => { on = false; };
-  }, [plan, jiraState, epicOk, epicVal, hasTeamList, backend, needsJira]);
+  }, [plan, earlyPlan, jiraState, epicOk, epicVal, hasTeamList, backend]);
 
   const [storeError, setStoreError] = useState<string | null>(null);
-  const addFiles = useCallback((list: FileList | File[] | null) => {
+  const addFiles = useCallback((list: FileList | File[] | null, kindOf?: (name: string) => FileKind) => {
     if (!list) return;
     const picked = Array.from(list); // copy now: the input's FileList is cleared after the handler returns
     const added: UploadedFile[] = [];
@@ -218,7 +277,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
       const next = [...cur];
       picked.forEach((file) => {
         const kb = Math.max(1, Math.round(file.size / 1024));
-        const f: UploadedFile = { id: `u${Date.now()}-${next.length}`, name: file.name, size: `${kb} KB`, kind: guessKind(file.name, next), sample: false, file };
+        const f: UploadedFile = { id: `u${Date.now()}-${next.length}`, name: file.name, size: `${kb} KB`, kind: kindOf ? kindOf(file.name) : guessKind(file.name, next), sample: false, file };
         added.push(f); next.push(f);
       });
       return next;
@@ -277,15 +336,32 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
   const directoryHandlers = { onConnectDirectory: connectDirectory, onDisconnectDirectory: disconnectDirectory, onConnectEntra: connectEntra, onConnectJira: connectJiraDirectory, onDisconnectSource: disconnectSource };
 
   const [runError, setRunError] = useState<string | null>(null);
-  const runReview = useCallback(async () => {
-    if (!plan || !stage) return;
+  /** Runs every check whose inputs are here, as one review: who to involve (and, with Jira and the epic, who is on the work)
+   *  from the PRD, and what is missing for launch from the plan of record. "earlyOnly" leaves the launch check out, for a
+   *  plan of record whose Jira side is not ready yet. */
+  const runReview = useCallback(async (opts: { earlyOnly?: boolean; readiness?: boolean } = {}) => {
+    const doLaunch = !opts.earlyOnly && !!plan && !!target && jiraState === "on" && epicOk && allTeamsResolved(target.projects, choices);
+    const doEarly = !!earlyPlan;
+    if (!doLaunch && !doEarly) return;
+    const withReadiness = (opts.readiness ?? launchCheck) && !plan;
     setScreen("running");
+    setPlanNotice(null); // notes about the files belong to the step that set them, not to the review that follows
     setProgress(0);
     setConfirmed(true);
     setRunError(null);
     try {
-      if (stage === "launching") {
-        if (!target) return;
+      let result: Starter | null = null;
+      if (doEarly) {
+        const earlyStage: Stage = jiraState === "on" && epicOk ? "building" : "starting";
+        const exclude = signals.filter((g) => signalsOff[g.id]).map((g) => g.id);
+        result = await backend.runStarter({ stage: earlyStage, files: files.filter((f) => f.kind === "prd" || f.kind === "teams"), excludeSignals: exclude, epic: earlyStage === "building" ? epicVal : null, teamProjects: earlyStage === "building" ? choices as Record<string, string> : undefined }, setProgress);
+        setStarter(result);
+        setCommitments((cur) => fromStarter(cur, result!, signalsOff).list);
+        logEvent(earlyStage === "starting" ? `Found ${result.teams.length} teams to involve` : `Checked team coverage and approvals for ${epicVal}`);
+      } else setStarter(null);
+      let launchRec: HistoryRecord["launch"] | undefined;
+      let id: string | null = null;
+      if (doLaunch && plan && target) {
         // What the person confirmed: edited due dates, the launch date, and their team → project choices.
         const confirmedPlan: PlanDraft = {
           ...plan,
@@ -293,46 +369,43 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
           items: plan.items.map((i) => (planDates[i.id] && planDates[i.id] !== i.due ? { ...i, due: planDates[i.id], due_text: planDates[i.id], due_is_inferred: false } : i)),
         };
         const confirmedTarget: ReleaseTarget = { ...target, projects: applyChoices(target.projects, choices) };
-        const id = await backend.runReview(confirmedPlan, confirmedTarget, setProgress);
+        id = await backend.runReview(confirmedPlan, confirmedTarget, setProgress);
         const list = await backend.listRuns(confirmedTarget.epic.key);
         const loaded: Record<string, Run> = {};
         for (const r of list) loaded[r.id] = runsById[r.id] && r.id !== id ? runsById[r.id] : await backend.loadRun(confirmedTarget.epic.key, r.id);
         setRuns(list);
         setRunsById(loaded);
-        setRunId(id);
+        setCommitments((cur) => fromLaunch(cur, loaded[id!], loaded[id!].release.snapshot_label).list); // dated like the review itself
+        launchRec = { epic: confirmedTarget.epic.key, runId: id, target: confirmedTarget, plan, planDates, launch: launch || target.release_window.end };
         logEvent(`Ran the launch review (${fmtDate(id)} run)`);
-      } else {
-        const exclude = signals.filter((g) => signalsOff[g.id]).map((g) => g.id);
-        const result = await backend.runStarter({ stage, files, excludeSignals: exclude, epic: stage === "building" ? epicVal : null }, setProgress);
-        setStarter(result);
-        addRecord({ id: `${result.stage}:${Date.now().toString(36)}`, at: new Date().toISOString(), stage: result.stage, title: result.stage === "starting" ? "Who to involve" : `Team coverage · ${result.epic ?? ""}`.trim(), summary: null, files: files.filter((f) => f.kind !== "other").map((f) => f.name), starter: result, signalsOff });
-        logEvent(stage === "starting" ? `Found ${result.teams.length} teams to involve` : `Checked team coverage and approvals for ${epicVal}`);
       }
-      setScreen("results");
+      setRunId(id);
+      // One review, kept as one record, with what each check found.
+      addRecord({
+        id: `review:${Date.now().toString(36)}`, at: new Date().toISOString(), stage, summary: null,
+        title: id ? `Launch review · ${fmtDate(id)} run` : result?.stage === "building" ? `${withReadiness ? "Launch readiness" : "Team coverage"} · ${result.epic ?? ""}`.trim() : "Who to involve",
+        files: files.filter((f) => f.kind !== "other").map((f) => f.name), starter: result ?? undefined, signalsOff, launch: launchRec,
+        readiness: !id && withReadiness && result?.stage === "building" ? { date: launch || target?.epic.release_date || null } : undefined,
+      });
+      setScreen("overview");
     } catch (e) {
       setRunError(String((e as Error).message ?? e));
       setConfirmed(false);
       setScreen("apps");
     }
-  }, [backend, stage, plan, target, launch, planDates, choices, runsById, signals, signalsOff, files, epicVal]);
+  }, [backend, stage, plan, earlyPlan, target, jiraState, epicOk, launch, planDates, choices, runsById, signals, signalsOff, files, epicVal, launchCheck]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (stage !== "launching" || !runId || !target || !plan || !confirmed) return;
-    addRecord({ id: `launch:${target.epic.key}:${runId}`, at: new Date().toISOString(), stage: "launching", title: `Launch review · ${fmtDate(runId)} run`, summary: null,
-      files: files.filter((f) => f.kind !== "other").map((f) => f.name),
-      launch: { epic: target.epic.key, runId, target: { ...target, projects: applyChoices(target.projects, choices) }, plan, planDates, launch: launch || target.release_window.end } });
-  }, [stage, runId, target?.epic.key, confirmed]); // eslint-disable-line react-hooks/exhaustive-deps
   // An early review from before records existed is recorded when the project opens.
   useEffect(() => {
-    if (starter && confirmed && stage !== "launching" && !records.some((r) => r.starter && r.starter.label === starter.label && r.stage === starter.stage))
+    if (starter && confirmed && !records.some((r) => r.starter && r.starter.label === starter.label && r.starter.stage === starter.stage))
       addRecord({ id: `${starter.stage}:${starter.label}`, at: starter.analyzed_at, stage: starter.stage, title: starter.stage === "starting" ? "Who to involve" : `Team coverage · ${starter.epic ?? ""}`.trim(), summary: null, files: starter.files.map((f) => f.name), starter, signalsOff });
   }, [starter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The project saves itself as it changes (shortly after, so typing does not write on every key).
   const snapshot: ProjectData = useMemo(() => ({
-    stage, files: storableFiles(files), plan, signals, signalsOff, project, planDates, planConfirmed, epic, launch, choices: choices as Record<string, string>,
-    confirmed, runId, starter, agentRead, lastRead: lastRead.current, jiraOn: jiraState === "on", events, summary, records,
-  }), [stage, files, plan, signals, signalsOff, project, planDates, planConfirmed, epic, launch, choices, confirmed, runId, starter, agentRead, jiraState, events, summary, records]);
+    stage, files: storableFiles(files), plan, earlyPlan, signals, signalsOff, project, planDates, planConfirmed, epic, launch, choices: choices as Record<string, string>,
+    confirmed, runId, starter, agentRead, lastRead: lastRead.current, jiraOn: jiraState === "on", events, summary, records, commitments, launchCheck,
+  }), [stage, files, plan, earlyPlan, signals, signalsOff, project, planDates, planConfirmed, epic, launch, choices, confirmed, runId, starter, agentRead, jiraState, events, summary, records, commitments, launchCheck]);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "failed">("saved");
   const firstSave = useRef(true);
   /** The save that is waiting out the pause, if any: leaving the project (or the page) writes it at once instead of dropping it. */
@@ -380,76 +453,141 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
     } catch (e) { setRecordError(`This review's run could not be loaded: ${(e as Error).message}`); }
   };
 
-  /** Moving the project along its life: the files and connections stay; the new stage asks for what it needs next. */
-  const nextStage = stage ? LIFECYCLE[LIFECYCLE.findIndex((l) => l.id === stage) + 1]?.id ?? null : null;
-  const moveTo = (s: Stage) => {
-    logEvent(`Moved from ${STAGE_SHORT[stage!]} to ${STAGE_SHORT[s]}`);
-    setStageChoice(s);
-    setSummary(null);
-    setCurrentRecord(null); // the last review stays in History as a record of the stage the project has left
-    setPlanNotice(`Now ${STAGE_SHORT[s].toLowerCase()}. Your files and connections are kept; the checklist shows what this stage still needs.`);
-    setScreen("overview");
-  };
-
-  const headerEpic = target?.epic.key ?? plan?.epic_keys_mentioned[0] ?? null;
-  const headerLaunch = stage === "launching" ? launch || plan?.launch_date || null : null;
-  const projectName = project ?? target?.epic.summary ?? (plan ? "Your plan" : "New project");
-  const canResults = confirmed && (stage === "launching" ? !!runId : !!starter);
-  /** The first time through, the project is set up step by step; once it has a review, it is a workspace with fixed places. */
+  const headerEpic = target?.epic.key ?? (epicOk ? epicVal : null) ?? plan?.epic_keys_mentioned[0] ?? earlyPlan?.epic_keys_mentioned[0] ?? null;
+  const headerLaunch = hasPor ? launch || plan?.launch_date || null : null;
+  const projectName = project ?? target?.epic.summary ?? (plan || earlyPlan ? "Your plan" : "New project");
+  const canResults = confirmed && (!!starter || !!runId);
+  /** Before its first review, a project is set up step by step from step 1; after that the overview is its home. */
   const firstRun = records.length === 0 && !canResults;
+  /** The step bar is for setting a project up the first time. Afterwards, adding a file or a connection is not a new setup:
+   *  the files and connections are places opened from the overview, and the review runs again with what is new. */
+  const settingUp = firstRun && (screen === "start" || screen === "plan" || screen === "apps" || screen === "running");
   const steps: { id: Screen; label: string; disabled: boolean; active: boolean; done: boolean }[] = [
-    { id: "start", label: "Stage", disabled: false, active: screen === "start", done: !!stage },
-    { id: "plan", label: "Plan", disabled: !stage, active: screen === "plan", done: planConfirmed },
-    { id: "apps", label: "Connections", disabled: !plan, active: screen === "apps", done: false },
-    { id: "results", label: "Review", disabled: screen !== "running", active: screen === "running", done: false },
+    { id: "start", label: "Organisation", disabled: false, active: screen === "start", done: screen !== "start" },
+    { id: "plan", label: "Files", disabled: false, active: screen === "plan", done: planConfirmed },
+    { id: "results", label: "Review", disabled: true, active: screen === "running", done: false },
   ];
-  /** Where "back" goes from each screen: the step before while setting up, the overview after. */
-  const back: { label: string; to: Screen } | null = firstRun
-    ? ({ plan: { label: "Step 1: Stage", to: "start" as Screen }, apps: { label: "Step 2: Plan", to: "plan" as Screen } } as Partial<Record<Screen, { label: string; to: Screen }>>)[screen] ?? null
-    : screen === "start" || screen === "plan" || screen === "apps" ? { label: "Overview", to: "overview" } : null;
-  const tabs: { id: Screen; label: string; disabled: boolean; active: boolean }[] = [
-    { id: "overview", label: "Overview", disabled: !stage, active: screen === "overview" || screen === "start" },
-    { id: "plan", label: "Plan", disabled: !stage, active: screen === "plan" },
-    { id: "apps", label: "Connections", disabled: !plan, active: screen === "apps" },
-    { id: "results", label: "Review", disabled: !canResults && screen !== "running", active: screen === "results" || screen === "running" },
-    { id: "history", label: "History", disabled: !stage, active: screen === "history" },
-  ];
+  /** Where "back" goes: the step before while setting up for the first time, otherwise the overview. */
+  const back: { label: string; to: Screen } | null = settingUp
+    ? ({ plan: { label: "Step 1: Organisation", to: "start" as Screen }, apps: { label: "Step 2: Files", to: "plan" as Screen } } as Partial<Record<Screen, { label: string; to: Screen }>>)[screen] ?? null
+    : screen !== "overview" && screen !== "running" ? { label: "Overview", to: "overview" } : null;
 
-  // ---- the overview's checklist: what this stage needs, worked out from the project as it stands ----
+  // ---- what the review can check, worked out from the project as it stands ----
   const resolvedTeams = target ? allTeamsResolved(target.projects, choices) : false;
-  const reviewReady = !!stage && !!plan && (stage === "starting" || (jiraState === "on" && epicOk && !!target && (stage === "building" || resolvedTeams)));
+  const jiraReady = jiraState === "on" && epicOk && !!target;
+  /** Each check is ready when its inputs are here: who to involve from a PRD; who is on the work from the PRD plus Jira and
+   *  the epic; what is missing for launch from a plan of record plus Jira, the epic and every team matched to a project. */
+  const involveReady = !!earlyPlan;
+  const coverageReady = involveReady && jiraReady;
+  const launchReady = !!plan && jiraReady && resolvedTeams;
+  /** Something can be reviewed now: who to involve (a PRD), or the launch check when everything it needs is here. */
+  const canRunNow = involveReady || launchReady;
+  /** The review can run: some check is ready, and a plan of record (which asks for the launch check) has what that needs.
+   *  Without it, the connections step asks for the rest, and the person can still run what is ready now. */
+  const reviewReady = (involveReady || launchReady) && (!plan || launchReady);
   const planFiles = files.filter((f) => PLAN_KINDS.includes(f.kind));
   const go = (sc: Screen) => () => setScreen(sc);
-  const items: CheckItem[] = !stage ? [] : [
+  const items: CheckItem[] = [
     { id: "org", label: "Your organisation", state: directoryFile || uploadedTeamList ? "done" : "optional",
       detail: directoryFile ? `Connected: ${directoryState.name}` : uploadedTeamList ? `From ${uploadedTeamList.name}` : "Connect your directory so owners are matched to real teams and people.",
       action: { label: directoryFile || uploadedTeamList ? "Manage" : "Connect", go: go("start") } },
-    { id: "files", label: stage === "launching" ? "Plan of record" : "PRD or plan", state: hasPlanFile ? "done" : "todo",
-      detail: hasPlanFile ? planFiles.map((f) => f.name).join(", ") : stage === "launching" ? "Add your POR deck or doc, and your launch checklist if you have one." : "Add your PRD, one-pager or brief.",
+    { id: "files", label: "What describes the project", state: hasPlanFile ? "done" : "todo",
+      detail: hasPlanFile ? planFiles.map((f) => f.name).join(", ") : "Add a PRD, one-pager or brief, or a plan of record.",
       action: { label: hasPlanFile ? "Change" : "Add", go: go("plan") } },
-    { id: "read", label: "Read", state: plan ? "done" : hasPlanFile ? "todo" : "waiting",
-      detail: plan ? (agentRead?.status === "done" ? `Read by ${agentRead.name}` : "Read") : hasPlanFile ? "Your files are added but not read for this stage yet." : "Add a file first.",
-      action: { label: plan ? "See what was read" : "Read", go: go("plan") } },
-    ...(stage !== "starting" ? [
-      { id: "jira", label: "Jira", state: jiraState === "on" ? "done" : plan ? "todo" : "waiting", detail: jiraState === "on" ? `Connected · ${jira.site || "read-only"}` : "Where the work is tracked; read-only.", action: { label: jiraState === "on" ? "Manage" : "Connect", go: go("apps") } },
-      { id: "epic", label: "The epic", state: target ? "done" : jiraState === "on" ? "todo" : "waiting", detail: target ? `${target.epic.key} · ${target.epic.summary}` : epicVal && !epicOk ? "Use a Jira key like INGEST-142." : "Which work in Jira this is.", action: { label: target ? "Change" : "Pick", go: go("apps") } },
+    { id: "read", label: "Read", state: plan || earlyPlan ? "done" : hasPlanFile ? "todo" : "waiting",
+      detail: plan || earlyPlan ? (agentRead?.status === "done" ? `Read by ${agentRead.name}` : "Read") : hasPlanFile ? "Your files are added but not read yet." : "Add a file first.",
+      action: { label: plan || earlyPlan ? "See what was read" : "Read", go: go("plan") } },
+    // Jira and the epic are needed by a plan of record's launch check; with a PRD alone they add who is on the work.
+    { id: "jira", label: "Jira", state: jiraState === "on" ? "done" : !(plan || earlyPlan) ? "waiting" : plan && !earlyPlan ? "todo" : "optional",
+      detail: jiraState === "on" ? `Connected · ${jira.site || "read-only"}` : hasPor ? "Where the work is tracked; read-only. The launch check needs it." : "Read-only. Adds who is actually on the work.", action: { label: jiraState === "on" ? "Manage" : "Connect", go: go("apps") } },
+    ...(jiraState === "on" || hasPor ? [
+      { id: "epic", label: "The epic", state: target ? "done" : epicOk ? "waiting" : jiraState === "on" ? "todo" : "waiting", detail: target ? `${target.epic.key} · ${target.epic.summary}` : epicOk ? `${epicVal} · ${!(plan || earlyPlan) ? "checked in Jira once your files are read" : jiraState !== "on" ? "checked once Jira is connected" : "looking it up in Jira"}` : epicVal ? "Use a Jira key like INGEST-142." : "Which work in Jira this is.", action: { label: target || epicOk ? "Change" : "Pick", go: go("apps") } },
     ] as CheckItem[] : []),
-    ...(stage === "launching" ? [
+    ...(hasPor ? [
       { id: "teams", label: "Teams matched to Jira projects", state: !target ? "waiting" : resolvedTeams ? "done" : "todo", detail: target ? `${target.projects.filter((t) => t.match !== "unresolved" || choices[t.team]).length} of ${target.projects.length} teams matched` : "After the epic.", action: { label: resolvedTeams ? "Check" : "Match", go: go("apps") } },
     ] as CheckItem[] : []),
     { id: "review", label: "Review", state: canResults ? "done" : reviewReady ? "todo" : "waiting",
       detail: canResults ? (summary?.detail ?? "Reviewed") : reviewReady ? "Everything it needs is here." : "After the steps above.",
-      action: canResults ? { label: "Open", go: go("results") } : { label: RUN_LABEL[stage], go: () => void runReview() } },
+      action: canResults ? { label: "Open", go: go("overview") } : { label: "Run the review", go: () => void runReview() } },
   ];
   const firstTodo = items.find((i) => i.state === "todo");
-  const next: NextUp = !stage ? { title: "Pick the stage", detail: "Where the project is decides what it asks for.", action: { label: "Pick the stage", go: go("start") } }
-    : firstTodo ? (firstTodo.id === "review"
-        ? { title: RUN_LABEL[stage], detail: "Everything this stage needs is in place.", action: { label: RUN_LABEL[stage], go: () => void runReview() } }
-        : { title: { files: "Add your plan", read: "Read your files", jira: "Connect Jira", epic: "Pick the epic", teams: "Match each team to its Jira project" }[firstTodo.id] ?? firstTodo.label, detail: firstTodo.detail, action: firstTodo.action ? { label: firstTodo.action.label === "Read" ? "Read your files" : firstTodo.action.label, go: firstTodo.action.go } : undefined })
-    : canResults ? (nextStage
-        ? { title: "This stage is reviewed", detail: `Act on the review's next actions; re-run when the plan or the work changes. Move to ${STAGE_SHORT[nextStage].toLowerCase()} when the project gets there.`, action: { label: "Open the review", go: go("results") } }
-        : { title: "Up to date", detail: "Act on the review's next actions, and re-run when the plan or the work changes.", action: { label: "Open the review", go: go("results") } })
-    : { title: "Waiting on the steps below", detail: "Finish the checklist to run the review." };
+  /** Once reviewed, what would let the review check more, from what the project has: the next thing to add or connect. */
+  const unlock: NextUp | null = !canResults ? null
+    : !earlyPlan && !hasPrd && !plan ? null
+    : earlyPlan && !jiraReady ? { title: "See who's actually on the work", detail: `Connect Jira${epicOk ? ` and ${epicVal}` : " and pick the epic"}: the review then checks which teams are on the work and which approvals have started.`, action: { label: "Connect Jira", go: () => { setRerunWhen("jira"); setScreen("apps"); } } }
+    : !hasPor && !readinessOn ? { title: "Ready to launch?", detail: `Checks each team against ${epicOk ? epicVal : "the work"} in Jira: on the work, and every sign-off your PRD asks for done${launch ? `, for the ${fmtDate(launch)} launch` : ""}.`,
+        action: { label: "Check launch readiness", go: () => { setLaunchCheck(true); logEvent("Started checking launch readiness"); void runReview({ readiness: true }); } },
+        more: { label: "Add a launch checklist", go: openChecklist } }
+    : plan && !launchReady ? { title: "Finish what the launch check needs", detail: "Match each team to its Jira project, and the launch check runs with the rest.", action: { label: "Match teams", go: () => { setRerunWhen("launch"); setScreen("apps"); } } }
+    : null;
+  const next: NextUp = firstTodo && !canResults ? (firstTodo.id === "review"
+        ? { title: "Run the review", detail: "Everything it needs is here.", action: { label: "Run the review", go: () => void runReview() } }
+        : { title: { files: "Add what describes the project", read: "Read your files", jira: "Connect Jira", epic: "Pick the epic", teams: "Match each team to its Jira project" }[firstTodo.id] ?? firstTodo.label, detail: firstTodo.detail, action: firstTodo.action ? { label: firstTodo.action.label === "Read" ? "Read your files" : firstTodo.action.label, go: firstTodo.action.go } : undefined })
+    : unlock ?? (canResults
+        ? { title: "Up to date", detail: "Run it again when the plan or the work in Jira changes.", action: { label: "Run the review again", go: () => void runReview() } }
+        : { title: "Waiting on the steps below", detail: "Finish the checklist to run the review." });
+  // Every arrival at the connections step with the plan confirmed and no review yet arms it: once what is missing is
+  // connected, the review runs. Changing the epic, launch date or a team's project there means the person is checking
+  // details, so they start it themselves. (A file change clears the results a render later, so it looks again then.)
+  useEffect(() => { setAutoRun(screen === "apps" && !canResults && planConfirmed && !rerunWhen); }, [screen, canResults]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (autoRun && screen === "apps" && reviewReady) { setAutoRun(false); void runReview(); }
+  }, [autoRun, screen, reviewReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Sent to the connections step by a suggestion ("see who's actually on the work"): once what it asked for is connected,
+  // the review runs again with the check it unlocks. Leaving the step drops it.
+  useEffect(() => {
+    if (!rerunWhen) return;
+    if (screen !== "apps") { setRerunWhen(null); return; }
+    if (rerunWhen === "jira" ? jiraReady : launchReady) { setRerunWhen(null); void runReview(); }
+  }, [rerunWhen, screen, jiraReady, launchReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Adding a launch checklist or plan of record, in a dialog over the project: the picked files join the project, are
+   *  read, and the launch review runs on their dated commitments; if it still needs each team's Jira project (or Jira),
+   *  the connections step opens and the review runs once that is done. A checklist on its own is read as the plan. */
+  const porAgent = useRef(false);
+  const addPlanOfRecord = ({ files: picked, sample }: { files: File[]; sample: boolean }) => {
+    porAgent.current = backend.agent.available && agentConsent !== "no";
+    if (porAgent.current && agentConsent !== "yes") setAgentConsent("yes");
+    if (sample) setFiles((cur) => { const add = sampleFiles("launch"); return [...cur.filter((f) => !add.some((a) => a.name === f.name)), ...add]; });
+    const isChecklist = (n: string) => /check|readiness|gate/i.test(n);
+    const withPlan = sample || picked.some((f) => !isChecklist(f.name));
+    addFiles(picked, (n) => (isChecklist(n) && withPlan ? "checks" : "plan"));
+    setPorError(null);
+    setPor("added");
+  };
+  // The files have landed (which clears the old reading): read them as they stand now.
+  useEffect(() => { if (por === "added") { setPor("reading"); readFilesRef.current(porAgent.current); } }, [files]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (por === "reading" && !planReading) {
+      if (planError || !plan) { setPorError(planError ?? "No launch commitments found in these files. Try another file."); setPor("pick"); return; }
+      setPor("checking");
+    }
+    if (por !== "checking") return;
+    if (jiraState === "on" && epicOk && targetFor.current !== plan && !targetError) return; // still matching the plan's teams in Jira
+    setPor(null);
+    setPlanConfirmed(true);
+    if (launchReady) void runReview();
+    else { setRerunWhen("launch"); setScreen("apps"); }
+  }, [por, planReading, planError, plan, target, targetError, launchReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** The project's path: the checks in the order a project usually meets them. Ticked when the current review ran it; the
+   *  one the suggestion above leads to is next. Nothing is required: a step that is not next is simply not here yet. */
+  const ran = { involve: !!starter, coverage: starter?.stage === "building", launch: !!(runId && plan) || (readinessOn && starter?.stage === "building") };
+  const nextCheck: PathStep["id"] | null = !unlock ? null : unlock.title === "See who's actually on the work" ? "coverage" : "launch";
+  const path: PathStep[] = ([["involve", "Who to involve"], ["coverage", "Who's on the work"], ["launch", "Ready to launch"]] as const)
+    .map(([id, label]) => ({ id, label, state: ran[id] ? "done" : id === nextCheck ? "next" : "later" }));
+  /** A team linked to its Jira project by hand, from its card: kept with the launch check's team → project choices, and the
+   *  review runs again with it once the choice is in. */
+  const [relinked, setRelinked] = useState(false);
+  const teamLink = useMemo(() => ({
+    linked: Object.fromEntries(Object.entries(choices).filter(([, v]) => v !== "skip")) as Record<string, string>,
+    projects: () => backend.jiraProjects(),
+    set: (team: string, project: string | null) => {
+      setChoices((cur) => { const n = { ...cur }; if (project) n[team] = project; else delete n[team]; return n; });
+      logEvent(project ? `Linked ${team} to the Jira project ${project}` : `Unlinked ${team} from its Jira project`);
+      setRelinked(true);
+    },
+  }), [choices, backend, logEvent]);
+  useEffect(() => { if (relinked) { setRelinked(false); void runReview(); } }, [relinked]); // eslint-disable-line react-hooks/exhaustive-deps
   const latestRecord = canResults ? records.find((r) => r.id === currentRecord) ?? null : null;
   const earlierRecords = records.filter((r) => r.id !== latestRecord?.id).slice().reverse().slice(0, 3);
 
@@ -473,13 +611,13 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
             )}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-            {stage && <span className="stage-chip" data-testid="stage-chip">Stage: {STAGE_SHORT[stage]}</span>}
+            {(plan || earlyPlan) && <span className="stage-chip" data-testid="stage-chip" title="Read from what the project has: a plan of record, work tracked in Jira, or a PRD">{STAGE_SHORT[stage]}</span>}
             <span className="tag">{live ? `Live · ${jira.site || "Jira"}` : "Sample data"}</span>
             {user && <span className="tag" data-testid="user-chip" title={user.email ?? undefined}>{user.name}</span>}
             {onSignOut && <button type="button" className="btn" style={{ minHeight: 32, padding: "0 12px", fontSize: 14 }} onClick={onSignOut}>Sign out</button>}
           </div>
         </div>
-        {firstRun ? (
+        {settingUp && (
           <nav className="wrap steps setup-steps" aria-label="Setup">
             {steps.map((t, i) => (
               <button key={t.id} type="button" aria-current={t.active ? "step" : "false"} disabled={t.disabled} onClick={() => { if (!t.disabled && !t.active) setScreen(t.id); }}>
@@ -487,83 +625,99 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
               </button>
             ))}
           </nav>
-        ) : (
-          <nav className="wrap steps" aria-label="Project">
-            {tabs.map((t) => (
-              <button key={t.id} type="button" aria-current={t.active ? "page" : "false"} disabled={t.disabled} onClick={() => { if (t.disabled) return; setOpenRecord(null); setScreen(t.id); }}>{t.label}</button>
-            ))}
-          </nav>
         )}
       </header>
       <main className="wrap page">
-        {back && <button type="button" className="linkbtn back-link" onClick={() => setScreen(back.to)}>‹ {back.label}</button>}
+        {/* The plan and connections screens end with their own back button; everywhere else the way back is at the top. */}
+        {back && screen !== "plan" && screen !== "apps" && !(screen === "history" && openRecord) && <button type="button" className="linkbtn back-link" onClick={() => setScreen(back.to)}>‹ {back.label}</button>}
         {screen === "start" && (
-          <GetStarted stage={stage} onPick={(s) => { if (stage && s !== stage && !firstRun) { logEvent(`Moved from ${STAGE_SHORT[stage]} to ${STAGE_SHORT[s]}`); setCurrentRecord(null); setSummary(null); } if (stage && s !== stage && files.some((f) => f.via !== "directory")) setPlanNotice(`Stage changed to ${STAGE_SHORT[s]}. Your files are kept; check each file's "Read as" for this stage.`); setStageChoice(s); }} onContinue={() => { if (stage) setScreen(firstRun ? "plan" : "overview"); }} workspace={!firstRun} jiraOn={jiraState === "on"}
+          <GetStarted onContinue={() => setScreen(canResults ? "overview" : "plan")} workspace={!firstRun}
+            jira={jira} jiraState={jiraState} setJiraState={(s) => { setJiraState(s); if (s === "off") setConfirmed(false); }}
             directory={directoryState} live={live} {...directoryHandlers} />
         )}
-        {screen === "plan" && stage && (
-          <PlanDocuments eyebrow={firstRun ? undefined : "Plan"} backLabel={back?.label}
-            stage={stage} files={files} plan={plan} planError={planError} planDates={planDates} signals={signals} signalsOff={signalsOff}
+        {screen === "plan" && (
+          <PlanDocuments eyebrow={firstRun ? undefined : "Files"} backLabel={back?.label}
+            files={files} plan={plan} earlyPlan={earlyPlan} planError={planError} planDates={planDates} signals={signals} signalsOff={signalsOff}
             notice={planNotice} onDismissNotice={() => setPlanNotice(null)}
             onAddFiles={(list) => { setPlanNotice(null); addFiles(list); }}
             onSetKind={(id, kind) => { setPlanNotice(null); setFiles((cur) => cur.map((f) => (f.id === id ? { ...f, kind } : f))); }}
             onRemove={(id) => { setPlanNotice(null); setFiles((cur) => cur.filter((f) => f.id !== id)); }}
-            onLoadSample={() => setFiles((cur) => { const replaced = cur.filter((f) => f.via !== "directory").length; setPlanNotice(replaced ? `Replaced ${replaced} file${replaced === 1 ? "" : "s"} with the sample set.` : null); return [...sampleFilesFor(stage), ...cur.filter((f) => f.via === "directory")]; })}
+            onLoadSample={(set) => setFiles((cur) => {
+              // A sample set joins what is there; a file of the same name is replaced.
+              const add = sampleFiles(set);
+              const replaced = cur.filter((f) => add.some((a) => a.name === f.name)).length;
+              setPlanNotice(replaced ? `Replaced ${replaced} file${replaced === 1 ? "" : "s"} with the sample's.` : null);
+              return [...cur.filter((f) => !add.some((a) => a.name === f.name)), ...add];
+            })}
             onSetDate={(id, v) => setPlanDates((d) => ({ ...d, [id]: v }))}
             onToggleSignal={(id) => { setSignalsOff((s) => ({ ...s, [id]: !s[id] })); setConfirmed(false); }}
             agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, mode: agentMode, setMode: setAgentMode, stage: agentStage, progress: agentProgress, reading: planReading, read: agentRead, read_now: readFiles,
               folder: live && saved?.folder ? { path: saved.folder, use: () => readFiles(false, true) } : undefined }}
             onBack={() => setScreen(back?.to ?? "overview")}
-            onConfirm={() => { setPlanConfirmed(true); setScreen("apps"); }}
+            confirmLabel={canRunNow || !(plan || earlyPlan) ? "Confirm and run the review" : jiraState === "on" ? "Confirm and finish the launch check" : "Confirm and connect Jira"}
+            confirmHint={canRunNow
+              ? (plan && !launchReady ? "Runs what your PRD allows; the launch check waits for Jira." : "Confirming runs the review.")
+              : "The launch check needs Jira, the epic and each team's project."}
+            onConfirm={() => {
+              setPlanConfirmed(true);
+              // Run whatever can run now; the launch check waits for Jira, and the project offers it once reviewed.
+              if (canRunNow) { void runReview({ earlyOnly: !launchReady }); return; }
+              // Only a plan of record, and its launch check is not ready: that is the one case that needs the connections first.
+              setScreen("apps");
+            }}
           />
         )}
-        {screen === "apps" && stage && plan && (
-          <ConnectApps eyebrow={firstRun ? undefined : "Connections"} backLabel={back?.label}
+        {/* A plan of record asks for the launch check, which needs Jira; what the PRD allows can run now, without waiting. */}
+        {screen === "apps" && plan && !launchReady && earlyPlan && !canResults && (
+          <div className="notice-grey between" role="status" data-testid="partial-run" style={{ marginBottom: 16, gap: 12 }}>
+            <span>The launch check needs Jira, the epic and each team's project.</span>
+            <button type="button" className="btn" onClick={() => void runReview({ earlyOnly: true })}>Review what we can now</button>
+          </div>
+        )}
+        {screen === "apps" && (plan || earlyPlan) && (
+          <ConnectApps eyebrow="Connections" backLabel={back?.label}
             stage={stage}
             jira={jira} jiraState={jiraState} setJiraState={(s) => { setJiraState(s); if (s === "off") setConfirmed(false); }}
             directory={directoryState}
             agent={{ info: backend.agent, consent: agentConsent, setConsent: setAgentConsent, mode: agentMode, setMode: setAgentMode }}
             onConnectDirectory={connectDirectory} onDisconnectDirectory={disconnectDirectory}
-            plan={plan} files={files} epic={epic} setEpic={(v) => { setEpic(v.toUpperCase()); setConfirmed(false); }} epicOk={epicOk}
+            plan={(plan ?? earlyPlan)!} files={files} epic={epic} setEpic={(v) => { setAutoRun(false); setEpic(v.toUpperCase()); setConfirmed(false); }} epicOk={epicOk}
             target={target} targetError={targetError} latestRun={runs.length ? runsById[runs[runs.length - 1].id] ?? null : null} runs={runs}
-            launch={launch} setLaunch={setLaunch}
-            choices={choices} setChoice={(team, c) => setChoices((cur) => { const n = { ...cur }; if (c === null) delete n[team]; else n[team] = c; return n; })}
+            launch={launch} setLaunch={(v) => { setAutoRun(false); setLaunch(v); }}
+            choices={choices} setChoice={(team, c) => setChoices((cur) => { setAutoRun(false); const n = { ...cur }; if (c === null) delete n[team]; else n[team] = c; return n; })}
             confirmed={confirmed} runError={runError}
-            onBack={() => setScreen(back?.to ?? "overview")} onRun={runReview}
+            onBack={() => setScreen(back?.to ?? "overview")} onRun={() => void runReview()}
           />
         )}
-        {screen === "running" && stage && (
-          <Running stage={progress} projectStage={stage} plan={plan} epic={epicVal} latestRun={runId ? runsById[runId] : runs.length ? runsById[runs[runs.length - 1].id] : null} runs={runs}
+        {screen === "running" && (
+          <Running stage={progress} projectStage={stage} plan={plan ?? earlyPlan} epic={epicVal} latestRun={runId ? runsById[runId] : runs.length ? runsById[runs[runs.length - 1].id] : null} runs={runs}
             signalCount={signals.filter((g) => !signalsOff[g.id]).length} directoryGiven={hasTeamList} />
         )}
         {storeError && <div className="notice-grey" role="alert" style={{ marginBottom: 16 }}>{storeError}</div>}
-        {screen === "overview" && stage && (
-          <Overview name={name} stage={stage} nextStage={nextStage} onMove={moveTo} onChangeStage={go("start")}
+        {screen === "overview" && (
+          <Overview name={name} stage={stage} path={path}
             notice={planNotice} onDismissNotice={() => setPlanNotice(null)}
             next={next} items={items}
-            latest={latestRecord} onOpenReview={go("results")}
             earlier={earlierRecords} onOpenRecord={(r) => { setScreen("history"); void showRecord(r); }}
-            activity={events} onHistory={go("history")} />
-        )}
-        {screen === "results" && stage === "launching" && runId && target && (
-          <Review onSummary={onSummary} eyebrow="Review"
-            stage={stage} store={store} runs={runs} runsById={runsById} latestId={runId} target={target} launch={launch || target.release_window.end}
-            planIds={planIds} planDates={planDates} plan={plan!} ownerSource={ownerSource}
-            onChangeStage={() => setScreen("start")} onAddFiles={() => setScreen("plan")} onConnectApps={() => setScreen("apps")}
-          />
-        )}
-        {screen === "results" && stage !== "launching" && starter && (
-          <EarlyResults onSummary={onSummary} eyebrow="Review"
-            starter={starter} signalsOff={signalsOff} store={store} launch={target?.epic.release_date ?? null}
-            onChangeStage={() => setScreen("start")} onAddFiles={() => setScreen("plan")} onConnectApps={() => setScreen("apps")}
-          />
+            onHistory={go("history")}
+            onOpenFiles={go("plan")} onOpenConnections={go("apps")}
+            actions={canResults ? actionsGlance : null}
+            commitments={commitments} onCommitment={onCommitment}
+            hasPrdReview={!!starter}
+            review={!canResults ? undefined : runId && (!target || !runsById[runId]) ? <p className="sm muted">Loading the review…</p> : (
+              <ProjectReview eyebrow={name.trim() || "Review"} store={store} starter={starter} signalsOff={signalsOff} phase={stage} link={jiraState === "on" ? teamLink : undefined}
+                launchDate={launch || target?.epic.release_date || null}
+                readiness={readinessOn ? { date: launch || target?.epic.release_date || null, onAddChecklist: openChecklist } : undefined}
+                launch={runId && target && plan ? { runs, runsById, latestId: runId, target, launch: launch || target.release_window.end, planIds, planDates, plan, ownerSource } : null}
+                commitments={commitments} onCommitment={onCommitment} onActions={setActionsGlance} onSummary={onSummary} onConnectApps={go("apps")} />
+            )} />
         )}
         {screen === "history" && !openRecord && (
           <div className="flow stack">
             <header className="stack-sm" style={{ gap: 8 }}>
               <span className="eyebrow">History</span>
               <h1 className="flow-title">Everything this project has been through</h1>
-              <p className="lead">Each review is kept as it was, at the stage it was run. Open one to see what it found then; the files added, readings and stage moves sit between them.</p>
+              <p className="lead">Each review, kept as it was.</p>
             </header>
             {records.length === 0 && events.length === 0 && <p className="sm muted">Nothing yet.</p>}
             <ol className="timeline" data-testid="history">
@@ -586,7 +740,7 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
                         {item.rec.summary?.detail && <span className="small muted">{item.rec.summary.detail}</span>}
                       </div>
                     </div>
-                    <div><button type="button" className="btn" onClick={() => (item.rec!.id === currentRecord ? setScreen("results") : void showRecord(item.rec!))}>{item.rec.id === currentRecord ? "Open the overview" : "Open this review"}</button></div>
+                    <div><button type="button" className="btn" onClick={() => (item.rec!.id === currentRecord ? setScreen("overview") : void showRecord(item.rec!))}>Open this review</button></div>
                   </div>
                 </li>
               ) : (
@@ -603,18 +757,22 @@ export function App({ backend, jira, store, user = null, initialConsent = "unkno
             </div>
             {recordError && <div className="notice-grey" role="alert">{recordError}</div>}
             {openRecord.starter && (
-              <EarlyResults readOnly eyebrow="History" starter={openRecord.starter} signalsOff={openRecord.signalsOff ?? {}} store={store} launch={null}
-                onChangeStage={() => {}} onAddFiles={() => {}} onConnectApps={() => {}} />
+              <EarlyResults readOnly eyebrow="History" starter={openRecord.starter} signalsOff={openRecord.signalsOff ?? {}} store={store} launch={null} phase={openRecord.stage} readiness={openRecord.readiness}
+                onConnectApps={() => {}} />
             )}
             {openRecord.launch && !recordRuns && !recordError && <p className="sm muted">Loading the run…</p>}
             {openRecord.launch && recordRuns && recordRuns.byId[openRecord.launch.runId] && (
               <Review readOnly eyebrow="History" stage="launching" store={store} runs={recordRuns.runs} runsById={recordRuns.byId} latestId={openRecord.launch.runId} target={openRecord.launch.target}
-                launch={openRecord.launch.launch} planIds={new Set(openRecord.launch.plan.items.map((i) => i.id))} planDates={openRecord.launch.planDates} plan={openRecord.launch.plan} ownerSource={ownerSource}
-                onChangeStage={() => {}} onAddFiles={() => {}} onConnectApps={() => {}} />
+                launch={openRecord.launch.launch} planIds={new Set(openRecord.launch.plan.items.map((i) => i.id))} planDates={openRecord.launch.planDates} plan={openRecord.launch.plan} ownerSource={ownerSource} />
             )}
           </div>
         )}
       </main>
+      {por && (
+        <PlanOfRecordDialog agentName={backend.agent.available && agentConsent !== "no" ? backend.agent.name : null} error={porError}
+          busy={por === "pick" ? null : por === "checking" ? "Getting the launch check ready…" : porAgent.current ? `${backend.agent.name} is reading your files…` : "Reading your files…"}
+          onRead={addPlanOfRecord} onClose={() => setPor(null)} />
+      )}
     </div>
   );
 }

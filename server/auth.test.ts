@@ -231,4 +231,27 @@ describe("demo sign-in (AUTH=demo)", () => {
       expect((await c.req("/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "persona=nobody" })).status).toBe(400);
     } finally { await srv.close(); rmSync(tmp, { recursive: true, force: true }); }
   });
+  it("mocks Sign in with Atlassian: each person accepts a consent page and reads the sample INGEST-142 site", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "rrr-demo-jira-"));
+    const srv = await startServer({ port: 0, quiet: true, creds: null, runsRoot: join(tmp, "runs"), uploadRoot: join(tmp, "up"), cacheRoot: join(tmp, "cache"), storePath: ":memory:", devin: null, guiDist: join(tmp, "nodist"), auth: { mode: "demo", appUrl: "http://127.0.0.1", sessionSecret: "demo-secret" } });
+    try {
+      const c = client(srv.url);
+      const form = { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" } };
+      await c.req("/auth/login", { ...form, body: "persona=priya&next=%2F" });
+      // Not connected yet, and Sign in with Atlassian is offered (no token form).
+      expect((await c.json("GET", "/api/health")).data.jira).toMatchObject({ connected: false, oauth: true, fixture: false });
+      expect(await (await c.req("/auth/atlassian/start?popup=1")).text()).toContain("Throughline is requesting access to your Atlassian account");
+      const cancelled = await c.req("/auth/atlassian/callback?popup=1", { ...form, body: "decision=cancel" });
+      expect(await cancelled.text()).toContain('postMessage({type:"rrr:atlassian",ok:false}');
+      expect((await c.json("GET", "/api/health")).data.jira.connected).toBe(false);
+      const done = await c.req("/auth/atlassian/callback?popup=1", { ...form, body: "decision=accept" });
+      expect(await done.text()).toContain('postMessage({type:"rrr:atlassian",ok:true}');
+      expect((await c.json("GET", "/api/health")).data.jira).toMatchObject({ connected: true, site: "sample-co.atlassian.net", user: "Priya Natarajan", method: "oauth" });
+      // Another person connects on their own; disconnecting forgets only Priya's.
+      const c2 = client(srv.url);
+      await c2.req("/auth/login", { ...form, body: "persona=anika&next=%2F" });
+      expect((await c2.json("GET", "/api/health")).data.jira.connected).toBe(false);
+      expect((await c.json("POST", "/api/jira/disconnect")).data.connected).toBe(false);
+    } finally { await srv.close(); rmSync(tmp, { recursive: true, force: true }); }
+  });
 });

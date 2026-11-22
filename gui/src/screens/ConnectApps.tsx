@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import type { PlanDraft, ReleaseTarget, Run } from "@throughline/schemas";
-import type { JiraConnection, JiraState, UploadedFile, RunSummary, JiraCredentials, Stage, AgentInfo, AgentConsent } from "../backend/types";
+import type { JiraConnection, JiraState, UploadedFile, RunSummary, Stage, AgentInfo, AgentConsent } from "../backend/types";
 import { fmtDate } from "../model/dates";
 import { allTeamsResolved, isResolved, type TeamChoice } from "../model/review";
 import { ModeSelect } from "./PlanDocuments";
 import { DirectoryDialog, Scopes } from "./DirectoryDialog";
+import { JiraConnect } from "./JiraConnect";
+import { Info } from "./Info";
 
 /**
  * Step 3 (PRD R15): a gallery of the apps a company's teams use, grouped by kind. Apps the company allows
@@ -34,7 +36,7 @@ export const APPS: AppDef[] = [
 ];
 
 export function appBadge(id: AppId, stage: Stage): "Required" | "Recommended" | "" {
-  if (id === "jira" && stage !== "starting") return "Required";
+  if (id === "jira" && stage === "launching") return "Required"; // the launch check needs it; otherwise it adds who is on the work
   if (id === "directory") return "Recommended";
   return "";
 }
@@ -64,13 +66,9 @@ const MATCH_LABEL: Record<string, string> = {
   team_list: "From your team list", explicit: "Named in the plan", linked: "Linked from the epic", name: "Name match", unresolved: "Unresolved — pick one",
 };
 
-export const RUN_LABEL: Record<Stage, string> = { starting: "Find who to involve", building: "Check my team and approvals", launching: "Check what's missing for launch" };
 
 export function ConnectApps(p: Props) {
   const [consentFor, setConsentFor] = useState<AppId | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [creds, setCreds] = useState<JiraCredentials>({ site: "", email: "", token: "" });
-  const [connectError, setConnectError] = useState<string | null>(null);
   const [sites, setSites] = useState<{ sites: { id: string; url: string; name: string }[]; current: string | null } | null>(null);
   // Live mode: either the token form or Sign in with Atlassian; the sample backend offers neither.
   const oauth = p.jira.oauthAvailable;
@@ -95,47 +93,8 @@ export function ConnectApps(p: Props) {
   // Building: needed teams without a Jira project are expected, and the "Teams your plan needs" box says so.
   const targetWarnings = (p.target?.warnings ?? []).filter((w) => !building || (!/: unresolved\. /.test(w) && !/in the team list but not in the plan/.test(w)));
 
-  const openConsent = (id: AppId) => { setConnectError(null); setConsentFor(id); if (id === "jira") p.setJiraState(p.jira.start()); };
+  const openConsent = (id: AppId) => { setConsentFor(id); if (id === "jira") p.setJiraState(p.jira.start()); };
   const closeConsent = () => { if (consentFor === "jira") p.setJiraState(p.jira.cancel()); setConsentFor(null); };
-
-  const acceptJira = async () => {
-    setBusy(true);
-    p.setJiraState("connecting");
-    const s = await p.jira.accept();
-    p.setJiraState(s);
-    setBusy(false);
-    setConsentFor(null);
-  };
-  const signInAtlassian = async () => {
-    setBusy(true);
-    setConnectError(null);
-    p.setJiraState("connecting");
-    try {
-      const s = await p.jira.startOAuth();
-      p.setJiraState(s);
-      if (s === "on") setConsentFor(null);
-      else setConnectError("The Atlassian window was closed before access was granted.");
-    } catch (err) {
-      setConnectError(String((err as Error).message ?? err));
-      p.setJiraState("consent");
-    }
-    setBusy(false);
-  };
-  const connectJira = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setConnectError(null);
-    p.setJiraState("connecting");
-    try {
-      const s = await p.jira.connect({ ...creds, site: creds.site.trim(), email: creds.email.trim() });
-      p.setJiraState(s);
-      if (s === "on") { setCreds((c) => ({ ...c, token: "" })); setConsentFor(null); }
-    } catch (err) {
-      setConnectError(String((err as Error).message ?? err));
-      p.setJiraState("consent");
-    }
-    setBusy(false);
-  };
 
   // What leads depends on the stage: Jira when work is tracked there, the directory when a project is just starting.
   const primaryId: AppId = p.stage === "starting" ? "directory" : "jira";
@@ -191,56 +150,7 @@ export function ConnectApps(p: Props) {
 
   const dialogs = (
     <>
-      {consentDef?.id === "jira" && oauth && (
-        <div className="consent accent" role="dialog" aria-labelledby="atl-title">
-          <span className="eyebrow">Jira · Sign in with Atlassian</span>
-          <h2 id="atl-title">Throughline wants read-only access to Jira</h2>
-          <p className="sm muted" style={{ margin: 0 }}>Atlassian's own sign-in page opens in a new window. You sign in there, approve the access below, and come back here. No token to paste; access can be withdrawn from your Atlassian account at any time.</p>
-          <Scopes can={p.jira.scopes.can} cannot={p.jira.scopes.cannot} />
-          {connectError && <div className="notice-grey" role="alert">{connectError}</div>}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <button type="button" className="btn primary" disabled={busy} onClick={signInAtlassian}>{busy ? "Waiting for Atlassian…" : "Continue to Atlassian"}</button>
-            <button type="button" className="btn" onClick={closeConsent}>Cancel</button>
-          </div>
-        </div>
-      )}
-      {consentDef?.id === "jira" && live && !oauth && (
-        <form className="consent accent" aria-labelledby="connect-title" onSubmit={connectJira}>
-          <span className="eyebrow">Jira Cloud · API token</span>
-          <h2 id="connect-title">Connect to your Jira site</h2>
-          <div className="stack-sm" style={{ gap: 4, maxWidth: 420 }}>
-            <label htmlFor="jira-site" className="label">Site</label>
-            <input id="jira-site" className="input mono" type="url" placeholder="https://your-company.atlassian.net" value={creds.site} onChange={(e) => setCreds({ ...creds, site: e.target.value })} required />
-          </div>
-          <div className="stack-sm" style={{ gap: 4, maxWidth: 420 }}>
-            <label htmlFor="jira-email" className="label">Atlassian account email</label>
-            <input id="jira-email" className="input" type="email" autoComplete="username" value={creds.email} onChange={(e) => setCreds({ ...creds, email: e.target.value })} required />
-          </div>
-          <div className="stack-sm" style={{ gap: 4, maxWidth: 420 }}>
-            <label htmlFor="jira-token" className="label">API token</label>
-            <input id="jira-token" className="input mono" type="password" autoComplete="current-password" value={creds.token} onChange={(e) => setCreds({ ...creds, token: e.target.value })} required />
-            <span className="small muted">Create one at id.atlassian.com → Security → API tokens. It is sent once to the local server and kept in memory only.</span>
-          </div>
-          <Scopes can={p.jira.scopes.can} cannot={p.jira.scopes.cannot} />
-          {connectError && <div className="notice-grey" role="alert">{connectError}</div>}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <button type="submit" className="btn primary" disabled={busy}>Connect</button>
-            <button type="button" className="btn" onClick={closeConsent}>Cancel</button>
-          </div>
-        </form>
-      )}
-      {consentDef?.id === "jira" && !live && !oauth && (
-        <div className="consent accent" role="dialog" aria-labelledby="consent-title">
-          <span className="eyebrow">Jira · sample sign-in</span>
-          <h2 id="consent-title">Throughline wants read-only access to Jira</h2>
-          <div className="stack-sm" style={{ gap: 4 }}><span className="label">Site</span><span className="mono" style={{ fontSize: 14 }}>{p.jira.site}</span></div>
-          <Scopes can={p.jira.scopes.can} cannot={p.jira.scopes.cannot} />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <button type="button" className="btn primary" disabled={busy} onClick={acceptJira}>Accept</button>
-            <button type="button" className="btn" onClick={closeConsent}>Cancel</button>
-          </div>
-        </div>
-      )}
+      {consentDef?.id === "jira" && <JiraConnect jira={p.jira} setJiraState={p.setJiraState} onDone={() => setConsentFor(null)} onCancel={closeConsent} />}
       {consentDef?.id === "devin" && (
         <div className="consent accent" role="dialog" aria-labelledby="agent-title">
           <span className="eyebrow">{consentDef.name} · set up by your company</span>
@@ -262,15 +172,15 @@ export function ConnectApps(p: Props) {
   );
 
   const runText = needsJira
-    ? (!on ? "Connect Jira to continue — it's how we see who is doing the work." : !p.epicOk ? "Pick the epic for this work to continue." : !p.target ? (p.targetError ?? "Looking up the epic…") : !building && !resolved ? "Pick a Jira project for each team, or mark it \"don't search\", to continue." : (dirOn ? `Ready to read ${epicVal} and compare it with your ${building ? "plan" : "confirmed plan"}.` : `Ready. Connecting your directory adds names to every suggestion.`))
-    : (dirOn ? "Ready." : "You can continue now. Connecting your directory turns team suggestions into names.");
+    ? (!on ? "Connect Jira to continue." : !p.epicOk ? "Pick the epic for this work to continue." : !p.target ? (p.targetError ?? "Looking up the epic…") : !building && !resolved ? "Pick a Jira project for each team, or mark it \"don't search\", to continue." : (dirOn ? `Ready to read ${epicVal} and compare it with your ${building ? "plan" : "confirmed plan"}.` : `Ready. Connecting your directory adds names to every suggestion.`))
+    : "Ready.";
 
   return (
     <div className="flow stack">
       <header className="stack-sm" style={{ gap: 8 }}>
-        <span className="eyebrow">{p.eyebrow ?? "Step 3 of 4"}</span>
+        <span className="eyebrow">{p.eyebrow ?? "Connections"}</span>
         <h1 className="flow-title">Connect the tools your teams use</h1>
-        <p className="lead">{needsJira ? "Jira is required for your stage: it is how we see who is doing the work." : "Nothing is required at your stage; a directory turns team names into people."} Every connection is read-only.</p>
+        <p className="lead">{p.stage === "launching" ? "The launch check needs Jira." : "All optional."} Read-only.<Info>{p.stage === "launching" ? "Jira is how the review sees who is doing the work." : "With Jira and the epic, the review also checks which teams are actually on the work; a directory turns team names into people."}</Info></p>
       </header>
 
       {/* The connection the stage needs most, first and full width; what it unlocks follows right under it, and its consent opens beneath it. */}
@@ -325,9 +235,8 @@ export function ConnectApps(p: Props) {
         <section className="card" style={{ gap: 8 }} data-testid="needed-teams">
           <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
             <h2 className="numbered"><span className="step-num" aria-hidden="true">3</span>Teams your plan needs</h2>
-            <span className="small muted">{p.target.projects.filter((t) => t.jira_project).length} of {p.target.projects.length} have a Jira project</span>
+            <span className="small muted">{p.target.projects.filter((t) => t.jira_project).length} of {p.target.projects.length} have a Jira project<Info>From the signals in your PRD. A team with a Jira project is checked by project and assignee; the others by assignee only, through your directory.</Info></span>
           </div>
-          <p className="sm muted">From the signals in your PRD. A team with a Jira project is checked by project and assignee; the others by assignee only, through your directory.</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {p.target.projects.map((t) => (
               <span key={t.team} className="pill type" style={{ fontSize: 13, padding: "3px 10px", fontWeight: 400 }}>{t.team} → {t.jira_project ? <span className="mono">{t.jira_project}</span> : <span className="muted">assignee only</span>}</span>
@@ -340,9 +249,8 @@ export function ConnectApps(p: Props) {
         <section className="card">
           <div className="between" style={{ alignItems: "baseline", gap: 8 }}>
             <h2 className="numbered"><span className="step-num" aria-hidden="true">3</span>Teams → Jira projects</h2>
-            <span className="small muted">{p.target.projects.filter((t) => isResolved(t, p.choices[t.team])).length} of {p.target.projects.length} teams resolved</span>
+            <span className="small muted">{p.target.projects.filter((t) => isResolved(t, p.choices[t.team])).length} of {p.target.projects.length} teams resolved<Info>Each team's project is searched for work that isn't linked to the epic. Unresolved teams need your choice.</Info></span>
           </div>
-          <p className="sm muted">Each team's project is searched for work that isn't linked to the epic. Unresolved teams need your choice.</p>
           <div className="table-wrap teams-table" style={{ border: 0 }}>
             <table>
               <thead><tr><th>Team</th><th>Jira project</th><th>How it was matched</th></tr></thead>
@@ -404,7 +312,7 @@ export function ConnectApps(p: Props) {
         <span className="sm muted" style={{ maxWidth: 640 }}>{runText}</span>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <button type="button" className="btn" onClick={p.onBack}>{p.backLabel ? `‹ ${p.backLabel}` : "Back"}</button>
-          <button type="button" className="btn primary" style={{ padding: "0 20px" }} disabled={runNotReady} onClick={p.onRun}>{p.confirmed ? `Re-run: ${RUN_LABEL[p.stage].toLowerCase()}` : RUN_LABEL[p.stage]}</button>
+          <button type="button" className="btn primary" style={{ padding: "0 20px" }} disabled={runNotReady} onClick={p.onRun}>{p.confirmed ? "Run the review again" : "Run the review"}</button>
         </div>
       </div>
     </div>

@@ -63,6 +63,16 @@
         "inwardIssue": {
           "key": "SRE-398"
         }
+      },
+      {
+        "type": {
+          "name": "Relates",
+          "inward": "relates to",
+          "outward": "relates to"
+        },
+        "outwardIssue": {
+          "key": "DSGN-31"
+        }
       }
     ],
     "comment": {

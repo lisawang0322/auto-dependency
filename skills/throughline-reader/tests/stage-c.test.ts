@@ -14,13 +14,13 @@ const target = () => ReleaseTarget.parse(JSON.parse(readFileSync(join(FX, "relea
 const read = (d = "2026-11-13", t = target()) => readJira({ plan: plan(), target: t, source: new FixtureSource(snap(d)), snapshotLabel: d, readAt: "2026-11-13T09:00:00.000Z" })!;
 
 describe("Stage C: read-jira (Nov 13)", () => {
-  it("reads the epic, its 25 stories with comments, and its 6 links", () => {
+  it("reads the epic, its 25 stories with comments, and its 7 links", () => {
     const r = read();
     expect(Release.safeParse(r).success).toBe(true);
     expect(r.epic).toMatchObject({ key: "INGEST-142", status: "In Progress", fix_version: "1.0", release_date: "2026-11-20", due: "2026-11-18", components: ["ingestion-api", "ingestion-workers"] });
     expect(r.stories.length).toBe(25);
     expect(r.stories.filter((s) => s.status === "Done").length).toBe(21);
-    expect(r.links.length).toBe(6);
+    expect(r.links.length).toBe(7);
     const s150 = r.stories.find((s) => s.key === "INGEST-150")!;
     expect(s150.comments.some((c) => c.mentioned_keys.includes("DATA-233"))).toBe(true);
     expect(r.links).toContainEqual({ from: "INGEST-142", to: "SEC-881", type: "is blocked by", direction: "inward" });
@@ -50,7 +50,7 @@ describe("Stage C: read-jira (Nov 13)", () => {
     const s = r.related.find((x) => x.key === "SEC-881")!;
     expect(s).toMatchObject({ reached_by: "link", status: "In Review", due: "2026-11-14", via: { issue: "INGEST-142", link_type: "is blocked by", comment_excerpt: null } });
     expect(r.related.map((x) => [x.key, x.reached_by])).toEqual([
-      ["SEC-881", "link"], ["DATA-240", "link"], ["SRE-398", "link"], ["DATA-221", "link"], ["SEC-890", "link"], ["DATA-233", "comment_mention"],
+      ["SEC-881", "link"], ["DATA-240", "link"], ["SRE-398", "link"], ["DSGN-31", "link"], ["DATA-221", "link"], ["SEC-890", "link"], ["DATA-233", "comment_mention"],
     ]);
   });
 

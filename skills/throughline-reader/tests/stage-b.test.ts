@@ -24,7 +24,7 @@ describe("Stage B: resolve-release", () => {
       ["Ingestion team", "INGEST", "team_list"], ["Data Platform", "DATA", "team_list"], ["Security", "SEC", "team_list"], ["SRE", "SRE", "team_list"],
     ]);
     expect(t.release_window).toEqual({ start: "2026-09-15", end: "2026-11-20" });
-    expect(t.visible_projects.map((p) => p.key)).toEqual(["DATA", "INGEST", "SEC", "SECOPS", "SRE", "SRETOOLS"]);
+    expect(t.visible_projects.map((p) => p.key)).toEqual(["DATA", "DSGN", "INGEST", "SEC", "SECOPS", "SRE", "SRETOOLS"]);
     expect(t.warnings).toEqual([]);
   });
 
