@@ -1,11 +1,16 @@
 /**
- * Interfaces the GUI talks to. Today they are backed by fixture and run files (fixtureBackend.ts),
- * a simulated OAuth flow (stubJira.ts) and localStorage (decisionStore.ts). A live agent can replace
- * them without touching the screens.
+ * Interfaces the GUI talks to. Two implementations: the sample-data demo (fixtureBackend.ts + stubJira.ts,
+ * no server) and live mode (liveBackend.ts, talking to server/index.ts, which runs the real stages against
+ * Jira). Decisions live in localStorage either way (decisionStore.ts).
  */
-import type { PlanDraft, ReleaseTarget, Run } from "@rrr/schemas";
+import type { PlanDraft, ReleaseTarget, Run, Signal, Starter, Commitment } from "@throughline/schemas";
 
-export type FileKind = "plan" | "checks" | "teams" | "other";
+/** What a file is read as. "prd" and "plan" both feed Stage A's plan items; a PRD is the early stages' plan. */
+export type FileKind = "prd" | "plan" | "checks" | "teams" | "other";
+export const PLAN_KINDS: FileKind[] = ["prd", "plan"];
+
+/** Where the project is (PRD R14). Only "launching" runs this semester; the other two are designed. */
+export type Stage = "starting" | "building" | "launching";
 
 export interface UploadedFile {
   id: string;
@@ -13,6 +18,84 @@ export interface UploadedFile {
   size: string;
   kind: FileKind;
   sample: boolean;
+  /** The browser File, for uploads in live mode. Sample files have none. */
+  file?: File;
+  /** Added by connecting the employee directory (on Get started or Connect apps), not uploaded on the plan step. */
+  via?: "directory";
+  /** A directory the server holds (Microsoft Entra ID, Jira projects): no content travels; the server writes the merged team list. */
+  source?: "server";
+  /** Kept with a project on the server: uploaded once, read by name on every later run. */
+  stored?: { project: string; id: string };
+}
+
+// ---------- projects: what a person comes back to across the project's life ----------
+export interface ProjectEvent { at: string; text: string }
+/** What the projects home shows for a project: its latest status and open actions. */
+export interface ProjectSummary { status: string | null; open: number | null; detail: string | null; at: string }
+/** One next action as the project page's panel lists it. The checklist lives in the panel, beside the team cards it points to. */
+export interface ActionGlance { id: string; text: string; detail: string; team: string | null; done: boolean; kept?: boolean }
+/** The review's checklist, handed to the panel: its actions, and the review's own ways to tick one and to show where it comes from. */
+export interface ActionsGlance {
+  items: ActionGlance[]; toggle: (id: string) => void; jump: (id: string) => void;
+  /** Teams whose time has not come yet (where the project stands is too early for their milestone): how many, and when. */
+  later?: { teams: number; when: string[]; anchor: string };
+}
+/** Everything the GUI keeps for a project between visits. Files keep their name, kind and stored copy, never the browser File. */
+/** One step of the project's path: the checks in the order a project usually meets them. */
+export interface PathStep { id: "involve" | "coverage" | "launch"; label: string; state: "done" | "next" | "later" }
+export interface ProjectData {
+  /** The phase the project was in when last saved, as its evidence showed it (never chosen; kept for the folder's files). */
+  stage?: Stage | null; files?: UploadedFile[];
+  /** The plan of record's reading (launch). Before Nov 2026, the one reading the chosen stage needed. */
+  plan?: PlanDraft | null;
+  /** The PRD's reading (its signals and the teams they name). A project saved before Nov 2026 has none: its plan was it. */
+  earlyPlan?: PlanDraft | null;
+  signals?: Signal[]; signalsOff?: Record<string, boolean>; project?: string | null;
+  planDates?: Record<string, string>; planConfirmed?: boolean; epic?: string; launch?: string; choices?: Record<string, string>;
+  confirmed?: boolean; runId?: string | null; starter?: Starter | null; agentRead?: AgentRead | null; lastRead?: boolean | null; jiraOn?: boolean;
+  events?: ProjectEvent[]; summary?: ProjectSummary | null;
+  /** Every review the project has had, oldest first. */
+  records?: HistoryRecord[];
+  /** What the project has promised, carried from stage to stage (PRD "Commitments"); written to commitments.yaml. */
+  commitments?: Commitment[];
+  /** The launch check is on with no plan of record: each team read as ready or not from the commitments and Jira. */
+  launchCheck?: boolean;
+}
+/** One review, kept as it was: what was run, at which stage, what it found, and the result itself, so it can be opened later
+ *  after the project has moved on or been re-run. Launch reviews keep their run id (the run is on the server or in the
+ *  sample data) and the release they were checked against. */
+export interface HistoryRecord {
+  id: string; at: string; stage: Stage; title: string;
+  summary: { status: string | null; open: number | null; detail: string | null } | null;
+  files: string[];
+  starter?: Starter; signalsOff?: Record<string, boolean>;
+  /** A launch check made from the commitments (no plan of record), by this launch date. */
+  readiness?: { date: string | null };
+  launch?: { epic: string; runId: string; target: ReleaseTarget; plan: PlanDraft; planDates: Record<string, string>; launch: string };
+}
+export interface ProjectRecord { id: string; name: string; created_at: string; updated_at: string; data: ProjectData; /** Where the project lives on disk (live mode): a folder any coding agent can open. */ folder?: string }
+export interface ProjectStore {
+  readonly kind: "server" | "browser";
+  list(): Promise<ProjectRecord[]>;
+  create(name: string, data?: ProjectData): Promise<ProjectRecord>;
+  save(id: string, name: string, data: ProjectData): Promise<void>;
+  remove(id: string): Promise<void>;
+  /** Keep a file with the project; null when this store does not keep contents (sample data). */
+  uploadFile(id: string, file: File): Promise<string | null>;
+}
+
+/** One connected directory layer, as the server reports it. */
+export interface DirectorySummary { label: string; teams: number; people: number; connected_at: string }
+/** The two server-side layers of the employee directory (PRD "Employee directory sources"): people from the identity provider, teams from Jira. */
+export interface DirectoryInfo { entra: { available: boolean; connected: DirectorySummary | null }; jira: { available: boolean; connected: DirectorySummary | null } }
+export type DirectorySourceId = "entra" | "jira";
+export interface DirectoryConnection {
+  info(): Promise<DirectoryInfo>;
+  /** Microsoft Entra ID through the sign-in the person already has: consent in a popup, then the server reads names, titles, departments and managers. */
+  connectEntra(): Promise<DirectoryInfo>;
+  /** Jira's projects as teams, through the Jira connection: each project, its lead and who is assigned its work. */
+  connectJira(): Promise<DirectoryInfo>;
+  disconnect(source: DirectorySourceId): Promise<DirectoryInfo>;
 }
 
 export interface RunSummary {
@@ -22,26 +105,91 @@ export interface RunSummary {
 
 export type ProgressStage = 0 | 1 | 2 | 3; // 0 reader running … 3 done
 
+/** The agent that can read uploads on the person's behalf (Devin, set up by the company on the server). */
+export interface AgentInfo { available: boolean; name: string; /** Devin tiers the person may pick (v3); empty when there is no choice. */ modes?: string[]; default_mode?: string | null }
+/** Whether the person let the agent read their files; asked once, kept in localStorage. */
+export type AgentConsent = "unknown" | "yes" | "no";
+/** 0 uploading · 1 the agent is reading · 2 checking quotes · 3 done */
+export type AgentReadStage = 0 | 1 | 2 | 3;
+/** What the agent did with the uploads (server/index.ts AgentRead). */
+export interface AgentRead {
+  name: string;
+  status: "done" | "failed";
+  cached: boolean;
+  session_url: string | null;
+  mode?: string | null;
+  /** Plan items (not checks). */
+  items_read: number;
+  signals_read: number;
+  /** Checks read from checklists and how many apply to this release; teams read from team lists. */
+  checks_read?: number;
+  checks_apply?: number;
+  teams_read?: number;
+  files_read: { name: string; how: string }[];
+  unreadable: { name: string; reason: string }[];
+  warnings: string[];
+  error: string | null;
+}
+/** How far along a reading is, from the server's job: 0–100 and what is happening. */
+export interface ReadProgress { pct: number; detail: string }
+export interface ExtractOptions { agent?: boolean; /** Use the reading a coding agent left in this project's folder instead. */ folder?: string; onProgress?: (s: AgentReadStage, progress?: ReadProgress) => void }
+
+/** Stage A's result. The early stages add the PRD's signals and the project name (throughline-starter). */
+export interface PlanExtract { plan: PlanDraft; signals: Signal[]; project: string | null; agent?: AgentRead | null }
+
+export interface StarterRunInput {
+  stage: "starting" | "building"; files: UploadedFile[]; excludeSignals: string[]; epic: string | null;
+  /** Building: teams the person linked to a Jira project by hand (the reading missed them), or "skip". */
+  teamProjects?: Record<string, string>;
+}
+
 export interface ReviewBackend {
-  /** Stage A. Stubbed: any upload with plan items gives the fixture plan-draft, filtered by what was read as what. */
-  extractPlan(files: UploadedFile[]): Promise<PlanDraft>;
-  /** Stage B. Stubbed: fixture release-target, with or without the team list. */
+  readonly mode: "sample" | "live";
+  readonly agent: AgentInfo;
+  readonly directory: DirectoryConnection;
+  saveSettings(patch: Partial<Settings>): Promise<void>;
+  /** Stage A. Sample: the fixture plan-draft, filtered by what was read as what. Live: the real extractor.
+   *  With opts.agent the agent reads the documents first (a job; onProgress follows it) and its items go through the quote check. */
+  extractPlan(files: UploadedFile[], stage: Stage, opts?: ExtractOptions): Promise<PlanExtract>;
+  /** Stage B. Sample: fixture release-target, with or without the team list. Live: the epic is looked up in Jira. */
   resolveRelease(plan: PlanDraft, epicKey: string, hasTeamList: boolean): Promise<ReleaseTarget>;
   listRuns(epicKey: string): Promise<RunSummary[]>;
   loadRun(epicKey: string, runId: string): Promise<Run>;
-  /** reader → analyzer → status. Stubbed: reports progress, then returns the latest saved run id. */
+  /** reader → analyzer → status; resolves to the saved run id. Sample: animated, then the latest saved run. */
   runReview(plan: PlanDraft, target: ReleaseTarget, onProgress: (stage: ProgressStage) => void): Promise<string>;
+  /** The early stages (throughline-starter): signals → teams, contacts, approvals, actions; building adds Jira coverage. */
+  runStarter(input: StarterRunInput, onProgress: (stage: ProgressStage) => void): Promise<Starter>;
+  /** The Jira projects the person can see, to link a team the reading missed. */
+  jiraProjects(): Promise<{ key: string; name: string }[]>;
 }
 
 export type JiraState = "off" | "consent" | "connecting" | "on";
 
+export interface JiraCredentials { site: string; email: string; token: string }
+
 export interface JiraConnection {
+  /** Shown once connected ("sample-company.atlassian.net"). */
   readonly site: string;
   readonly scopes: { can: string[]; cannot: string[] };
+  /** Live mode without Sign in with Atlassian asks for a site, email and API token instead of the simulated consent page. */
+  readonly credentialsNeeded: boolean;
+  /** Live mode with Sign in with Atlassian set up on the server: connect through Atlassian's own consent page in a popup. */
+  readonly oauthAvailable: boolean;
+  /** How the current connection was made, for the card. */
+  readonly method: "oauth" | "token" | "company" | "fixture" | null;
+  /** Open Atlassian's sign-in in a popup and resolve when the server reports the connection (or the popup is closed). */
+  startOAuth(): Promise<JiraState>;
+  /** The person's Jira sites when they have more than one (OAuth), and which is in use. */
+  sites(): Promise<{ sites: { id: string; url: string; name: string }[]; current: string | null }>;
+  chooseSite(cloudId: string): Promise<JiraState>;
+  /** The state to start in (live mode is already "on" when the server has credentials from its environment). */
+  initialState(): Promise<JiraState>;
   /** Open the authorization step. */
   start(): JiraState;
-  /** The person accepted; resolves when connected. */
+  /** The person accepted (sample mode); resolves when connected. */
   accept(): Promise<JiraState>;
+  /** The person entered credentials (live mode); resolves when connected, throws with a message otherwise. */
+  connect(creds: JiraCredentials): Promise<JiraState>;
   cancel(): JiraState;
   disconnect(): JiraState;
 }
@@ -53,9 +201,16 @@ export interface Decision {
 }
 export type Decisions = Record<string, Decision>;
 export interface LogEntry { time: string; text: string }
-export interface RunDecisions { decisions: Decisions; log: LogEntry[] }
+/** Keep/dismiss per finding, the log, and which next actions were ticked off (R16), per run. */
+export interface RunDecisions { decisions: Decisions; log: LogEntry[]; actionsDone?: Record<string, boolean>; contacted?: Record<string, boolean> }
 
 export interface DecisionStore {
-  load(runKey: string): RunDecisions;
+  load(runKey: string): Promise<RunDecisions>;
+  /** Fire and forget; the screen keeps its own copy. */
   save(runKey: string, data: RunDecisions): void;
 }
+
+/** Per-user settings kept by the server in live mode (and by the browser in sample mode). */
+export interface Settings { agent_consent: AgentConsent; /** The chosen Devin tier, or null for the company default. */ agent_mode?: string | null }
+/** The signed-in person (live mode with sign-in), or null. */
+export interface UserInfo { id: string; name: string; email: string | null; org: string }

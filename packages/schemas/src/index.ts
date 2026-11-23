@@ -1,9 +1,9 @@
 /**
- * Shared contracts for the Release Readiness Review.
+ * Shared contracts for Throughline.
  *
- * The release-reader skill writes PlanDraft, ReleaseTarget and Release.
- * The (not yet built) analyzer writes Finding[] and LinkageGap[]; the status
- * skill writes Team[]. The GUI validates every file it loads against these.
+ * The throughline-reader skill writes PlanDraft, ReleaseTarget and Release.
+ * The throughline-analyzer writes Findings (findings.json); the throughline-status skill writes
+ * Status (status.json). The GUI validates every file it loads against these.
  */
 import { z } from "zod";
 
@@ -21,6 +21,8 @@ export const PlanSource = z.object({
   file: z.string(),
   locator: z.string(),
   quote: z.string().min(1),
+  /** false when the agent supplied the quote and the command could not read the file to check it; absent otherwise. */
+  quote_verified: z.boolean().optional(),
 });
 
 export const PlanItem = z.object({
@@ -55,6 +57,7 @@ export const PlanFile = z.object({
   read_as: z.array(ReadAs),
   notes: z.string(),
 });
+export type PlanFile = z.infer<typeof PlanFile>;
 
 export const PlanDraft = z.object({
   launch_date: IsoDate.nullable(),
@@ -125,6 +128,8 @@ export const Story = z.object({
   key: IssueKey,
   summary: z.string(),
   status: z.string(),
+  /** Jira resolution name ("Done", "Duplicate", "Won't Do"); null when unresolved. Older files omit it. */
+  resolution: z.string().nullable().optional(),
   assignee: z.string().nullable(),
   due: IsoDate.nullable(),
   components: z.array(z.string()),
@@ -145,6 +150,7 @@ export const RelatedIssue = z.object({
   project: ProjectKey,
   summary: z.string(),
   status: z.string(),
+  resolution: z.string().nullable().optional(),
   assignee: z.string().nullable(),
   due: IsoDate.nullable(),
   updated: IsoDateTime,
@@ -162,6 +168,7 @@ export const SearchCandidate = z.object({
   project: ProjectKey,
   summary: z.string(),
   status: z.string(),
+  resolution: z.string().nullable().optional(),
   assignee: z.string().nullable(),
   due: IsoDate.nullable(),
   updated: IsoDateTime.optional(),
@@ -193,27 +200,58 @@ export const Release = z.object({
 });
 export type Release = z.infer<typeof Release>;
 
-// ---------- Analyzer output (not built yet; types only) ----------
+// ---------- Analyzer output: findings.json (skills/throughline-analyzer) ----------
 export const GapType = z.enum(["process", "cross_team_date", "commitment"]);
+export type GapType = z.infer<typeof GapType>;
 export const Strength = z.enum(["strong", "moderate", "weak"]);
+export type Strength = z.infer<typeof Strength>;
 export const OwnerSource = z.enum(["team_list", "jira_inferred"]);
 
+/** How a plan item was matched to a ticket, in the order the analyzer tries them. */
+export const MatchWay = z.enum(["linked_key", "linked_keywords", "search", "comment", "none"]);
+export type MatchWay = z.infer<typeof MatchWay>;
+
 export const Evidence = z.object({ key: z.string(), text: z.string(), meta: z.string() });
+export type Evidence = z.infer<typeof Evidence>;
 
 export const Linkage = z.object({ from: IssueKey, to: IssueKey, suggested_type: z.string() });
+
+export const NextAction = z.object({
+  /** One sentence from the template for the gap type. */
+  action: z.string().min(1),
+  /** Owner team, plus a person when the team list names one. */
+  who: z.string().min(1),
+  /** The plan date, or "before go/no-go (date)" when that is earlier. */
+  by_when: z.string().min(1),
+  /** The finding title. */
+  why: z.string().min(1),
+});
+export type NextAction = z.infer<typeof NextAction>;
 
 export const Finding = z.object({
   id: z.string(),
   title: z.string(),
   gap_type: GapType,
   strength: Strength,
+  /** The rule that set the strength, in words. */
+  strength_rule: z.string().optional(),
   owner: z.string(),
   owner_source: OwnerSource,
   plan_item_id: z.string(),
+  plan_quote: z.string().optional(),
+  plan_source: PlanSource.optional(),
+  match_way: MatchWay.optional(),
+  /** Jira evidence: key, text, meta. Empty when nothing was found; then none_found says what was searched. */
   evidence: z.array(Evidence),
+  none_found: z.object({ projects: z.array(ProjectKey), jql: z.array(z.string()) }).optional(),
   why: z.string(),
   linkage: Linkage.optional(),
-  /** What to ask the owner if the finding is kept (shown on the go/no-go card). */
+  next_action: NextAction.optional(),
+  /** Among the first 10 non-weak findings (R8). */
+  shown: z.boolean().optional(),
+  /** Weak findings (R8). */
+  hidden_by_default: z.boolean().optional(),
+  /** What to ask the owner if the finding is kept (shown on the go/no-go card). Same as next_action.action. */
   ask: z.string().optional(),
 });
 export type Finding = z.infer<typeof Finding>;
@@ -230,7 +268,33 @@ export const LinkageGap = z.object({
 });
 export type LinkageGap = z.infer<typeof LinkageGap>;
 
-// ---------- Status output (not built yet; types only) ----------
+export const ItemMatch = z.object({
+  plan_item_id: z.string(),
+  way: MatchWay,
+  key: IssueKey.nullable(),
+  score: z.string(),
+  note: z.string(),
+});
+export type ItemMatch = z.infer<typeof ItemMatch>;
+
+export const Findings = z.object({
+  schema_version: z.literal(1),
+  snapshot_label: z.string(),
+  snapshot_date: IsoDate,
+  analyzed_at: IsoDateTime,
+  epic: IssueKey,
+  launch_date: IsoDate.nullable(),
+  go_no_go: IsoDate.nullable(),
+  service_team: z.string().nullable(),
+  team_list_given: z.boolean(),
+  findings: z.array(Finding),
+  linkage_gaps: z.array(LinkageGap),
+  matches: z.array(ItemMatch),
+  warnings: z.array(z.string()),
+});
+export type Findings = z.infer<typeof Findings>;
+
+// ---------- Status output: status.json (skills/throughline-status) ----------
 export const TeamStatus = z.enum(["on_track", "at_risk", "late"]);
 export type TeamStatus = z.infer<typeof TeamStatus>;
 
@@ -259,6 +323,17 @@ export const Team = z.object({
 });
 export type Team = z.infer<typeof Team>;
 
+export const Status = z.object({
+  schema_version: z.literal(1),
+  snapshot_label: z.string(),
+  epic: IssueKey,
+  /** Snapshot label of the run the change notes compare with, or null on a first run. */
+  compared_with: z.string().nullable(),
+  teams: z.array(Team),
+  warnings: z.array(z.string()),
+});
+export type Status = z.infer<typeof Status>;
+
 // ---------- Saved run: runs/<epic>/<snapshot>.json ----------
 export const Run = z.object({
   plan: PlanDraft,
@@ -269,3 +344,110 @@ export const Run = z.object({
   teams: z.array(Team),
 });
 export type Run = z.infer<typeof Run>;
+
+// ---------- Early stages: skills/throughline-starter (PRD R17 "just starting", R18 "building") ----------
+export const Stage = z.enum(["starting", "building", "launching"]);
+export type Stage = z.infer<typeof Stage>;
+
+/** A sentence in the PRD that implies a team or an approval, with the rule(s) that matched it. */
+export const Signal = z.object({
+  id: z.string(),
+  quote: z.string().min(1),
+  file: z.string(),
+  locator: z.string(),
+  rule_ids: z.array(z.string()),
+  teams: z.array(z.string()),
+  approvals: z.array(z.string()),
+  /** false when the agent supplied the quote and the command could not read the file to check it; absent otherwise. */
+  quote_verified: z.boolean().optional(),
+});
+export type Signal = z.infer<typeof Signal>;
+
+export const InvolveRole = z.enum(["core", "consult", "approve", "inform"]);
+export type InvolveRole = z.infer<typeof InvolveRole>;
+
+export const TeamToInvolve = z.object({
+  team: z.string(),
+  role: InvolveRole,
+  why: z.string(),
+  when: z.string(),
+  signal_ids: z.array(z.string()),
+  /** "Name · title" from the directory, or null when no directory names this team. */
+  contact: z.string().nullable(),
+});
+export type TeamToInvolve = z.infer<typeof TeamToInvolve>;
+
+export const ApprovalNeeded = z.object({
+  name: z.string(),
+  team: z.string(),
+  why: z.string(),
+  start: z.string(),
+  signal_ids: z.array(z.string()),
+});
+export type ApprovalNeeded = z.infer<typeof ApprovalNeeded>;
+
+export const CoverageState = z.enum(["covered", "unclear", "missing"]);
+export type CoverageState = z.infer<typeof CoverageState>;
+
+/** Building stage: is the team the plan needs actually on the Jira work? */
+export const TeamCoverage = z.object({
+  team: z.string(),
+  state: CoverageState,
+  found: z.string(),
+  people: z.array(z.string()),
+  tickets: z.array(IssueKey),
+  contact: z.string().nullable(),
+  signal_ids: z.array(z.string()),
+});
+export type TeamCoverage = z.infer<typeof TeamCoverage>;
+
+export const ApprovalState = z.enum(["done", "started", "no_owner", "not_started"]);
+export type ApprovalState = z.infer<typeof ApprovalState>;
+
+export const ApprovalStatus = z.object({
+  name: z.string(),
+  team: z.string(),
+  state: ApprovalState,
+  detail: z.string(),
+  ticket: IssueKey.nullable(),
+  signal_ids: z.array(z.string()),
+});
+export type ApprovalStatus = z.infer<typeof ApprovalStatus>;
+
+export const StarterAction = z.object({
+  id: z.string(),
+  text: z.string(),
+  who: z.string(),
+  when: z.string(),
+  why: z.string(),
+  team: z.string(),
+  signal_ids: z.array(z.string()),
+});
+export type StarterAction = z.infer<typeof StarterAction>;
+
+/** Output of the throughline-starter skill for either early stage; the GUI's "Next steps" for those stages. */
+export const Starter = z.object({
+  schema_version: z.literal(1),
+  stage: z.enum(["starting", "building"]),
+  /** The project name (the PRD's title, or the file stem). */
+  project: z.string(),
+  label: z.string(),
+  analyzed_at: IsoDateTime,
+  files: z.array(PlanFile),
+  directory_given: z.boolean(),
+  /** Building only: the epic and the Jira snapshot read. */
+  epic: IssueKey.nullable(),
+  snapshot_label: z.string().nullable(),
+  /** Signal ids the person unticked; their teams, approvals and actions are left out. */
+  excluded_signals: z.array(z.string()),
+  signals: z.array(Signal),
+  teams: z.array(TeamToInvolve),
+  approvals: z.array(ApprovalNeeded),
+  coverage: z.array(TeamCoverage),
+  approval_status: z.array(ApprovalStatus),
+  next_actions: z.array(StarterAction),
+  warnings: z.array(z.string()),
+});
+export type Starter = z.infer<typeof Starter>;
+
+export * from "./commitments.js";

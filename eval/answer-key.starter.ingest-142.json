@@ -1,0 +1,50 @@
+{
+  "project": "Ingestion service",
+  "prd_file": "ingestion-service-PRD.md",
+  "directory_file": "directory.yaml",
+  "author": "tool author (placeholder sample data; PRD R12 wants someone else to write the real one)",
+  "signals": [
+    { "id": "s1", "quote_contains": "shared data platform within a minute", "teams": ["Data Platform"] },
+    { "id": "s2", "quote_contains": "Generally available to enterprise customers", "teams": ["QA", "VDR"] },
+    { "id": "s3", "quote_contains": "new public API", "teams": ["Security"] },
+    { "id": "s4", "quote_contains": "raw customer event data for 90 days", "teams": ["Privacy", "Legal"] },
+    { "id": "s5", "quote_contains": "dashboard to find and replay failed events", "teams": ["UX", "Support"] },
+    { "id": "s6", "quote_contains": "2× today's peak traffic", "teams": ["Data Platform", "SRE"] }
+  ],
+  "noise_sentences": [
+    { "quote_contains": "Tenant admins see ingestion status", "why": "A settings page that already exists; no new design work." },
+    { "quote_contains": "No billing changes", "why": "Says what is not in scope; implies no team." }
+  ],
+  "teams_to_involve": [
+    { "team": "Data Platform", "role": "core" },
+    { "team": "QA", "role": "core" },
+    { "team": "UX", "role": "core" },
+    { "team": "VDR", "role": "approve" },
+    { "team": "Security", "role": "approve" },
+    { "team": "Privacy", "role": "approve" },
+    { "team": "Legal", "role": "approve" },
+    { "team": "SRE", "role": "consult" },
+    { "team": "Support", "role": "inform" }
+  ],
+  "approvals": ["QA sign-off", "VDR", "Security review", "Privacy review", "Legal review"],
+  "contacts": { "Data Platform": "Wei Zhang", "Privacy": "Ken Adeyemi", "UX": "Hana Kim" },
+  "building": {
+    "epic": "INGEST-142",
+    "snapshot": "2026-11-13",
+    "coverage": {
+      "Data Platform": "covered", "Security": "covered", "SRE": "covered",
+      "UX": "missing", "Privacy": "missing", "Legal": "missing", "QA": "missing", "VDR": "missing", "Support": "missing"
+    },
+    "approvals": {
+      "Security review": { "state": "started", "ticket": "SEC-881" },
+      "QA sign-off": { "state": "no_owner", "ticket": "INGEST-170" },
+      "Privacy review": { "state": "not_started", "ticket": null },
+      "Legal review": { "state": "not_started", "ticket": null },
+      "VDR": { "state": "not_started", "ticket": null }
+    },
+    "noise": [
+      { "key": "SECOPS-12", "why": "Decoy project; must never count as Security's work." },
+      { "key": "SRETOOLS-77", "why": "Decoy project; must never count as SRE's work." }
+    ]
+  }
+}

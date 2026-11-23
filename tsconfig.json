@@ -8,7 +8,22 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["packages/schemas/src", "skills/release-reader/scripts", "skills/release-reader/tests", "scripts", "fixtures/ingest-142/jira/generate.ts"]
+  "include": [
+    "packages/schemas/src",
+    "skills/throughline-reader/scripts",
+    "skills/throughline-reader/tests",
+    "skills/throughline-analyzer/scripts",
+    "skills/throughline-analyzer/tests",
+    "scripts",
+    "fixtures/ingest-142/jira/generate.ts",
+    "skills/throughline-status/scripts",
+    "skills/throughline-status/tests",
+    "skills/throughline-starter/scripts",
+    "skills/throughline-starter/tests",
+    "server"
+  ]
 }

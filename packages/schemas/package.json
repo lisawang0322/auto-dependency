@@ -1,5 +1,5 @@
 {
-  "name": "@rrr/schemas",
+  "name": "@throughline/schemas",
   "version": "0.1.0",
   "private": true,
   "type": "module",

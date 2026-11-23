@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "stage": "starting",
+  "project": "AI Area Leader Cockpit",
+  "label": "2026-10-31",
+  "analyzed_at": "2026-10-31T18:17:05.565Z",
+  "files": [
+    {
+      "name": "AI Area Leader Cockpit.docx",
+      "read_as": [
+        "plan_items"
+      ],
+      "notes": "0 signals about teams and approvals"
+    }
+  ],
+  "directory_given": false,
+  "epic": null,
+  "snapshot_label": null,
+  "excluded_signals": [],
+  "signals": [],
+  "teams": [],
+  "approvals": [],
+  "coverage": [],
+  "approval_status": [],
+  "next_actions": [],
+  "warnings": []
+}

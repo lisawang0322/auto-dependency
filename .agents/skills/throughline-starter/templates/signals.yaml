@@ -1,0 +1,165 @@
+# Signal rules for the early stages (PRD R17, R18). PLACEHOLDER defaults written by the tool author:
+# which teams and approvals a sentence in a PRD implies is company-specific, so copy this file and
+# edit it for your company (--rules <file>). The skill only matches patterns and fills placeholders;
+# nothing here is rated or guessed by a model.
+#
+# A sentence of the PRD that matches any `patterns` entry (regular expressions, case-insensitive) is a
+# signal. Each signal implies the rule's `teams` (with a role, why, when and a first action) and
+# `approvals` (with when to start and the keywords that find its ticket in Jira at the building stage).
+# When several rules name the same team, the role ranks core > approve > consult > inform and the
+# first entry at that rank supplies the wording.
+#
+# Placeholders in `coverage` templates: {team} {why} {key} {summary} {approval} {projects}
+
+rules:
+  - id: customer_data
+    patterns:
+      - "\\b(customer|user|personal|end[- ]user) (event |activity |usage )?data\\b"
+      - "\\b(retain|retention|stores?|keeps?|kept)\\b.*\\b\\d+ (days|months|years)\\b"
+      - "\\bPII\\b"
+      - "\\bpersonally identifiable\\b"
+    teams:
+      - team: Privacy
+        role: approve
+        why: "You store or process customer data."
+        when: "now — it may change the design"
+        action: "Ask Privacy whether the customer data you store needs a review"
+        action_when: "this week"
+        action_why: "it may change the design"
+      - team: Legal
+        role: approve
+        why: "Customer data retention and customer terms."
+        when: "before beta"
+        action: "Ask Legal about retention terms and customer agreements"
+        action_when: "before beta"
+        action_why: "data retention and terms"
+    approvals:
+      - name: Privacy review
+        team: Privacy
+        why: "Stores or processes customer data"
+        start: "now"
+        keywords: ["privacy review", "privacy impact", "dpia", "privacy"]
+      - name: Legal review
+        team: Legal
+        why: "Data retention and customer terms"
+        start: "before beta"
+        keywords: ["legal review", "legal", "terms of service", "customer terms"]
+
+  - id: public_api
+    patterns:
+      - "\\b(public|external|partner|third[- ]party) (facing )?(api|endpoint|integration)s?\\b"
+      - "\\bpartners? (send|push|post|call|integrate)\\b"
+      - "\\bexposed? (to|over) the internet\\b"
+    teams:
+      - team: Security
+        role: approve
+        why: "A new public or partner-facing API needs a security review."
+        when: "before the design review"
+        action: "Open a security review request for the public API"
+        action_when: "before the design review"
+        action_why: "new public API"
+    approvals:
+      - name: Security review
+        team: Security
+        why: "New public or partner-facing API"
+        start: "before the design review"
+        keywords: ["security review", "threat model", "pen test", "penetration test"]
+
+  - id: peak_load
+    patterns:
+      - "\\b\\d+(\\.\\d+)?\\s?[×x]\\s?(today'?s |the |current )?peak\\b"
+      - "\\bpeak (traffic|load|throughput|volume)\\b"
+      - "\\b(scale|scales|scaling) to\\b"
+      - "\\b(events|requests|messages) per (second|minute)\\b"
+    teams:
+      - team: Data Platform
+        role: core
+        why: "The service has to handle the peak load on the shared platform."
+        when: "now — capacity takes weeks"
+        action: "Book a 30-minute intro with Data Platform about handling the peak load"
+        action_when: "this week"
+        action_why: "capacity takes weeks to plan"
+      - team: SRE
+        role: consult
+        why: "A peak-load target means on-call and capacity planning."
+        when: "before the design review"
+        action: "Ask SRE for a capacity and on-call plan"
+        action_when: "before the design review"
+        action_why: "on-call and capacity planning"
+
+  - id: shared_platform
+    patterns:
+      - "\\bshared (data )?platform\\b"
+      - "\\bplatform (store|cluster|team)\\b"
+      - "\\bproduction (database|db) access\\b"
+    teams:
+      - team: Data Platform
+        role: core
+        why: "The work lands on the shared data platform."
+        when: "now — before the design spec"
+        action: "Book a 30-minute intro with Data Platform about the platform integration"
+        action_when: "this week"
+        action_why: "shared platform work needs their design input"
+
+  - id: user_interface
+    patterns:
+      - "\\b(dashboard|console|admin ui|user interface|screen|web app)\\b"
+      - "\\b(agents|users|customers|operators|admins) (get|use|see|need) a\\b"
+    teams:
+      - team: UX
+        role: core
+        why: "Someone has to design the screens the PRD describes."
+        when: "now — before you write the design spec"
+        action: "Find a designer for the user-facing screens"
+        action_when: "next 2 weeks"
+        action_why: "before you write the design spec"
+      - team: Support
+        role: inform
+        why: "Support agents are among the users."
+        when: "before beta"
+        action: "Brief Support on what agents will be able to do"
+        action_when: "before beta"
+        action_why: "they are the screen's users"
+
+  - id: enterprise_ga
+    patterns:
+      - "\\bgenerally available\\b"
+      - "\\b\\bGA\\b"
+      - "\\benterprise (customers|tier|plan|accounts)\\b"
+      - "\\bpaying customers\\b"
+    teams:
+      - team: QA
+        role: core
+        why: "A GA release needs a test plan and sign-off."
+        when: "before work starts"
+        action: "Add QA to your plan, with a test plan owner and dates"
+        action_when: "before work starts"
+        action_why: "GA needs QA sign-off"
+      - team: VDR
+        role: approve
+        why: "GA releases go through the vendor and data risk review."
+        when: "before code complete"
+        action: "File the VDR intake for this release"
+        action_when: "before code complete"
+        action_why: "GA releases go through VDR"
+    approvals:
+      - name: QA sign-off
+        team: QA
+        why: "GA release"
+        start: "before code complete"
+        keywords: ["test plan", "qa sign-off", "qa signoff", "qa sign off", "test sign-off"]
+      - name: VDR
+        team: VDR
+        why: "GA release"
+        start: "before code complete"
+        keywords: ["vdr", "vendor and data risk", "vendor risk"]
+
+coverage:
+  team_missing: "Bring {team} onto the work — {why}"
+  team_missing_when: "this week"
+  team_unclear: "Get an owner for {key} ({summary}); {team} has no one assigned"
+  team_unclear_when: "this week"
+  approval_not_started: "Start the {approval} — {why}; no ticket found in {projects}"
+  approval_not_started_when: "this week"
+  approval_no_owner: "Get an owner for {key} ({summary}); the {approval} has no one on it"
+  approval_no_owner_when: "this week"

@@ -1,0 +1,189 @@
+{
+  "launch_date": null,
+  "epic_keys_mentioned": [
+    "INGEST-142"
+  ],
+  "items": [],
+  "teams": [
+    {
+      "name": "Ingestion team",
+      "mentioned_in": [
+        "directory.yaml"
+      ],
+      "jira_project_hint": "INGEST",
+      "owners": [
+        "Priya Natarajan (TPM)",
+        "Marcus Lee (eng lead)",
+        "Dana Okafor (product)"
+      ],
+      "components": [
+        "ingestion-api",
+        "ingestion-workers"
+      ],
+      "role": "Service team",
+      "project_keys_mentioned": []
+    },
+    {
+      "name": "Data Platform",
+      "mentioned_in": [
+        "directory.yaml",
+        "ingestion-service-PRD.md §1",
+        "signals"
+      ],
+      "jira_project_hint": "DATA",
+      "owners": [
+        "Wei Zhang (eng lead)",
+        "Tomás Herrera (DBA)",
+        "Anika Rao (capacity)"
+      ],
+      "components": [
+        "cluster",
+        "permissions"
+      ],
+      "role": "Shared platform",
+      "project_keys_mentioned": []
+    },
+    {
+      "name": "Security",
+      "mentioned_in": [
+        "directory.yaml",
+        "signals"
+      ],
+      "jira_project_hint": "SEC",
+      "owners": [
+        "Jordan Blake (security lead)",
+        "Fatima Noor (reviewer)"
+      ],
+      "components": [
+        "app-security"
+      ],
+      "role": "Approver",
+      "project_keys_mentioned": []
+    },
+    {
+      "name": "SRE",
+      "mentioned_in": [
+        "directory.yaml",
+        "signals"
+      ],
+      "jira_project_hint": "SRE",
+      "owners": [
+        "Sam Whitfield (SRE lead)",
+        "Lena Fischer (on-call manager)",
+        "Omar Haddad (capacity)"
+      ],
+      "components": [
+        "capacity",
+        "on-call"
+      ],
+      "role": "Capacity and on-call",
+      "project_keys_mentioned": []
+    },
+    {
+      "name": "Privacy",
+      "mentioned_in": [
+        "directory.yaml",
+        "signals"
+      ],
+      "jira_project_hint": null,
+      "owners": [
+        "Ken Adeyemi (privacy counsel)",
+        "Mira Sato (privacy program manager)"
+      ],
+      "components": [],
+      "role": "Approver",
+      "project_keys_mentioned": []
+    },
+    {
+      "name": "Legal",
+      "mentioned_in": [
+        "directory.yaml",
+        "signals"
+      ],
+      "jira_project_hint": null,
+      "owners": [
+        "Sofia Bauer (commercial counsel)"
+      ],
+      "components": [],
+      "role": "Approver",
+      "project_keys_mentioned": []
+    },
+    {
+      "name": "UX",
+      "mentioned_in": [
+        "directory.yaml",
+        "signals"
+      ],
+      "jira_project_hint": null,
+      "owners": [
+        "Hana Kim (design lead)",
+        "Leo Martins (product designer)"
+      ],
+      "components": [],
+      "role": "Design",
+      "project_keys_mentioned": []
+    },
+    {
+      "name": "QA",
+      "mentioned_in": [
+        "directory.yaml",
+        "signals"
+      ],
+      "jira_project_hint": null,
+      "owners": [
+        "Tom Novak (QA lead)",
+        "Ines Duarte (test engineer)"
+      ],
+      "components": [],
+      "role": "Test",
+      "project_keys_mentioned": []
+    },
+    {
+      "name": "VDR",
+      "mentioned_in": [
+        "directory.yaml",
+        "signals"
+      ],
+      "jira_project_hint": null,
+      "owners": [
+        "VDR intake queue (shared mailbox)"
+      ],
+      "components": [],
+      "role": "Vendor and data risk review",
+      "project_keys_mentioned": []
+    },
+    {
+      "name": "Support",
+      "mentioned_in": [
+        "directory.yaml",
+        "ingestion-service-PRD.md §4",
+        "signals"
+      ],
+      "jira_project_hint": null,
+      "owners": [
+        "Lena Marsh (support operations)",
+        "Raj Patel (support engineer)"
+      ],
+      "components": [],
+      "role": "Support operations",
+      "project_keys_mentioned": []
+    }
+  ],
+  "files": [
+    {
+      "name": "ingestion-service-PRD.md",
+      "read_as": [
+        "plan_items"
+      ],
+      "notes": "6 signals about teams and approvals"
+    },
+    {
+      "name": "directory.yaml",
+      "read_as": [
+        "teams_and_owners"
+      ],
+      "notes": "10 teams · 21 people"
+    }
+  ],
+  "warnings": []
+}

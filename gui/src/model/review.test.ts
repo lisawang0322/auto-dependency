@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Finding, Team, TeamProject } from "@rrr/schemas";
+import type { Finding, Team, TeamProject } from "@throughline/schemas";
 import { rollup, teamStatus, releaseStatus, visibleFindings, allTeamsResolved, applyChoices, hiddenWeakCount, openFindingCount } from "./review";
 
 const item = (id: string, result: Team["items"][number]["result"], finding_id: string | null = null): Team["items"][number] =>
@@ -76,5 +76,18 @@ describe("all teams resolved gate", () => {
     expect(out[1]).toMatchObject({ jira_project: "SEC", match: "name", evidence: "Chosen by you" });
     expect(out[2]).toMatchObject({ jira_project: "SRE", search: false });
     expect(out[0]).toMatchObject({ jira_project: "INGEST", match: "explicit" });
+  });
+});
+
+describe("next actions (R16)", () => {
+  it("lists every shown finding that is open or kept, with what / who / when / why, and drops dismissed ones", async () => {
+    const { nextActions } = await import("./review");
+    const withAction = (id: string): Finding => ({ ...finding(id, "strong"), ask: `Ask ${id}`, next_action: { action: `Ask ${id} now`, who: "SRE · Sam", by_when: "2026-11-13", why: `why ${id}` } });
+    const shown = [withAction("f1"), finding("f2", "moderate"), withAction("f3")];
+    const rows = nextActions(shown, { f1: { kind: "kept", reason: "", at: "" }, f3: { kind: "dismissed", reason: "n/a", at: "" } });
+    expect(rows.map((r) => r.id)).toEqual(["f1", "f2"]);
+    expect(rows[0]).toMatchObject({ text: "Ask f1 now", who: "SRE · Sam", when: "2026-11-13", why: "why f1", kept: true });
+    // A finding without a next_action still yields one: its title, owner and a default deadline.
+    expect(rows[1]).toMatchObject({ text: "f2", who: "T", when: "before go/no-go", kept: false });
   });
 });

@@ -1,0 +1,30 @@
+# Wording for finding titles and next actions. Edit freely; the analyzer only fills placeholders.
+#
+# Placeholders: {item} plan item text · {key} matched ticket · {ticket_status} · {ticket_due} · {plan_date}
+# {launch_date} · {go_no_go} · {epic} · {owner} owner team · {person} first owner from the team list (or "")
+# {projects} projects searched · {commenter} author of the comment · {comment_issue} issue the comment is on
+# {by_when} the computed deadline ("2026-11-13" or "before go/no-go (2026-11-13)") · {deadline} the same as a phrase
+# ("no later than 2026-11-13" or "before go/no-go (2026-11-13)"), for use mid-sentence
+#
+# Keys: <gap type>_<case>. Cases: process_open (ticket exists, not done), process_none_found,
+# cross_team_date_plan (due after the plan date), cross_team_date_launch (due after launch),
+# commitment_none_found (promised in a comment, no ticket), commitment_claim_only (claimed in a comment,
+# ticket still open; weak).
+
+titles:
+  process_open_approval: "Approval still open: {item} ({key} is {ticket_status})"
+  process_open_checklist: "Not done: {item} ({key} is {ticket_status}, due {ticket_due})"
+  process_none_found: "No ticket for: {item}"
+  cross_team_date_plan: "{item}: {key} is due {ticket_due}, after the plan date {plan_date}"
+  cross_team_date_launch: "{item}: {key} is due {ticket_due}, after launch on {launch_date}"
+  commitment_none_found: "{item}: promised in a comment on {comment_issue}, no ticket"
+  commitment_claim_only: "{item}: claimed in a comment only; {key} is still {ticket_status}"
+
+actions:
+  process_open_approval: "Ask {owner} to get {key} approved and moved to Done {deadline}."
+  process_open_checklist: "Ask {owner} to finish {key} and move it to Done {deadline}; the plan needs \"{item}\" by {plan_date}."
+  process_none_found: "Ask {owner} to open a ticket for \"{item}\" (nothing found in {projects}) and give it a date {deadline}."
+  cross_team_date_plan: "Ask {owner} to pull {key} in from {ticket_due} to {plan_date}, or agree a new plan date, and link it to {epic}."
+  cross_team_date_launch: "Ask {owner} to pull {key} in before launch on {launch_date}; it is due {ticket_due}. Link it to {epic}."
+  commitment_none_found: "Ask {owner} to open a ticket for \"{item}\", which {commenter} promised in a comment on {comment_issue}, with a date {deadline}."
+  commitment_claim_only: "Ask {owner} to attach the evidence for \"{item}\" to {key} and move it to Done {deadline}."

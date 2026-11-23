@@ -1,0 +1,546 @@
+{
+  "schema_version": 1,
+  "stage": "building",
+  "project": "Ingestion service",
+  "label": "2026-11-13",
+  "analyzed_at": "2026-11-13T09:10:00.000Z",
+  "files": [
+    {
+      "name": "ingestion-service-PRD.md",
+      "read_as": [
+        "plan_items"
+      ],
+      "notes": "6 signals about teams and approvals"
+    },
+    {
+      "name": "directory.yaml",
+      "read_as": [
+        "teams_and_owners"
+      ],
+      "notes": "10 teams · 21 people"
+    }
+  ],
+  "directory_given": true,
+  "epic": "INGEST-142",
+  "snapshot_label": "2026-11-13",
+  "excluded_signals": [],
+  "signals": [
+    {
+      "id": "g1",
+      "quote": "Replace the batch importer with a streaming ingestion path so that customer events are available on the shared data platform within a minute of arriving.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§1 Goals",
+      "rule_ids": [
+        "shared_platform"
+      ],
+      "teams": [
+        "Data Platform"
+      ],
+      "approvals": []
+    },
+    {
+      "id": "g2",
+      "quote": "Generally available to enterprise customers in Q4.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§1 Goals",
+      "rule_ids": [
+        "enterprise_ga"
+      ],
+      "teams": [
+        "QA",
+        "VDR"
+      ],
+      "approvals": [
+        "QA sign-off",
+        "VDR"
+      ]
+    },
+    {
+      "id": "g3",
+      "quote": "Partners send events through a new public API, authenticated per tenant.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§2 Scope",
+      "rule_ids": [
+        "public_api"
+      ],
+      "teams": [
+        "Security"
+      ],
+      "approvals": [
+        "Security review"
+      ]
+    },
+    {
+      "id": "g4",
+      "quote": "Stores raw customer event data for 90 days so failed events can be replayed.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§3 Data",
+      "rule_ids": [
+        "customer_data"
+      ],
+      "teams": [
+        "Privacy",
+        "Legal"
+      ],
+      "approvals": [
+        "Privacy review",
+        "Legal review"
+      ]
+    },
+    {
+      "id": "g5",
+      "quote": "Support agents get a dashboard to find and replay failed events.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§4 Users",
+      "rule_ids": [
+        "user_interface"
+      ],
+      "teams": [
+        "UX",
+        "Support"
+      ],
+      "approvals": []
+    },
+    {
+      "id": "g6",
+      "quote": "Must handle 2× today's peak traffic at launch without dropping events.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§5 Requirements",
+      "rule_ids": [
+        "peak_load"
+      ],
+      "teams": [
+        "Data Platform",
+        "SRE"
+      ],
+      "approvals": []
+    }
+  ],
+  "teams": [
+    {
+      "team": "Data Platform",
+      "role": "core",
+      "why": "The work lands on the shared data platform.",
+      "when": "now — before the design spec",
+      "signal_ids": [
+        "g1",
+        "g6"
+      ],
+      "contact": "Wei Zhang · eng lead"
+    },
+    {
+      "team": "QA",
+      "role": "core",
+      "why": "A GA release needs a test plan and sign-off.",
+      "when": "before work starts",
+      "signal_ids": [
+        "g2"
+      ],
+      "contact": "Tom Novak · QA lead"
+    },
+    {
+      "team": "UX",
+      "role": "core",
+      "why": "Someone has to design the screens the PRD describes.",
+      "when": "now — before you write the design spec",
+      "signal_ids": [
+        "g5"
+      ],
+      "contact": "Hana Kim · design lead"
+    },
+    {
+      "team": "VDR",
+      "role": "approve",
+      "why": "GA releases go through the vendor and data risk review.",
+      "when": "before code complete",
+      "signal_ids": [
+        "g2"
+      ],
+      "contact": "VDR intake queue · shared mailbox"
+    },
+    {
+      "team": "Security",
+      "role": "approve",
+      "why": "A new public or partner-facing API needs a security review.",
+      "when": "before the design review",
+      "signal_ids": [
+        "g3"
+      ],
+      "contact": "Jordan Blake · security lead"
+    },
+    {
+      "team": "Privacy",
+      "role": "approve",
+      "why": "You store or process customer data.",
+      "when": "now — it may change the design",
+      "signal_ids": [
+        "g4"
+      ],
+      "contact": "Ken Adeyemi · privacy counsel"
+    },
+    {
+      "team": "Legal",
+      "role": "approve",
+      "why": "Customer data retention and customer terms.",
+      "when": "before beta",
+      "signal_ids": [
+        "g4"
+      ],
+      "contact": "Sofia Bauer · commercial counsel"
+    },
+    {
+      "team": "SRE",
+      "role": "consult",
+      "why": "A peak-load target means on-call and capacity planning.",
+      "when": "before the design review",
+      "signal_ids": [
+        "g6"
+      ],
+      "contact": "Sam Whitfield · SRE lead"
+    },
+    {
+      "team": "Support",
+      "role": "inform",
+      "why": "Support agents are among the users.",
+      "when": "before beta",
+      "signal_ids": [
+        "g5"
+      ],
+      "contact": "Lena Marsh · support operations"
+    }
+  ],
+  "approvals": [
+    {
+      "name": "QA sign-off",
+      "team": "QA",
+      "why": "GA release",
+      "start": "before code complete",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "name": "VDR",
+      "team": "VDR",
+      "why": "GA release",
+      "start": "before code complete",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "name": "Security review",
+      "team": "Security",
+      "why": "New public or partner-facing API",
+      "start": "before the design review",
+      "signal_ids": [
+        "g3"
+      ]
+    },
+    {
+      "name": "Privacy review",
+      "team": "Privacy",
+      "why": "Stores or processes customer data",
+      "start": "now",
+      "signal_ids": [
+        "g4"
+      ]
+    },
+    {
+      "name": "Legal review",
+      "team": "Legal",
+      "why": "Data retention and customer terms",
+      "start": "before beta",
+      "signal_ids": [
+        "g4"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "team": "Data Platform",
+      "state": "covered",
+      "found": "DATA-240 linked, DATA-221 linked, DATA-233 mentioned in a comment · Tomás Herrera, Wei Zhang, Anika Rao",
+      "people": [
+        "Tomás Herrera",
+        "Wei Zhang",
+        "Anika Rao"
+      ],
+      "tickets": [
+        "DATA-240",
+        "DATA-221",
+        "DATA-233"
+      ],
+      "contact": "Wei Zhang · eng lead",
+      "signal_ids": [
+        "g1",
+        "g6"
+      ]
+    },
+    {
+      "team": "QA",
+      "state": "missing",
+      "found": "No one from QA on any ticket — A GA release needs a test plan and sign-off.",
+      "people": [],
+      "tickets": [],
+      "contact": "Tom Novak · QA lead",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "team": "UX",
+      "state": "missing",
+      "found": "No one from UX on any ticket — Someone has to design the screens the PRD describes.",
+      "people": [],
+      "tickets": [],
+      "contact": "Hana Kim · design lead",
+      "signal_ids": [
+        "g5"
+      ]
+    },
+    {
+      "team": "VDR",
+      "state": "missing",
+      "found": "No one from VDR on any ticket — GA releases go through the vendor and data risk review.",
+      "people": [],
+      "tickets": [],
+      "contact": "VDR intake queue · shared mailbox",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "team": "Security",
+      "state": "covered",
+      "found": "SEC-881 linked, SEC-890 linked · Fatima Noor, Jordan Blake",
+      "people": [
+        "Fatima Noor",
+        "Jordan Blake"
+      ],
+      "tickets": [
+        "SEC-881",
+        "SEC-890"
+      ],
+      "contact": "Jordan Blake · security lead",
+      "signal_ids": [
+        "g3"
+      ]
+    },
+    {
+      "team": "Privacy",
+      "state": "missing",
+      "found": "No one from Privacy on any ticket — You store or process customer data.",
+      "people": [],
+      "tickets": [],
+      "contact": "Ken Adeyemi · privacy counsel",
+      "signal_ids": [
+        "g4"
+      ]
+    },
+    {
+      "team": "Legal",
+      "state": "missing",
+      "found": "No one from Legal on any ticket — Customer data retention and customer terms.",
+      "people": [],
+      "tickets": [],
+      "contact": "Sofia Bauer · commercial counsel",
+      "signal_ids": [
+        "g4"
+      ]
+    },
+    {
+      "team": "SRE",
+      "state": "covered",
+      "found": "SRE-398 linked · Lena Fischer",
+      "people": [
+        "Lena Fischer"
+      ],
+      "tickets": [
+        "SRE-398"
+      ],
+      "contact": "Sam Whitfield · SRE lead",
+      "signal_ids": [
+        "g6"
+      ]
+    },
+    {
+      "team": "Support",
+      "state": "missing",
+      "found": "No one from Support on any ticket — Support agents are among the users.",
+      "people": [],
+      "tickets": [],
+      "contact": "Lena Marsh · support operations",
+      "signal_ids": [
+        "g5"
+      ]
+    }
+  ],
+  "approval_status": [
+    {
+      "name": "QA sign-off",
+      "team": "QA",
+      "state": "no_owner",
+      "detail": "INGEST-170 \"Test plan for ingestion launch\" has no assignee",
+      "ticket": "INGEST-170",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "name": "VDR",
+      "team": "VDR",
+      "state": "not_started",
+      "detail": "No ticket found in INGEST",
+      "ticket": null,
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "name": "Security review",
+      "team": "Security",
+      "state": "started",
+      "detail": "SEC-881 · In Review · due 2026-11-14 · Fatima Noor",
+      "ticket": "SEC-881",
+      "signal_ids": [
+        "g3"
+      ]
+    },
+    {
+      "name": "Privacy review",
+      "team": "Privacy",
+      "state": "not_started",
+      "detail": "No ticket found in INGEST",
+      "ticket": null,
+      "signal_ids": [
+        "g4"
+      ]
+    },
+    {
+      "name": "Legal review",
+      "team": "Legal",
+      "state": "not_started",
+      "detail": "No ticket found in INGEST",
+      "ticket": null,
+      "signal_ids": [
+        "g4"
+      ]
+    }
+  ],
+  "next_actions": [
+    {
+      "id": "b1",
+      "text": "Bring QA onto the work — A GA release needs a test plan and sign-off",
+      "who": "Tom Novak (QA)",
+      "when": "this week",
+      "why": "missing team",
+      "team": "QA",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "id": "b2",
+      "text": "Bring UX onto the work — Someone has to design the screens the PRD describes",
+      "who": "Hana Kim (UX)",
+      "when": "this week",
+      "why": "missing team",
+      "team": "UX",
+      "signal_ids": [
+        "g5"
+      ]
+    },
+    {
+      "id": "b3",
+      "text": "Bring VDR onto the work — GA releases go through the vendor and data risk review",
+      "who": "VDR intake queue (VDR)",
+      "when": "this week",
+      "why": "missing team",
+      "team": "VDR",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "id": "b4",
+      "text": "Bring Privacy onto the work — You store or process customer data",
+      "who": "Ken Adeyemi (Privacy)",
+      "when": "this week",
+      "why": "missing team",
+      "team": "Privacy",
+      "signal_ids": [
+        "g4"
+      ]
+    },
+    {
+      "id": "b5",
+      "text": "Bring Legal onto the work — Customer data retention and customer terms",
+      "who": "Sofia Bauer (Legal)",
+      "when": "this week",
+      "why": "missing team",
+      "team": "Legal",
+      "signal_ids": [
+        "g4"
+      ]
+    },
+    {
+      "id": "b6",
+      "text": "Bring Support onto the work — Support agents are among the users",
+      "who": "Lena Marsh (Support)",
+      "when": "this week",
+      "why": "missing team",
+      "team": "Support",
+      "signal_ids": [
+        "g5"
+      ]
+    },
+    {
+      "id": "b7",
+      "text": "Get an owner for INGEST-170 (Test plan for ingestion launch); the QA sign-off has no one on it",
+      "who": "Tom Novak (QA)",
+      "when": "this week",
+      "why": "approval has no owner",
+      "team": "QA",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "id": "b8",
+      "text": "Start the VDR — ga release; no ticket found in INGEST",
+      "who": "VDR intake queue (VDR)",
+      "when": "this week",
+      "why": "approval not started",
+      "team": "VDR",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "id": "b9",
+      "text": "Start the Privacy review — stores or processes customer data; no ticket found in INGEST",
+      "who": "Ken Adeyemi (Privacy)",
+      "when": "this week",
+      "why": "approval not started",
+      "team": "Privacy",
+      "signal_ids": [
+        "g4"
+      ]
+    },
+    {
+      "id": "b10",
+      "text": "Start the Legal review — data retention and customer terms; no ticket found in INGEST",
+      "who": "Sofia Bauer (Legal)",
+      "when": "this week",
+      "why": "approval not started",
+      "team": "Legal",
+      "signal_ids": [
+        "g4"
+      ]
+    }
+  ],
+  "warnings": [
+    "No Jira project for Privacy, Legal, UX, QA, VDR, Support: checked by assignee only."
+  ]
+}

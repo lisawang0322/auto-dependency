@@ -1,0 +1,12 @@
+{
+  "name": "throughline-starter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "throughline-starter skill helper scripts: reads a PRD for signals, suggests teams, contacts and approvals (just starting), and checks team coverage and approvals against Jira (building)",
+  "dependencies": {
+    "@throughline/schemas": "*",
+    "yaml": "^2.6.0",
+    "zod": "^3.23.8"
+  }
+}

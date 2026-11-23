@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "snapshot_label": "2026-11-10",
+  "snapshot_date": "2026-11-10",
+  "analyzed_at": "2026-11-10T09:05:00.000Z",
+  "epic": "INGEST-142",
+  "launch_date": "2026-11-20",
+  "go_no_go": "2026-11-13",
+  "service_team": "Ingestion team",
+  "team_list_given": true,
+  "findings": [
+    {
+      "id": "f1",
+      "title": "Approval still open: Security review approved (SEC-881 is Open)",
+      "gap_type": "process",
+      "strength": "strong",
+      "strength_rule": "the plan item matched a ticket in the epic or linked from it",
+      "owner": "Security",
+      "owner_source": "team_list",
+      "plan_item_id": "p3",
+      "plan_quote": "Security will have the security review approved by Nov 14.",
+      "plan_source": {
+        "file": "Ingestion-service-POR-v3.md",
+        "locator": "§4",
+        "quote": "Security will have the security review approved by Nov 14."
+      },
+      "match_way": "linked_keywords",
+      "evidence": [
+        {
+          "key": "SEC-881",
+          "text": "Security review: ingestion service",
+          "meta": "Open · due 2026-11-14 · linked to INGEST-142 (is blocked by)"
+        }
+      ],
+      "why": "Approval still open: Security review approved (SEC-881 is Open)",
+      "next_action": {
+        "action": "Ask Security to get SEC-881 approved and moved to Done before go/no-go (2026-11-13).",
+        "who": "Security · Jordan Blake (security lead)",
+        "by_when": "before go/no-go (2026-11-13)",
+        "why": "Approval still open: Security review approved (SEC-881 is Open)"
+      },
+      "shown": true,
+      "hidden_by_default": false,
+      "ask": "Ask Security to get SEC-881 approved and moved to Done before go/no-go (2026-11-13)."
+    },
+    {
+      "id": "f2",
+      "title": "No ticket for: Rollback plan documented",
+      "gap_type": "process",
+      "strength": "moderate",
+      "strength_rule": "nothing was found for the item in INGEST",
+      "owner": "Ingestion team",
+      "owner_source": "team_list",
+      "plan_item_id": "p7",
+      "plan_quote": "9,Rollback plan documented,Service team,All launches,4 days before launch",
+      "plan_source": {
+        "file": "launch-checklist.csv",
+        "locator": "#9",
+        "quote": "9,Rollback plan documented,Service team,All launches,4 days before launch"
+      },
+      "match_way": "none",
+      "evidence": [],
+      "none_found": {
+        "projects": [
+          "INGEST"
+        ],
+        "jql": [
+          "project = INGEST AND updated >= 2026-09-15 AND text ~ \"rollback plan\""
+        ]
+      },
+      "why": "No ticket for: Rollback plan documented",
+      "next_action": {
+        "action": "Ask Ingestion team to open a ticket for \"Rollback plan documented\" (nothing found in INGEST) and give it a date before go/no-go (2026-11-13).",
+        "who": "Ingestion team · Priya Natarajan (TPM)",
+        "by_when": "before go/no-go (2026-11-13)",
+        "why": "No ticket for: Rollback plan documented"
+      },
+      "shown": true,
+      "hidden_by_default": false,
+      "ask": "Ask Ingestion team to open a ticket for \"Rollback plan documented\" (nothing found in INGEST) and give it a date before go/no-go (2026-11-13)."
+    }
+  ],
+  "linkage_gaps": [
+    {
+      "id": "lg1",
+      "from": "INGEST-142",
+      "to": "SRE-412",
+      "to_summary": "Capacity for ingestion service",
+      "how": "search_match",
+      "suggested_type": "is blocked by",
+      "finding_id": null
+    },
+    {
+      "id": "lg2",
+      "from": "INGEST-150",
+      "to": "DATA-233",
+      "to_summary": "Raise ingestion cluster quota",
+      "how": "comment_mention",
+      "suggested_type": "is blocked by",
+      "finding_id": null
+    }
+  ],
+  "matches": [
+    {
+      "plan_item_id": "p1",
+      "way": "linked_keywords",
+      "key": "INGEST-142",
+      "score": "1/2 keywords: service",
+      "note": ""
+    },
+    {
+      "plan_item_id": "p2",
+      "way": "comment",
+      "key": "DATA-233",
+      "score": "3/4 keywords: cluster, quota, ingestion",
+      "note": ""
+    },
+    {
+      "plan_item_id": "p3",
+      "way": "linked_keywords",
+      "key": "SEC-881",
+      "score": "1/1 keywords: review",
+      "note": ""
+    },
+    {
+      "plan_item_id": "p4",
+      "way": "search",
+      "key": "SRE-412",
+      "score": "1/2 keywords: capacity",
+      "note": ""
+    },
+    {
+      "plan_item_id": "p5",
+      "way": "linked_keywords",
+      "key": "INGEST-163",
+      "score": "3/3 keywords: load, test, peak",
+      "note": ""
+    },
+    {
+      "plan_item_id": "p6",
+      "way": "linked_keywords",
+      "key": "DATA-240",
+      "score": "3/3 keywords: production, db, permissions",
+      "note": ""
+    },
+    {
+      "plan_item_id": "p7",
+      "way": "none",
+      "key": null,
+      "score": "",
+      "note": "no ticket and no matching comment"
+    }
+  ],
+  "warnings": []
+}

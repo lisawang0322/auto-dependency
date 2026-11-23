@@ -1,90 +1,428 @@
-# Release Readiness Review
+# Throughline
 
-Prototype for a CMU independent study: an agent skill that reads a release's plan of record and its
-Jira epic, and a GUI that shows the gaps between them. Sample data only; see `docs/PRD.md`.
+The PM's view of a project, from PRD to launch: it reads the project's plan of record and its Jira
+epic, finds where they disagree (open approvals, cross-team dates after launch, promises that never
+became tickets, unlinked work), and shows them per team with one next action each. Each project is a
+folder a coding agent such as Devin can work in; the agent does the reading, the rules do the
+checking. Built for a CMU independent study; the product rules are in `docs/PRD.md`. Jira is only
+ever read.
+
+## Run it
 
 ```
-docs/                  PRD, clickable-prototype source (read as a spec), earlier skills design
-packages/schemas/      zod schemas + TypeScript types shared by the skill and the GUI
-skills/release-reader/ the reader skill: SKILL.md, helper scripts, reference, tests
-fixtures/ingest-142/   sample plan files, sample Jira snapshots, and the reader's outputs
-runs/INGEST-142/       saved runs the GUI loads: { plan, target, release, findings, linkage_gaps, teams }
-gui/                   Vite + React + TypeScript web app (three steps: plan documents → connect Jira → review)
-scripts/build-runs.ts  assembles runs/ from reader output + hand-written analysis
+npm install && make py-setup          # Node 22+, Python 3 (the venv reads .pptx and .pdf decks)
+npm start                             # builds the GUI and serves it with the API on http://localhost:8787
 ```
 
-Setup: Node 22+, then `npm install` at the root (one workspace).
+Open the page, drop the plan of record (markdown, .pptx, PDF, Word), the launch checklist and the team
+list, confirm the extracted plan, connect to your Jira Cloud site with an API token (read-only; the
+token stays in the server's memory), pick the epic, run the review. Each run is saved under
+`runs/<epic>/<date>.json` and the next run compares against it. For development run the API and the
+Vite dev server separately: `npm run server` and `npm run gui:dev` (http://localhost:5173, which
+proxies `/api`). Without the server the GUI falls back to the sample release; `?backend=sample` forces
+that.
 
-## The release-reader skill
+The same review from the command line, without the GUI:
 
-Three stages, each a script under `skills/release-reader/scripts/`, each runnable alone. The
+```
+npm run review -- --files por.pptx launch-checklist.csv team-list.yaml --epic PROJ-123 --source rest
+JIRA_SITE=https://you.atlassian.net JIRA_EMAIL=… JIRA_API_TOKEN=…     # read-only; raw responses cached in out/jira-cache/
+npm run review -- --files fixtures/ingest-142/docs/Ingestion-service-POR-v3.md fixtures/ingest-142/docs/launch-checklist.csv     fixtures/ingest-142/docs/team-list.yaml --epic INGEST-142 --source fixture --dir fixtures/ingest-142/jira/2026-11-13 --label 2026-11-13
+```
+
+It prints each stage, the shown findings, and the path of the saved run. `--stop-after plan` and
+`--stop-after target` pause for the person to confirm or edit the stage file under
+`runs/<epic>/<label>/`; `--resume` continues from it. Three more commands round this out:
+
+```
+npm run doctor -- --epic PROJ-123           # preflight: Node, dependencies, deck reader, Jira credentials, the epic
+npm run report -- runs/PROJ-123/2026-10-30.json   # one self-contained HTML file: findings, next actions, teams, plan
+```
+
+**In Devin (or any agent):** the `throughline` skill in `.agents/skills/` is the only one to
+invoke. It runs doctor, then the review with its two checkpoints, then the report, and says what to
+post in chat. The agent reads the plan files itself, in any format, and writes the plan items through
+`--agent-items`; the command checks each quote against every file it can read and keeps an item from
+a file it cannot read marked `quote_verified: false`, so the person confirms it. The document reading
+runs on the agent's own model and credits, with no model API key in the repo; the findings stay
+rule-based. Put `JIRA_SITE`, `JIRA_EMAIL` and `JIRA_API_TOKEN` in the workspace's secrets; attachments
+go under `in/<epic>/`. Nothing in the flow asks for a token in chat.
+
+```
+docs/                    PRD, clickable-prototype source (read as a spec), earlier skills design, sample-data brief
+packages/schemas/        zod schemas + TypeScript types shared by the skills and the GUI
+skills/throughline-reader/   the reader skill: SKILL.md, helper scripts (A, B, C), the Python deck reader, reference, tests
+skills/throughline-analyzer/ the analyzer skill: SKILL.md, scripts, next-action templates, phrase rules, tests
+skills/throughline-status/   the status skill: per-team roll-up and change notes against the previous run, tests
+skills/throughline-starter/  what a PRD allows: its signals → teams, contacts, approvals, actions; with Jira, coverage of the work; tests
+skills/throughline/   the entry-point skill for an agent: doctor → review with checkpoints → report
+server/                  the local API server the GUI talks to (runs the pipeline; serves gui/dist), tests
+.agents/skills/          the skills as Devin loads them; generated by `make devin-skills`, never edited by hand
+fixtures/ingest-142/     sample plan files (md, pptx, pdf, csv, yaml), sample Jira snapshots, reader and analyzer outputs
+fixtures/build_pptx.py   rebuilds the sample deck and its PDF export
+runs/INGEST-142/         saved runs the GUI loads: { plan, target, release, findings, linkage_gaps, teams }
+gui/                     Vite + React + TypeScript web app (four steps: get started → your plan → connect apps → next steps)
+devin/                   RUN.md: the checklist for running the reader in Devin against a sandbox Jira; results/
+scripts/                 review.ts (the orchestrator CLI), doctor.ts, report.ts, lib/pipeline.ts (shared with the
+                         server), build-runs.ts, seed_jira.py (the only Jira writer), compare_runs.py
+eval/                    answer-key schema, the INGEST-142 key, score.py
+```
+
+Setup: Node 22+, then `npm install` at the root (one workspace). For slide decks, the fixture builder,
+the seed script and scoring: `make py-setup` (a `.venv` from `requirements.txt`: python-pptx, pdfplumber,
+reportlab, jsonschema).
+
+## The throughline-reader skill
+
+Three stages, each a script under `skills/throughline-reader/scripts/`, each runnable alone. The
 person confirms the output of A and B before the next stage. Full instructions for an agent are in
-`skills/release-reader/SKILL.md`; the Atlassian MCP tool names are in `reference/mcp-tools.md`.
+`skills/throughline-reader/SKILL.md`; the Atlassian MCP tool names are in `reference/mcp-tools.md`.
 
 Fixture mode (no Jira):
 
 ```
 D=fixtures/ingest-142
-npx tsx skills/release-reader/scripts/extract-plan.ts --files $D/docs/Ingestion-service-POR-v3.md $D/docs/launch-checklist.csv $D/docs/team-list.yaml --out plan-draft.json
-npx tsx skills/release-reader/scripts/resolve-release.ts --plan plan-draft.json --source fixture --dir $D/jira/2026-11-13 --out release-target.json
-npx tsx skills/release-reader/scripts/read-jira.ts --plan plan-draft.json --target release-target.json --source fixture --dir $D/jira/2026-11-13 --out release.json
+# Stage A: plan files → plan-draft.json. The POR can be markdown, a .pptx deck or the deck's PDF export.
+npx tsx skills/throughline-reader/scripts/extract-plan.ts --files $D/docs/Ingestion-service-POR-v3.md $D/docs/launch-checklist.csv $D/docs/team-list.yaml --out plan-draft.json
+npx tsx skills/throughline-reader/scripts/extract-plan.ts --files $D/docs/Ingestion-service-POR-v3.pptx $D/docs/launch-checklist.csv $D/docs/team-list.yaml --out plan-draft.json
+# Stage B: epic, fix version, team → Jira project
+npx tsx skills/throughline-reader/scripts/resolve-release.ts --plan plan-draft.json --source fixture --dir $D/jira/2026-11-13 --out release-target.json
+# Stage C: the epic, one hop out, a scoped search per team
+npx tsx skills/throughline-reader/scripts/read-jira.ts --plan plan-draft.json --target release-target.json --source fixture --dir $D/jira/2026-11-13 --out release.json
 ```
 
-MCP mode (real Jira, read-only): the same commands with `--source mcp --dir .mcp-cache/<label>
---cloud-id <id>`. The scripts never call the MCP server themselves. When a response is missing they
-write `<dir>/requests.json` and exit with code 3; the agent runs those read calls through the
-Atlassian MCP server, saves each raw response where `save_as` says, and re-runs. Both modes read the
-same file layout, so the logic is identical.
+Decks: `.pptx` is read with python-pptx (text frames, tables, groups, speaker notes) and a landscape PDF
+with pdfplumber, one page per slide, through `scripts/py/read_deck.py`. Locators are `slide 7` or
+`slide 7 (notes)`. An image-only slide gives the warning `slide N has no extractable text`. Google
+Slides: export as `.pptx` or as PDF with speaker notes. A file that cannot be read is a warning, not a
+crash. Rebuild the sample deck and PDF with `.venv/bin/python fixtures/build_pptx.py`.
+
+MCP mode (real Jira, read-only, with an agent): the same commands with `--source mcp --dir
+.mcp-cache/<label> --cloud-id <id>`. The scripts never call the MCP server themselves. When a response
+is missing they write `<dir>/requests.json` and exit with code 3; the agent runs those read calls
+through the Atlassian MCP server, saves each raw response where `save_as` says, and re-runs.
+
+REST mode (real Jira, read-only, no agent): `--source rest --dir out/jira-cache/<label>` with
+`JIRA_SITE`, `JIRA_EMAIL` and `JIRA_API_TOKEN` in the environment. The script runs the same request
+loop itself against Jira Cloud's REST API (`/project/search`, `/issue/{key}`, `/issue/{key}/comment`,
+`/search/jql`, all paged) and saves the responses into the same cache layout. All three modes read
+the same files, so the logic is identical; `tests/stage-rest.test.ts` proves REST mode gives exactly
+the fixture-mode output through a fake Jira server.
 
 Options worth knowing: `--read-as file=plan_items|launch_checks|teams_and_owners` overrides file
 detection; `--agent-items items.json` adds items the agent extracted from prose (each must quote
 the source file or it is dropped); `--epic KEY` picks the epic; `--no-search TEAM` skips a team's
 scoped search; `--label` names the snapshot.
 
-Tests: `npm test` (31 tests: the required Stage A/B/C cases, repeatability, the MCP request loop).
+Tests: `npm test` (74 tests: Stage A/B/C including decks, repeatability, the MCP request loop, REST
+mode against a fake Jira, the analyzer, the status skill, the API server, doctor, report and checkpoints).
 
 Regenerate fixtures: `npm run build:jira-fixtures` (Jira snapshots from `fixtures/ingest-142/jira/generate.ts`),
-then the three stage commands above with `--out` into `fixtures/ingest-142/` (the committed
-`plan-draft*.json`, `release-target*.json`, `release.<snapshot>.json`), then `npm run build:runs`.
+`.venv/bin/python fixtures/build_pptx.py` (the deck and its PDF), then the three stage commands above with
+`--out` into `fixtures/ingest-142/` (`plan-draft*.json`, `release-target*.json`, `release.<snapshot>*.json`,
+pass `--read-at <snapshot>T09:00:00.000Z` to keep them stable), then the analyzer for each snapshot
+(`findings.<snapshot>*.json`, with `--analyzed-at`), then `npm run build:runs`.
+
+## The throughline-analyzer skill
+
+Reads the reader's three files, never Jira, and writes `findings.json`. Rules only; no model rates
+anything. Instructions and the rules in words: `skills/throughline-analyzer/SKILL.md`.
+
+```
+npx tsx skills/throughline-analyzer/scripts/analyze.ts --plan plan-draft.json --target release-target.json --release release.json --out findings.json
+```
+
+Options: `--teams team-list.yaml` adds owners when the plan was extracted without a team list;
+`--go-no-go YYYY-MM-DD` (default: the Friday before launch); `--templates` and `--phrases` point at
+other wording files. Edit `skills/throughline-analyzer/templates/next_actions.yaml` (titles and next
+actions) and `rules/phrases.yaml` (promise and claim phrases) to change wording.
+
+What it reports: process, cross_team_date and commitment gaps, plus linkage gaps (R13), each with the
+plan quote and source, Jira evidence or an explicit "none found" with the projects and JQL searched, a
+rule-set strength (strong / moderate / weak), and one next action (action, who, by_when, why). The first
+10 non-weak findings are `shown`; weak ones are `hidden_by_default`. On the Nov 13 fixture: 4 shown
+findings (security approval open; DB permissions review promised in a comment; SRE capacity due after
+launch, with its linkage gap; no rollback plan), 1 hidden weak finding (load test, comment only) and 1
+separate linkage gap (INGEST-150 → DATA-233).
+
+## The throughline-status skill and the orchestrator
+
+`throughline-status` turns `findings.json` into the per-team rows the review screen shows (on track / at
+risk / late, one line per plan item, and what moved since the previous run). Rules in words:
+`skills/throughline-status/SKILL.md`.
+
+```
+npx tsx skills/throughline-status/scripts/status.ts --plan plan-draft.json --target release-target.json --release release.json --findings findings.json [--previous runs/INGEST-142/2026-11-10.json] --out status.json
+```
+
+`scripts/review.ts` runs everything in order (A → B → C → analyzer → status) and saves
+`runs/<epic>/<label>.json` plus the five stage files under `runs/<epic>/<label>/`. The same functions
+(`scripts/lib/pipeline.ts`) back the API server, so the GUI and the CLI cannot drift.
+
+## The throughline-starter skill (the early stages)
+
+Two stages before any launch review, both rules only (`skills/throughline-starter/SKILL.md`):
+
+- **Just starting** (PRD R17): the PRD is read for *signals*, sentences that match a pattern in
+  `skills/throughline-starter/templates/signals.yaml` (customer data, a public API, peak load, a
+  user-facing screen, enterprise GA, the shared platform). Each signal implies teams (with a role,
+  why, when and a first action) and approvals (with when to start). A directory or team list adds a
+  likely contact per team. Output: `runs/<project-slug>/<date>.starting.json`.
+- **Building** (R18): the same signals, plus the Jira epic read through Stage B and C and one scoped
+  search per approval. Each needed team is *covered* (someone from it, via the directory, or a ticket
+  in its project), *unclear* (its ticket has no assignee) or *missing*; each approval is *done*,
+  *in progress*, *no owner* or *not started*, with the ticket. Output:
+  `runs/<EPIC>/<date>.building.json`.
+
+```
+npm run starter -- --stage starting --files fixtures/ingest-142/docs/ingestion-service-PRD.md fixtures/ingest-142/docs/directory.yaml
+npm run starter -- --stage building --files fixtures/ingest-142/docs/ingestion-service-PRD.md fixtures/ingest-142/docs/directory.yaml \
+    --epic INGEST-142 --source fixture --dir fixtures/ingest-142/jira/2026-11-13
+npm run starter -- --stage building --files <prd> <directory> --epic PROJ-123 --source rest   # real Jira, read-only
+```
+
+`--exclude g2,g5` leaves out the signals the person unticked. `--agent-signals <file>` adds sentences
+the agent found by reading the PRD, each with a quote and the rule ids it is an instance of; the rules
+still decide what each implies, and a quote not in the file or an unknown rule id is dropped with a warning. The wording is company-specific: copy
+`signals.yaml`, edit it, and pass `--rules <file>`. The sample PRD (`ingestion-service-PRD.md`, also
+exported as `.docx` by `fixtures/build_docx.py`) and directory (`directory.yaml`) are placeholders;
+`eval/score_starter.py` scores both stages against `eval/answer-key.starter.ingest-142.json`.
+`npm run build:starter-fixtures` rebuilds the sample outputs the GUI's sample mode shows.
+
+## Sign-in with the company identity provider
+
+`AUTH=demo` turns on a demo identity provider served by this server: the sign-in page lists a few people at
+"Sample Co" to sign in as (`server/demo.ts`), each with their own plans, decisions and connections, and "Use
+Microsoft Entra ID" on Get started opens the consent page Entra would show and connects the sample company's
+directory. Nothing talks to a real tenant; it is for showing the flow without an app registration.
+
+Without any `OIDC_*` variable the server runs as one local user (`AUTH=none`): the demo, the tests and a
+laptop setup. With them, nothing is shown until the person has signed in through the company identity
+provider (OpenID Connect, authorization code with PKCE; Microsoft Entra ID, Google and Okta all work):
+
+```
+OIDC_ISSUER=https://login.microsoftonline.com/<tenant id>/v2.0   # the tenant-specific issuer
+OIDC_CLIENT_ID=…  OIDC_CLIENT_SECRET=…                           # the app registration; redirect URI is APP_URL + /auth/callback
+APP_URL=http://localhost:8787                                   # where the browser reaches this server
+SESSION_SECRET=<long random string>                             # signs the short-lived login cookie
+ALLOWED_EMAIL_DOMAINS=example.com                               # optional
+DATA_DIR=out                                                    # rrr.sqlite: users, sessions, settings, decisions
+```
+
+`GET /auth/login` starts it, `GET /auth/callback` finishes it, `POST /auth/logout` ends the session. Once
+signed in, keep/dismiss decisions, ticked next actions and the answer about Devin are kept on the server
+per person (`/api/decisions/:key`, `/api/settings`), not in the browser; a person's Jira token stays in
+memory under their user; each organisation's runs, uploads and caches live under `orgs/<org>/`. Writes
+require same-origin JSON requests. `server/tests/fake-idp.ts` is the provider the tests sign in with.
+Keep secrets in a `.env` you never commit (it is in `.gitignore`).
+
+## Jira through Sign in with Atlassian
+
+With an Atlassian OAuth 2.0 app registered, the Jira card on Connect your apps opens Atlassian's own
+consent page in a popup instead of asking for an API token. Register the app at developer.atlassian.com
+(Create → OAuth 2.0 integration), give it the Jira API classic scopes `read:jira-work` and `read:jira-user`,
+and set its callback URL to `APP_URL + /auth/atlassian/callback`. Then:
+
+```
+ATLASSIAN_CLIENT_ID=…  ATLASSIAN_CLIENT_SECRET=…
+TOKEN_KEY=<long random string>      # encrypts stored tokens at rest (SESSION_SECRET is used when unset)
+```
+
+The person signs in at Atlassian, approves read-only access, and the window closes. The server stores
+the access and refresh tokens per person, encrypted with AES-256-GCM, refreshes the access token before
+it expires (Atlassian rotates refresh tokens; the new one is stored at once), and reads Jira through
+`https://api.atlassian.com/ex/jira/<cloudId>` with a bearer token. An account with several Jira sites
+gets a site switch on the epic step. Disconnect deletes the tokens. Without `ATLASSIAN_CLIENT_ID` the
+token form stays, so a laptop setup and the CLI's `JIRA_*` variables keep working. The fake Jira in
+`skills/throughline-reader/tests/fake-jira.ts` also plays Atlassian's OAuth endpoints for the tests.
+
+## Devin behind the upload step
+
+With `DEVIN_API_KEY` set (a Devin service-user key, held by the server and never shown to the browser), the
+GUI offers to let Devin read the files the person adds on the "Your plan" step. On "Let Devin read my
+files", every file the person added (the plan or PRD, the launch checklist, the team list) is uploaded to Devin as an
+attachment and one short session reads it with the same instructions as `skills/throughline/SKILL.md`
+step 1, returning the plan items, every check with whether it applies, the teams and their people, the launch
+date and the epic key as the session's structured output. Nothing is parsed by rules on this path: Stage A takes
+Devin's reading whole and only checks each quote and name against the file (checked where the server can read
+the file, kept but marked `~` where it cannot). The one exception is the employee directory connected on the
+apps step, which is structured data and stays with the directory reader. The GUI shows the reading as it happens, a link to the session, what Devin could not open, and the
+rules' result with a "Try again" button if the session fails. Every file's reading is cached by content, "read as"
+and tier under `out/agent-reads/`, so re-adding the same file spends nothing.
+
+## Projects: the portal
+
+The GUI opens on **Projects**: every project the person has, where each is in its life (just starting, building,
+preparing to launch), its latest status and open actions. A project keeps its files, Devin's reading, the epic, team
+choices, decisions and results, so opening it again lands on its overview with nothing read or uploaded again; the
+project is in the URL (`#/p/<id>`). Once reviewed, a project is a workspace: Overview (with a lifecycle bar to move it
+to the next stage, keeping its files and connections), Files and plan, Connections, Stage and organisation, History.
+Every review is kept as a record in History (its stage, date, status, open actions, the files it used and the
+result itself), so a review from an earlier stage, or before a re-run, opens later exactly as it was, read-only.
+In live mode each project is a folder on disk (`PROJECTS_DIR`, default `workspace/`), a git repository with a commit
+per save when git is installed: `project.yaml`, the originals in `inputs/`, `readings/`, `reviews/`, `teams.yaml` (no
+people), `history.md`, `README.md` and `AGENTS.md` for any coding agent (`docs/project-folders.md` has the contract,
+the hosted plan and the risks). Routes: `GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/{id}`, `POST
+/api/projects/{id}/files`. On the plan step, "Use your own coding agent" shows the folder: open it in Claude Code,
+Codex, Cursor or Devin, ask it to read the files by `AGENTS.md`, and "Use the reading" takes in what it wrote to
+`readings/inbox/reading.json` (`POST /api/plan` with `agent: "folder"`), checks every quote, undoes anything else it
+changed, and flags text in a document that is addressed to an AI. Sample mode keeps projects in the browser.
+
+## The employee directory
+
+Connected first, on **Get started**, in two layers that combine (PRD "Employee directory sources"):
+
+- **Microsoft Entra ID**, with the sign-in itself. The sign-in asks for `User.Read.All` along with identity
+  (`GRAPH_SCOPES` to change it, `OIDC_DIRECTORY_AT_SIGNIN=0` to leave it out), so one consent covers both, and the
+  server reads every user's name, title, department and manager from Microsoft Graph (`GRAPH_API_BASE`, default
+  `https://graph.microsoft.com/v1.0`) in the sign-in callback: Get started opens with the directory connected. It makes
+  a team per department with the department's outside manager first and stores that snapshot per person, sealed;
+  the Graph token is used once and never stored. If the provider refuses the scope (a work tenant whose admin has not
+  consented, or a personal account), the sign-in retries with identity alone and "Use Microsoft Entra ID" on Get
+  started asks for the directory on its own, saying what the admin must consent to.
+- **Jira projects** through the Jira connection (Sign in with Atlassian, a token, or the company's credentials): every
+  project becomes a team, with its lead and the people assigned its work. On Get started this connects Jira first
+  when it is not yet.
+- **An export** (YAML, CSV or a spreadsheet), as before.
+
+The layers merge by team name (Entra's people under Jira's project keys; a title from either layer wins over none)
+and are written as a team list the reader already takes, so Stage A, the early stages and Devin's grounding all see
+one file, "Employee directory.yaml". Routes: `GET /api/directory`, `POST /api/directory/jira`,
+`DELETE /api/directory/{entra|jira}`, `GET /auth/directory/entra/start|callback`. `server/tests/fake-idp.ts` plays
+Microsoft Graph too (`idp.graph`).
+
+Three things from the professor's review (Nov 2026) shape this step. The employee directory is connected on
+**Get started**, before any document, and its team names go into Devin's instructions so owners are spelled as
+the company spells them rather than guessed (a reading is cached per directory too). Right after the reading,
+**Who this involves** lists every team the plan, the checklist or the PRD's signals name, what each owns, its
+people, and whether a directory or team list grounds it. And while Devin reads, a progress bar reports how far
+along it is (`progress` and `detail` on the job): uploads, a rise with time while the session works, then the
+quote check.
+
+```
+DEVIN_API_KEY=cog_…                 # enables it; Settings → Service users in Devin
+DEVIN_MAX_ACU=2                     # cap per reading session (default 2)
+DEVIN_READ_TIMEOUT_MIN=10           # give up and fall back to the rules after this long
+DEVIN_API_BASE=https://api.devin.ai # the fake in server/tests/fake-devin.ts stands in for tests
+```
+
+The person's choice is remembered in the browser (`rrr.agent.consent`) and shown as the Devin card in
+Connect your apps, where it can be disconnected. Devin's External API is marked alpha by Devin.
+
+## The API server
+
+`npm run server` (port 8787, or `PORT`). JSON routes under `/api`: `health`, `jira/connect` and
+`jira/disconnect` (credentials checked against `/myself` and kept in memory only; also read from
+`JIRA_SITE`, `JIRA_EMAIL`, `JIRA_API_TOKEN`), `plan` (uploads, base64, written under `out/gui-uploads/`),
+`target` (Stage B), `run` (Stage C + analyzer + status as a job, polled on `jobs/:id`), `runs/:epic`
+and `runs/:epic/:label`; `plan` with `stage: starting|building` also returns the PRD's signals, and
+`starter` runs the early stages as a job. When `gui/dist` exists it is served at `/`. `JIRA_FIXTURE_DIR=<snapshot dir>`
+runs the server against a fixture snapshot instead of a Jira site (demo mode). `server/server.test.ts`
+drives the whole flow against the fake Jira, including a `.pptx` upload.
+
+## Running the reader in Devin against a sandbox Jira
+
+`devin/RUN.md` is the checklist: create a free Jira Cloud sandbox, seed it, enable the Atlassian MCP in
+Devin, paste the prompt, then compare. The pieces:
+
+```
+make devin-skills                                   # copies skills/*/SKILL.md (+reference, templates) into .agents/skills/
+JIRA_SANDBOX=yes JIRA_SITE=… JIRA_EMAIL=… JIRA_API_TOKEN=… .venv/bin/python scripts/seed_jira.py --dry-run
+JIRA_SANDBOX=yes … .venv/bin/python scripts/seed_jira.py --out out/key-map.json      # the only Jira writer in the repo
+python3 scripts/compare_runs.py --devin out/release.json --fixture fixtures/ingest-142/release.2026-11-13.json --key-map out/key-map.json
+```
+
+`seed_jira.py` refuses to run without `JIRA_SANDBOX=yes`, creates the Nov 13 snapshot (6 projects
+including the two decoys, 36 issues, links, comments, due dates) and prints the mapping from fixture keys
+to the keys Jira assigned. `compare_runs.py` maps the keys back, applies any status fallbacks the sandbox
+workflow forced, ignores timestamps and assignees, and prints the differences; it also says whether
+SRE-412's equivalent came back in `search_candidates`.
+
+## Scoring against an answer key
+
+`eval/answer-key.schema.json` describes an answer key (seeded gaps by plan item and gap type, linkage
+gaps with the blocker marked, noise tickets, status changes). `eval/answer-key.ingest-142.json` is the
+filled-in key for the sample release. `docs/sample-data-brief.md` asks a classmate for a second release.
+
+```
+python3 eval/score.py --key eval/answer-key.ingest-142.json run1/findings.json run2/findings.json run3/findings.json [--key-map out/key-map.json]
+```
+
+Prints recall (target ≥ 80%), precision of shown findings (target ≥ 70%), whether the unlinked blocker
+appears as a linkage gap in every run, and the run-to-run differences. Exit code 1 when a target is missed.
 
 ## The GUI
 
 ```
-npm run gui:dev      # http://localhost:5173
-npm run gui:test     # unit tests: status roll-up, weak filter, 10-finding cap, "all teams resolved" gate
-npm run gui:e2e      # Playwright: all three steps, including resolving the ambiguous Security team (desktop + phone)
+npm run gui:dev      # http://localhost:5173 (live mode when `npm run server` is running, sample data otherwise)
+npm run gui:test     # unit tests: status roll-up, weak filter, 10-finding cap, "all teams resolved" gate, next actions
+npm run gui:e2e      # Playwright: sample mode (desktop + phone) and live mode (real uploads → API server → fake Jira → next steps)
 npm run gui:build
 ```
 
 First e2e run: `npx playwright install chromium` inside `gui/`.
 
-The GUI works from saved files behind three interfaces in `gui/src/backend/types.ts`:
+The flow follows the stage-aware prototype (`docs/prototype.html`, the spec) and PRD R10, R14–R16:
 
-- `ReviewBackend` (`fixtureBackend.ts`): loads `fixtures/ingest-142/plan-draft*.json`,
-  `release-target*.json` and `runs/INGEST-142/*.json`. A live agent replaces this class.
-- `JiraConnection` (`stubJira.ts`): the simulated Atlassian consent flow.
-- `DecisionStore` (`decisionStore.ts`): keep/dismiss decisions and the decision log, per run, in localStorage.
+1. **Get started.** What the tool does, what counts as a plan, and the project's stage: *Just
+   starting*, *Team forming, work underway* or *Preparing to launch*. The rest of the flow adapts.
+2. **Your plan.** Drop files in any format the reader can parse (slides, Word, Markdown, PDF, CSV,
+   YAML, JSON); each is read as a PRD or one-pager, plan of record, launch checklist, team list, or
+   not used. "What we'll look for" shows what was found; "Plan we read" is the editable plan table.
+3. **Connect apps.** A gallery grouped by kind (work tracking, docs and wikis, product planning,
+   people and org, chat). Apps the company has not enabled are greyed out. Jira connects for real
+   (API token in live mode, simulated consent in sample mode); the employee directory connects as a
+   team-list export (sample mode uses the sample team list); the rest are shown for the design and
+   say so. Then the release epic and the team → Jira project resolution.
+4. **Next steps.** Opens with *Your next actions*, tickable (what, who, by when, why). Then, by stage:
+   - *Preparing to launch*: the launch review (status tiles, teams and findings with keep/dismiss,
+     the finding detail with its suggested next action, other linkage gaps, upcoming dates, what
+     the review can't see, the decision log).
+   - *Just starting*: a stakeholder map, the teams to involve (role, why, when, contact, "mark
+     contacted") and the approvals to plan for.
+   - *Team forming*: team coverage against the Jira work and the approvals' status.
 
-Add `?fast=1` to the URL to shorten the simulated delays.
+   On step 2 the early stages show *What we read in your PRD*: the signals, each with its quote and
+   the teams it points to; unticking one removes what only it implied.
 
-## What is stubbed, and what is real
+Two modes behind the interfaces in `gui/src/backend/types.ts`, chosen at startup by probing
+`/api/health` (`?backend=live|sample` overrides):
 
-Real: the three reader stages and their outputs; the Jira snapshot data and the JQL evaluator; the
-`plan`, `target` and `release` parts of each saved run (produced by the reader from the fixtures);
-every number and label the GUI shows, which comes from those files.
+- **Live** (`liveBackend.ts`): uploads go to the server and through Stage A; the Connect step is a
+  site / email / API-token form checked against Jira; the epic is looked up in Jira; "Run review"
+  reads Jira, runs the analyzer and the status skill, and saves the run. Edited due dates, the launch
+  date and your team → project choices are part of what is run.
+- **Sample** (`fixtureBackend.ts`, `stubJira.ts`): the fixture release with a simulated consent page,
+  for the demo and the tests. `?fast=1` shortens its delays.
+- `DecisionStore` (`decisionStore.ts`): keep/dismiss decisions, the decision log and ticked-off next
+  actions, per run, in localStorage.
 
-Stubbed or hand-written:
+## What is real, and what is still sample
 
-- **File parsing in the GUI.** Any upload is treated as the sample files: a file read as plan items
-  gives the fixture plan, a file read as launch checks adds its checklist items, a file read as
-  teams and owners adds the team list (and makes every team resolve). Real parsing is Stage A.
-- **Jira in the GUI.** OAuth is simulated; the epic lookup only knows INGEST-142; the Jira project
-  table comes from the fixture `release-target.json` (with or without the team list).
-- **Running the review.** Progress is animated, then the latest saved run is loaded.
-- **The analyzer and status skills.** They do not exist yet. `findings`, `linkage_gaps` and `teams` in
-  `runs/INGEST-142/analysis/*.json` are hand-written to match the prototype and validated against the
-  `Finding`, `LinkageGap` and `Team` schemas in `packages/schemas`, which is what those skills must produce.
+Real, in both modes: file parsing (Stage A), the Jira reads (Stage B and C), the analyzer, the status
+roll-up, the saved runs, every number and label on the screen, the seed, compare and score scripts.
+
+Still sample or deliberately simple:
+
+- **Sample mode's Jira** is the fixture snapshot behind a simulated consent page; it only knows
+  INGEST-142.
+- **Connect apps.** Only Jira and the employee directory work. Jira connects through Sign in with
+  Atlassian when the company has registered the app, otherwise through an API token. The directory is a
+  team-list export read the same way as an uploaded team list, not a live directory connector; no
+  directory product exposes a sign-in the app could use yet. Linear, Confluence,
+  Google Drive and Aha! are shown as the PRD asks but cannot be connected; Asana, SharePoint,
+  Productboard, the HR org chart and Slack are shown as not enabled by the company.
+- **The early stages' sample data.** The sample PRD and directory are the tool author's placeholders,
+  and the signal rules are generic defaults; a company would edit `signals.yaml`.
+- **One run per epic per day.** Runs are labelled by date; a second run the same day replaces the
+  first (and re-reads Jira).
+- **Credentials** are an API token held in the server process. There is no OAuth, no multi-user
+  server, and no TLS: run it on your own machine. (Direction from Oct 31: sign-in with the company
+  identity provider, Sign in with Atlassian for Jira, and the company's Devin service user running
+  sessions attributed to the signed-in person; Devin behind the upload step is the first piece.)
+- **Decisions** (keep / dismiss) live on the server per signed-in person in live mode, and in the
+  browser's localStorage in sample mode.
 - **The sample data.** The POR, checklist, team list and Jira snapshots are placeholders written by
   the tool author; PRD R12 says the real ones are written by someone else.
 - **Atlassian MCP tool names.** Taken from Atlassian's documentation; the skill tells the agent to
-  confirm them against the server before the first call.
+  confirm them against the server before the first call. REST mode does not depend on them.

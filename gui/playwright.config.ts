@@ -7,6 +7,7 @@ export default defineConfig({
   webServer: { command: "npx vite --port 5173 --strictPort", url: "http://localhost:5173", reuseExistingServer: true, timeout: 60_000 },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "phone", use: { ...devices["Pixel 7"] } },
+    // live.spec.ts starts one API server on the proxied port, so it runs on desktop only.
+    { name: "phone", use: { ...devices["Pixel 7"] }, testIgnore: /live\.spec\.ts/ },
   ],
 });

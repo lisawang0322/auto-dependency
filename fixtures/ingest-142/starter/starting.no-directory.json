@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "stage": "starting",
+  "project": "Ingestion service",
+  "label": "2026-11-13",
+  "analyzed_at": "2026-11-13T09:10:00.000Z",
+  "files": [
+    {
+      "name": "ingestion-service-PRD.md",
+      "read_as": [
+        "plan_items"
+      ],
+      "notes": "6 signals about teams and approvals"
+    }
+  ],
+  "directory_given": false,
+  "epic": null,
+  "snapshot_label": null,
+  "excluded_signals": [],
+  "signals": [
+    {
+      "id": "g1",
+      "quote": "Replace the batch importer with a streaming ingestion path so that customer events are available on the shared data platform within a minute of arriving.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§1 Goals",
+      "rule_ids": [
+        "shared_platform"
+      ],
+      "teams": [
+        "Data Platform"
+      ],
+      "approvals": []
+    },
+    {
+      "id": "g2",
+      "quote": "Generally available to enterprise customers in Q4.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§1 Goals",
+      "rule_ids": [
+        "enterprise_ga"
+      ],
+      "teams": [
+        "QA",
+        "VDR"
+      ],
+      "approvals": [
+        "QA sign-off",
+        "VDR"
+      ]
+    },
+    {
+      "id": "g3",
+      "quote": "Partners send events through a new public API, authenticated per tenant.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§2 Scope",
+      "rule_ids": [
+        "public_api"
+      ],
+      "teams": [
+        "Security"
+      ],
+      "approvals": [
+        "Security review"
+      ]
+    },
+    {
+      "id": "g4",
+      "quote": "Stores raw customer event data for 90 days so failed events can be replayed.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§3 Data",
+      "rule_ids": [
+        "customer_data"
+      ],
+      "teams": [
+        "Privacy",
+        "Legal"
+      ],
+      "approvals": [
+        "Privacy review",
+        "Legal review"
+      ]
+    },
+    {
+      "id": "g5",
+      "quote": "Support agents get a dashboard to find and replay failed events.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§4 Users",
+      "rule_ids": [
+        "user_interface"
+      ],
+      "teams": [
+        "UX",
+        "Support"
+      ],
+      "approvals": []
+    },
+    {
+      "id": "g6",
+      "quote": "Must handle 2× today's peak traffic at launch without dropping events.",
+      "file": "ingestion-service-PRD.md",
+      "locator": "§5 Requirements",
+      "rule_ids": [
+        "peak_load"
+      ],
+      "teams": [
+        "Data Platform",
+        "SRE"
+      ],
+      "approvals": []
+    }
+  ],
+  "teams": [
+    {
+      "team": "Data Platform",
+      "role": "core",
+      "why": "The work lands on the shared data platform.",
+      "when": "now — before the design spec",
+      "signal_ids": [
+        "g1",
+        "g6"
+      ],
+      "contact": null
+    },
+    {
+      "team": "QA",
+      "role": "core",
+      "why": "A GA release needs a test plan and sign-off.",
+      "when": "before work starts",
+      "signal_ids": [
+        "g2"
+      ],
+      "contact": null
+    },
+    {
+      "team": "UX",
+      "role": "core",
+      "why": "Someone has to design the screens the PRD describes.",
+      "when": "now — before you write the design spec",
+      "signal_ids": [
+        "g5"
+      ],
+      "contact": null
+    },
+    {
+      "team": "VDR",
+      "role": "approve",
+      "why": "GA releases go through the vendor and data risk review.",
+      "when": "before code complete",
+      "signal_ids": [
+        "g2"
+      ],
+      "contact": null
+    },
+    {
+      "team": "Security",
+      "role": "approve",
+      "why": "A new public or partner-facing API needs a security review.",
+      "when": "before the design review",
+      "signal_ids": [
+        "g3"
+      ],
+      "contact": null
+    },
+    {
+      "team": "Privacy",
+      "role": "approve",
+      "why": "You store or process customer data.",
+      "when": "now — it may change the design",
+      "signal_ids": [
+        "g4"
+      ],
+      "contact": null
+    },
+    {
+      "team": "Legal",
+      "role": "approve",
+      "why": "Customer data retention and customer terms.",
+      "when": "before beta",
+      "signal_ids": [
+        "g4"
+      ],
+      "contact": null
+    },
+    {
+      "team": "SRE",
+      "role": "consult",
+      "why": "A peak-load target means on-call and capacity planning.",
+      "when": "before the design review",
+      "signal_ids": [
+        "g6"
+      ],
+      "contact": null
+    },
+    {
+      "team": "Support",
+      "role": "inform",
+      "why": "Support agents are among the users.",
+      "when": "before beta",
+      "signal_ids": [
+        "g5"
+      ],
+      "contact": null
+    }
+  ],
+  "approvals": [
+    {
+      "name": "QA sign-off",
+      "team": "QA",
+      "why": "GA release",
+      "start": "before code complete",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "name": "VDR",
+      "team": "VDR",
+      "why": "GA release",
+      "start": "before code complete",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "name": "Security review",
+      "team": "Security",
+      "why": "New public or partner-facing API",
+      "start": "before the design review",
+      "signal_ids": [
+        "g3"
+      ]
+    },
+    {
+      "name": "Privacy review",
+      "team": "Privacy",
+      "why": "Stores or processes customer data",
+      "start": "now",
+      "signal_ids": [
+        "g4"
+      ]
+    },
+    {
+      "name": "Legal review",
+      "team": "Legal",
+      "why": "Data retention and customer terms",
+      "start": "before beta",
+      "signal_ids": [
+        "g4"
+      ]
+    }
+  ],
+  "coverage": [],
+  "approval_status": [],
+  "next_actions": [
+    {
+      "id": "a1",
+      "text": "Book a 30-minute intro with Data Platform about the platform integration",
+      "who": "Data Platform",
+      "when": "this week",
+      "why": "shared platform work needs their design input",
+      "team": "Data Platform",
+      "signal_ids": [
+        "g1"
+      ]
+    },
+    {
+      "id": "a2",
+      "text": "Add QA to your plan, with a test plan owner and dates",
+      "who": "QA",
+      "when": "before work starts",
+      "why": "GA needs QA sign-off",
+      "team": "QA",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "id": "a3",
+      "text": "Find a designer for the user-facing screens",
+      "who": "UX",
+      "when": "next 2 weeks",
+      "why": "before you write the design spec",
+      "team": "UX",
+      "signal_ids": [
+        "g5"
+      ]
+    },
+    {
+      "id": "a4",
+      "text": "File the VDR intake for this release",
+      "who": "VDR",
+      "when": "before code complete",
+      "why": "GA releases go through VDR",
+      "team": "VDR",
+      "signal_ids": [
+        "g2"
+      ]
+    },
+    {
+      "id": "a5",
+      "text": "Open a security review request for the public API",
+      "who": "Security",
+      "when": "before the design review",
+      "why": "new public API",
+      "team": "Security",
+      "signal_ids": [
+        "g3"
+      ]
+    },
+    {
+      "id": "a6",
+      "text": "Ask Privacy whether the customer data you store needs a review",
+      "who": "Privacy",
+      "when": "this week",
+      "why": "it may change the design",
+      "team": "Privacy",
+      "signal_ids": [
+        "g4"
+      ]
+    },
+    {
+      "id": "a7",
+      "text": "Ask Legal about retention terms and customer agreements",
+      "who": "Legal",
+      "when": "before beta",
+      "why": "data retention and terms",
+      "team": "Legal",
+      "signal_ids": [
+        "g4"
+      ]
+    },
+    {
+      "id": "a8",
+      "text": "Ask SRE for a capacity and on-call plan",
+      "who": "SRE",
+      "when": "before the design review",
+      "why": "on-call and capacity planning",
+      "team": "SRE",
+      "signal_ids": [
+        "g6"
+      ]
+    },
+    {
+      "id": "a9",
+      "text": "Brief Support on what agents will be able to do",
+      "who": "Support",
+      "when": "before beta",
+      "why": "they are the screen's users",
+      "team": "Support",
+      "signal_ids": [
+        "g5"
+      ]
+    }
+  ],
+  "warnings": []
+}

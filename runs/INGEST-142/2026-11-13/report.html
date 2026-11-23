@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Throughline · INGEST-142 · Nov 13, 2026</title>
+<style>
+:root{--bg:#fff;--ink:#1b1f24;--muted:#5c6570;--line:#e3e6ea;--card:#f7f8fa;--green:#1f7a3d;--amber:#9a6400;--red:#b4232c;--accent:#1f5fbf;--pillbg:#eef1f5}
+@media (prefers-color-scheme:dark){:root{--bg:#121417;--ink:#e6e8eb;--muted:#9aa3ad;--line:#2a2f36;--card:#1a1e23;--green:#5fc27a;--amber:#e3b341;--red:#f08089;--accent:#7fb0ff;--pillbg:#262b32}}
+*{box-sizing:border-box}body{margin:0;padding:24px 16px;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:960px;margin:0 auto}h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:16px;margin:0 0 6px}
+.muted{color:var(--muted)}.small{font-size:13px}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--pillbg);font-size:12px;font-weight:600;vertical-align:middle}
+.pill.on_track,.pill.ok,.pill.strong{color:var(--green)}.pill.at_risk,.pill.gap,.pill.moderate{color:var(--amber)}.pill.late{color:var(--red)}.pill.weak{color:var(--muted)}
+.status{font-size:20px;font-weight:700}.status.amber{color:var(--amber)}.status.green{color:var(--green)}
+.finding{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:12px 0}.finding.weak{opacity:.85}
+.meta{margin:0 0 8px}.meta span{margin-right:10px}blockquote{margin:8px 0;padding:6px 12px;border-left:3px solid var(--line)}blockquote footer{font-size:13px;color:var(--muted)}
+.evidence{margin:8px 0;padding-left:20px}.action{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin:10px 0 0}.notice{color:var(--accent)}
+table{width:100%;border-collapse:collapse;margin:8px 0 16px;font-size:14px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600;font-size:13px}
+.team{margin:16px 0}details summary{cursor:pointer;color:var(--muted)}a{color:var(--accent)}.wrap{overflow-x:auto}
+@media print{body{padding:0}.finding{break-inside:avoid}}
+</style>
+</head>
+<body><main>
+<header>
+<p class="muted small">Throughline · snapshot Nov 13, 2026 · compared with Nov 10, 2026</p>
+<h1>Ingestion service launch <code>INGEST-142</code></h1>
+<p><span class="status amber">Amber</span> &nbsp; Launch Nov 20, 2026 · 7 days out · go/no-go Nov 13, 2026 · fix version 1.0 · epic In Progress</p>
+<p class="muted">4 findings to act on, 1 weak hidden below, 1 other linkage gap. 25 stories read, 6 related tickets, 2 search candidates across INGEST, DATA, SEC, SRE. Owners to chase: Security, SRE, Data Platform, Ingestion team.</p>
+</header>
+
+<h2>Findings</h2>
+<article class="finding strong" id="f1">
+  <h3>Approval still open: Security review approved (SEC-881 is In Review)</h3>
+  <p class="meta"><span class="pill">Process</span> <span class="pill strong">strong evidence</span> <span>Owner: <b>Security</b></span> <span>Plan item p3</span></p>
+  <blockquote>“Security will have the security review approved by Nov 14.”<footer>Ingestion-service-POR-v3.md · §4 · plan date Nov 14, 2026</footer></blockquote>
+  <ul class="evidence"><li><code>SEC-881</code> Security review: ingestion service <span class="muted">In Review · due 2026-11-14 · linked to INGEST-142 (is blocked by)</span></li></ul>
+  
+  
+  <p class="muted">Why strong: the plan item matched a ticket in the epic or linked from it.</p>
+  <p class="action"><b>Next action</b> · Security · Jordan Blake (security lead) · by before go/no-go (2026-11-13)<br>Ask Security to get SEC-881 approved and moved to Done before go/no-go (2026-11-13).</p>
+</article>
+<article class="finding moderate" id="f2">
+  <h3>SRE capacity and on-call in place: SRE-412 is due 2026-11-22, after launch on 2026-11-20</h3>
+  <p class="meta"><span class="pill">Cross-team date</span> <span class="pill moderate">moderate evidence</span> <span>Owner: <b>SRE</b></span> <span>Plan item p4</span></p>
+  <blockquote>“SRE capacity and on-call will be in place the week before launch.”<footer>Ingestion-service-POR-v3.md · §4 · plan date Nov 13, 2026</footer></blockquote>
+  <ul class="evidence"><li><code>SRE-412</code> Capacity for ingestion service <span class="muted">To Do · due 2026-11-22 · found by search in SRE, not linked to INGEST-142</span></li></ul>
+  
+  <p class="notice">Linkage gap: <code>INGEST-142</code> is not linked to <code>SRE-412</code>. Suggested link: <b>is blocked by</b>.</p>
+  <p class="muted">Why moderate: the ticket came from a scoped search, not a link.</p>
+  <p class="action"><b>Next action</b> · SRE · Sam Whitfield (SRE lead) · by 2026-11-13<br>Ask SRE to pull SRE-412 in before launch on 2026-11-20; it is due 2026-11-22. Link it to INGEST-142.</p>
+</article>
+<article class="finding moderate" id="f3">
+  <h3>Production DB permissions reviewed: promised in a comment on INGEST-157, no ticket</h3>
+  <p class="meta"><span class="pill">Commitment</span> <span class="pill moderate">moderate evidence</span> <span>Owner: <b>Data Platform</b></span> <span>Plan item p6</span></p>
+  <blockquote>“6,Production DB permissions reviewed,Data Platform,Production database access,The week before launch”<footer>launch-checklist.csv · #6 · plan date Nov 13, 2026</footer></blockquote>
+  <ul class="evidence"><li><code>INGEST-157</code> Comment by Tomás Herrera (2026-11-12): &quot;Closing DATA-240 as a duplicate of the general access process. DBA will review prod permissions before launch.&quot; <span class="muted">promise phrase</span></li><li><code>DATA-240</code> Production DB permissions for ingestion writer <span class="muted">Closed (Duplicate) · due 2026-11-13 · linked to INGEST-142 (relates to) · closed without being done, so not counted</span></li></ul>
+  <p class="muted">Nothing found in DATA. Searched: <code>project = DATA AND updated &gt;= 2026-09-15 AND text ~ &quot;production db permissions&quot;</code></p>
+  
+  <p class="muted">Why moderate: no ticket was found; the promise exists only in a comment.</p>
+  <p class="action"><b>Next action</b> · Data Platform · Wei Zhang (eng lead) · by 2026-11-13<br>Ask Data Platform to open a ticket for &quot;Production DB permissions reviewed&quot;, which Tomás Herrera promised in a comment on INGEST-157, with a date no later than 2026-11-13.</p>
+</article>
+<article class="finding moderate" id="f4">
+  <h3>No ticket for: Rollback plan documented</h3>
+  <p class="meta"><span class="pill">Process</span> <span class="pill moderate">moderate evidence</span> <span>Owner: <b>Ingestion team</b></span> <span>Plan item p7</span></p>
+  <blockquote>“9,Rollback plan documented,Service team,All launches,4 days before launch”<footer>launch-checklist.csv · #9 · plan date Nov 16, 2026</footer></blockquote>
+  
+  <p class="muted">Nothing found in INGEST. Searched: <code>project = INGEST AND updated &gt;= 2026-09-15 AND text ~ &quot;rollback plan&quot;</code></p>
+  
+  <p class="muted">Why moderate: nothing was found for the item in INGEST.</p>
+  <p class="action"><b>Next action</b> · Ingestion team · Priya Natarajan (TPM) · by before go/no-go (2026-11-13)<br>Ask Ingestion team to open a ticket for &quot;Rollback plan documented&quot; (nothing found in INGEST) and give it a date before go/no-go (2026-11-13).</p>
+</article>
+<details><summary>1 weak finding (comment text only, hidden by default)</summary><article class="finding weak" id="f5">
+  <h3>Load test passed at 2× peak: claimed in a comment only; INGEST-163 is still In Progress</h3>
+  <p class="meta"><span class="pill">Commitment</span> <span class="pill weak">weak evidence</span> <span>Owner: <b>Ingestion team</b></span> <span>Plan item p5</span></p>
+  <blockquote>“4,Load test passed at 2× peak,Service team,New services,5 days before launch”<footer>launch-checklist.csv · #4 · plan date Nov 15, 2026</footer></blockquote>
+  <ul class="evidence"><li><code>INGEST-163</code> Comment by Dana Okafor (2026-11-11): &quot;Ran the 2× peak run on staging yesterday, load test looks fine. Will attach the report.&quot; <span class="muted">claim phrase</span></li><li><code>INGEST-163</code> Load test at 2× peak <span class="muted">In Progress · due 2026-11-15 · in the epic</span></li></ul>
+  
+  
+  <p class="muted">Why weak: comment text only: the ticket is still open and only a comment says the item is handled.</p>
+  <p class="action"><b>Next action</b> · Ingestion team · Priya Natarajan (TPM) · by before go/no-go (2026-11-13)<br>Ask Ingestion team to attach the evidence for &quot;Load test passed at 2× peak&quot; to INGEST-163 and move it to Done before go/no-go (2026-11-13).</p>
+</article></details>
+
+<h2>Other linkage gaps</h2>
+<div class="wrap"><table><thead><tr><th>From</th><th>To</th><th>How it was found</th><th>Suggested link</th></tr></thead><tbody>
+<tr><td><code>INGEST-150</code></td><td><code>DATA-233</code> Raise ingestion cluster quota</td><td>mentioned in a comment</td><td>is blocked by</td></tr>
+</tbody></table></div>
+
+<h2>Teams</h2>
+<div class="wrap"><section class="team">
+  <h3>Ingestion team <span class="pill at_risk">At risk</span> <span class="muted">INGEST · Service team</span></h3>
+  <p class="muted">Since 2026-11-10: no change in the tickets behind these items.</p>
+  <table><thead><tr><th>Plan item</th><th>Ticket</th><th>Plan date</th><th>Jira date</th><th>Result</th><th>Note</th></tr></thead><tbody>
+  <tr class="ok"><td>Ingestion service live in production</td><td><code>INGEST-142</code> <span class="muted">In Progress · 21 of 25 stories done</span></td><td>Nov 18, 2026</td><td>Nov 18, 2026</td><td><span class="pill ok">OK</span></td><td>On track</td></tr>
+  <tr class="weak"><td>Load test passed at 2× peak</td><td><code>INGEST-163</code> <span class="muted">In Progress · comment only</span></td><td>Nov 15, 2026</td><td>Nov 15, 2026</td><td><span class="pill weak">Weak</span></td><td>Weak evidence <a href="#f5">f5</a></td></tr>
+  <tr class="gap"><td>Rollback plan documented</td><td><span class="muted">No ticket found</span></td><td>Nov 16, 2026</td><td>—</td><td><span class="pill gap">Gap</span></td><td>No ticket <a href="#f4">f4</a></td></tr>
+  </tbody></table>
+</section>
+<section class="team">
+  <h3>Data Platform <span class="pill at_risk">At risk</span> <span class="muted">DATA · Shared platform</span></h3>
+  <p class="muted">Since 2026-11-10: DATA-233 moved to Done; DATA-240 moved to Closed (Duplicate); DATA-240 no longer counts for &quot;Production DB permissions reviewed&quot;; promised in a comment on INGEST-157</p>
+  <table><thead><tr><th>Plan item</th><th>Ticket</th><th>Plan date</th><th>Jira date</th><th>Result</th><th>Note</th></tr></thead><tbody>
+  <tr class="ok"><td>Cluster quota raised for ingestion load</td><td><code>DATA-233</code> <span class="muted">Done · not linked to epic</span></td><td>Nov 12, 2026</td><td>Nov 12, 2026</td><td><span class="pill ok">OK</span></td><td>Done · linkage gap</td></tr>
+  <tr class="gap"><td>Production DB permissions reviewed</td><td><span class="muted">Promised in a comment on INGEST-157</span></td><td>Nov 13, 2026</td><td>—</td><td><span class="pill gap">Gap</span></td><td>No ticket <a href="#f3">f3</a></td></tr>
+  </tbody></table>
+</section>
+<section class="team">
+  <h3>Security <span class="pill at_risk">At risk</span> <span class="muted">SEC · Approver</span></h3>
+  <p class="muted">Since 2026-11-10: SEC-881 moved to In Review</p>
+  <table><thead><tr><th>Plan item</th><th>Ticket</th><th>Plan date</th><th>Jira date</th><th>Result</th><th>Note</th></tr></thead><tbody>
+  <tr class="gap"><td>Security review approved</td><td><code>SEC-881</code> <span class="muted">In Review · linked</span></td><td>Nov 14, 2026</td><td>Nov 14, 2026</td><td><span class="pill gap">Gap</span></td><td>Approval still open <a href="#f1">f1</a></td></tr>
+  </tbody></table>
+</section>
+<section class="team">
+  <h3>SRE <span class="pill late">Late</span> <span class="muted">SRE · Capacity and on-call</span></h3>
+  <p class="muted">Since 2026-11-10: SRE-412 due date moved Nov 13 → Nov 22</p>
+  <table><thead><tr><th>Plan item</th><th>Ticket</th><th>Plan date</th><th>Jira date</th><th>Result</th><th>Note</th></tr></thead><tbody>
+  <tr class="late"><td>SRE capacity and on-call in place</td><td><code>SRE-412</code> <span class="muted">To Do · not linked to epic</span></td><td>Nov 13, 2026</td><td>Nov 22, 2026</td><td><span class="pill late">Late</span></td><td>Due 2 days after launch <a href="#f2">f2</a></td></tr>
+  </tbody></table>
+</section></div>
+
+<h2>Plan as confirmed</h2>
+<div class="wrap"><table><thead><tr><th>Id</th><th>Plan item</th><th>Type</th><th>Owner</th><th>Due</th><th>Source</th></tr></thead><tbody>
+<tr><td>p1</td><td>Ingestion service live in production</td><td>deliverable</td><td>Ingestion team</td><td>Nov 18, 2026</td><td class="small muted">Ingestion-service-POR-v3.md · §2</td></tr>
+<tr><td>p2</td><td>Cluster quota raised for ingestion load</td><td>dependency</td><td>Data Platform</td><td>Nov 12, 2026</td><td class="small muted">Ingestion-service-POR-v3.md · §3</td></tr>
+<tr><td>p3</td><td>Security review approved</td><td>approval</td><td>Security</td><td>Nov 14, 2026</td><td class="small muted">Ingestion-service-POR-v3.md · §4</td></tr>
+<tr><td>p4</td><td>SRE capacity and on-call in place</td><td>dependency</td><td>SRE</td><td>Nov 13, 2026 <span class="muted small">(inferred)</span></td><td class="small muted">Ingestion-service-POR-v3.md · §4</td></tr>
+<tr><td>p5</td><td>Load test passed at 2× peak</td><td>checklist</td><td>Ingestion team</td><td>Nov 15, 2026 <span class="muted small">(inferred)</span></td><td class="small muted">launch-checklist.csv · #4</td></tr>
+<tr><td>p6</td><td>Production DB permissions reviewed</td><td>checklist</td><td>Data Platform</td><td>Nov 13, 2026 <span class="muted small">(inferred)</span></td><td class="small muted">launch-checklist.csv · #6</td></tr>
+<tr><td>p7</td><td>Rollback plan documented</td><td>checklist</td><td>Ingestion team</td><td>Nov 16, 2026 <span class="muted small">(inferred)</span></td><td class="small muted">launch-checklist.csv · #9</td></tr>
+</tbody></table></div>
+<p class="small muted">Teams and projects: Ingestion team → INGEST; Data Platform → DATA; Security → SEC; SRE → SRE.</p>
+
+
+
+<p class="small muted">Jira read at 2026-11-13T09:00:00.000Z · from runs/INGEST-142/2026-11-13.json. Jira was only read; nothing was changed.</p>
+</main></body>
+</html>
